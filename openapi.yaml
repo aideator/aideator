@@ -1,0 +1,499 @@
+openapi: 3.1.0
+info:
+  title: AIdeator API
+  description: |
+    Dagger-powered LLM orchestration platform that runs multiple AI agents in isolated containers,
+    streaming their thought processes in real-time for comparison and analysis.
+  version: 1.0.0
+  contact:
+    name: AIdeator Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local development server
+  - url: https://api.aideator.com/api/v1
+    description: Production server
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Check API and Dagger engine health status
+      operationId: checkHealth
+      tags:
+        - System
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Service unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /runs:
+    post:
+      summary: Create a new agent run
+      description: |
+        Submit a new run request that will spawn N containerized LLM agents
+        working on the same repository with the given prompt.
+      operationId: createRun
+      tags:
+        - Runs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRunRequest'
+      responses:
+        '202':
+          description: Run accepted for processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateRunResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /runs/{run_id}:
+    get:
+      summary: Get run details
+      description: Retrieve details about a specific run
+      operationId: getRun
+      tags:
+        - Runs
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          description: Unique identifier of the run
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Run details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunDetails'
+        '404':
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /runs/{run_id}/stream:
+    get:
+      summary: Stream agent outputs
+      description: |
+        Connect to a Server-Sent Events stream to receive real-time output
+        from all agent variations as they process the repository.
+      operationId: streamRun
+      tags:
+        - Streaming
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          description: Unique identifier of the run
+          schema:
+            type: string
+            format: uuid
+        - name: variation_id
+          in: query
+          required: false
+          description: Filter stream to specific variation
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: SSE stream established
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: agent_output
+                  data: {"variation_id": 0, "type": "thought", "content": "Analyzing repository structure..."}
+                  
+                  event: agent_output
+                  data: {"variation_id": 1, "type": "thought", "content": "I'll start by examining the main.py file..."}
+                  
+                  event: status_update
+                  data: {"variation_id": 0, "status": "cloning_repo"}
+                  
+                  event: error
+                  data: {"variation_id": 2, "error": "Rate limit exceeded", "details": "Claude API rate limit"}
+                  
+                  event: complete
+                  data: {"variation_id": 0, "status": "completed", "duration_seconds": 45.2}
+        '404':
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /runs/{run_id}/select:
+    post:
+      summary: Select winning variation
+      description: Mark a specific variation as the user's preferred choice
+      operationId: selectVariation
+      tags:
+        - Runs
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          description: Unique identifier of the run
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SelectVariationRequest'
+      responses:
+        '200':
+          description: Selection recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelectVariationResponse'
+        '404':
+          description: Run or variation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Selection already made
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /runs/{run_id}/cancel:
+    post:
+      summary: Cancel a run
+      description: Stop all running agent containers for this run
+      operationId: cancelRun
+      tags:
+        - Runs
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          description: Unique identifier of the run
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Run cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelRunResponse'
+        '404':
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for authentication
+
+  schemas:
+    CreateRunRequest:
+      type: object
+      required:
+        - github_url
+        - prompt
+      properties:
+        github_url:
+          type: string
+          format: uri
+          pattern: '^https://github\.com/[\w-]+/[\w.-]+$'
+          description: Public GitHub repository URL
+          example: https://github.com/fastapi/fastapi
+        prompt:
+          type: string
+          minLength: 10
+          maxLength: 2000
+          description: Prompt for the LLM agents
+          example: Add comprehensive error handling to the main API endpoints
+        variations:
+          type: integer
+          minimum: 1
+          maximum: 5
+          default: 3
+          description: Number of agent variations to run
+        agent_config:
+          type: object
+          description: Optional agent configuration overrides
+          properties:
+            model:
+              type: string
+              enum: [claude-3-opus-20240229, claude-3-sonnet-20240229]
+              default: claude-3-opus-20240229
+            max_tokens:
+              type: integer
+              minimum: 1000
+              maximum: 8000
+              default: 4000
+            temperature:
+              type: number
+              minimum: 0
+              maximum: 1
+              default: 0.7
+
+    CreateRunResponse:
+      type: object
+      required:
+        - run_id
+        - stream_url
+        - status
+      properties:
+        run_id:
+          type: string
+          format: uuid
+          description: Unique identifier for this run
+          example: 550e8400-e29b-41d4-a716-446655440000
+        stream_url:
+          type: string
+          format: uri
+          description: URL to connect for SSE stream
+          example: /api/v1/runs/550e8400-e29b-41d4-a716-446655440000/stream
+        status:
+          type: string
+          enum: [accepted, queued]
+          description: Initial status of the run
+        estimated_duration_seconds:
+          type: integer
+          description: Estimated time to complete all variations
+          example: 120
+
+    RunDetails:
+      type: object
+      required:
+        - run_id
+        - github_url
+        - prompt
+        - variations
+        - status
+        - created_at
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        github_url:
+          type: string
+          format: uri
+        prompt:
+          type: string
+        variations:
+          type: integer
+        status:
+          type: string
+          enum: [pending, running, completed, failed, cancelled]
+        winning_variation:
+          type: integer
+          nullable: true
+          description: ID of selected variation if any
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        variation_statuses:
+          type: array
+          items:
+            type: object
+            properties:
+              variation_id:
+                type: integer
+              status:
+                type: string
+                enum: [pending, running, completed, failed]
+              duration_seconds:
+                type: number
+                nullable: true
+
+    SelectVariationRequest:
+      type: object
+      required:
+        - variation_id
+      properties:
+        variation_id:
+          type: integer
+          minimum: 0
+          description: ID of the winning variation
+        feedback:
+          type: string
+          maxLength: 1000
+          description: Optional user feedback about the selection
+
+    SelectVariationResponse:
+      type: object
+      required:
+        - status
+        - run_id
+        - selected_variation
+      properties:
+        status:
+          type: string
+          enum: [success]
+        run_id:
+          type: string
+          format: uuid
+        selected_variation:
+          type: integer
+        message:
+          type: string
+          example: Selection recorded successfully
+
+    CancelRunResponse:
+      type: object
+      required:
+        - status
+        - run_id
+      properties:
+        status:
+          type: string
+          enum: [cancelled]
+        run_id:
+          type: string
+          format: uuid
+        cancelled_variations:
+          type: array
+          items:
+            type: integer
+          description: IDs of variations that were cancelled
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - version
+      properties:
+        status:
+          type: string
+          enum: [healthy]
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: string
+        services:
+          type: object
+          properties:
+            database:
+              type: string
+              enum: [healthy, unhealthy]
+            dagger_engine:
+              type: string
+              enum: [healthy, unhealthy]
+            redis:
+              type: string
+              enum: [healthy, unhealthy, not_configured]
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Error code
+          example: RUN_NOT_FOUND
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          additionalProperties: true
+          description: Additional error details
+
+    ValidationErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+        - validation_errors
+      properties:
+        error:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          example: Request validation failed
+        validation_errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                example: prompt
+              message:
+                type: string
+                example: String should have at least 10 characters
+              type:
+                type: string
+                example: value_error.any_str.min_length
+
+tags:
+  - name: System
+    description: System health and status endpoints
+  - name: Runs
+    description: Agent run management
+  - name: Streaming
+    description: Real-time output streaming

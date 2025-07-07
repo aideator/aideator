@@ -1,0 +1,129 @@
+rules:
+  - id: no-hardcoded-secrets
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $KEY = "sk-..."
+          - pattern: |
+              $KEY = 'sk-...'
+          - pattern: |
+              api_key = "..."
+          - pattern: |
+              secret = "..."
+    message: "Potential hardcoded secret found"
+    languages: [python]
+    severity: ERROR
+
+  - id: sql-injection-prevention
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $QUERY = f"SELECT * FROM {$TABLE} WHERE {$CONDITION}"
+          - pattern: |
+              $QUERY = "SELECT * FROM " + $TABLE
+          - pattern: |
+              execute($QUERY % ...)
+          - pattern: |
+              execute($QUERY.format(...))
+    message: "Potential SQL injection vulnerability. Use parameterized queries instead."
+    languages: [python]
+    severity: ERROR
+
+  - id: async-context-manager
+    patterns:
+      - pattern: |
+          async def $FUNC(...):
+              ...
+              $OBJ = $ASYNC_FUNC(...)
+              ...
+      - pattern-not: |
+          async def $FUNC(...):
+              ...
+              async with $ASYNC_FUNC(...) as $OBJ:
+                  ...
+      - metavariable-regex:
+          metavariable: $ASYNC_FUNC
+          regex: '(get_session|connect|.*_context)'
+    message: "Use async context manager for resource management"
+    languages: [python]
+    severity: WARNING
+
+  - id: pydantic-validation-bypass
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $MODEL.parse_obj($DATA, skip_validation=True)
+          - pattern: |
+              $MODEL.construct(...)
+    message: "Avoid bypassing Pydantic validation"
+    languages: [python]
+    severity: WARNING
+
+  - id: exposed-error-details
+    patterns:
+      - pattern: |
+          HTTPException(
+              ...,
+              detail=str($ERROR),
+              ...
+          )
+      - pattern-not: |
+          HTTPException(
+              ...,
+              detail="Internal server error",
+              ...
+          )
+    message: "Avoid exposing detailed error messages to users"
+    languages: [python]
+    severity: WARNING
+
+  - id: insecure-random
+    patterns:
+      - pattern-either:
+          - pattern: random.random()
+          - pattern: random.randint(...)
+          - pattern: random.choice(...)
+      - pattern-inside:
+          - pattern-either:
+              - pattern: |
+                  def $FUNC(...):
+                      ...
+                      $TOKEN = ...
+              - pattern: |
+                  $KEY = ...
+    message: "Use secrets module for security-sensitive randomness"
+    languages: [python]
+    severity: ERROR
+
+  - id: missing-rate-limit
+    patterns:
+      - pattern: |
+          @router.$METHOD(...)
+          async def $FUNC(...):
+              ...
+      - pattern-not: |
+          @router.$METHOD(...)
+          @rate_limit(...)
+          async def $FUNC(...):
+              ...
+      - metavariable-regex:
+          metavariable: $METHOD
+          regex: '(post|put|patch|delete)'
+    message: "Consider adding rate limiting to mutation endpoints"
+    languages: [python]
+    severity: INFO
+
+  - id: container-resource-limits
+    patterns:
+      - pattern: |
+          $CONTAINER = $CLIENT.container()
+          ...
+      - pattern-not: |
+          $CONTAINER = $CLIENT.container()
+          ...
+          $CONTAINER.with_memory_limit(...)
+          ...
+          $CONTAINER.with_cpu_limit(...)
+    message: "Set resource limits on containers"
+    languages: [python]
+    severity: WARNING

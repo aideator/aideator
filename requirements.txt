@@ -1,0 +1,59 @@
+# Core dependencies
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+gunicorn>=21.2.0
+pydantic>=2.5.0
+pydantic-settings>=2.0.0
+
+# Database
+sqlmodel>=0.0.14
+aiosqlite>=0.19.0
+alembic>=1.13.0
+
+# HTTP & API clients
+httpx>=0.25.0
+anthropic>=0.18.0
+sse-starlette>=2.0.0
+
+# Container orchestration
+dagger-io>=0.9.0
+
+# Authentication & Security
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+python-multipart>=0.0.6
+
+# Async utilities
+anyio>=4.0.0
+tenacity>=8.2.0
+
+# Caching & Queuing
+redis>=5.0.0
+
+# Logging & Monitoring
+structlog>=23.0.0
+prometheus-client>=0.19.0
+
+# Development dependencies (optional)
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+pytest-mock>=3.12.0
+pytest-timeout>=2.2.0
+pytest-benchmark>=4.0.0
+pytest-xdist>=3.5.0
+
+# Code quality
+mypy>=1.7.0
+ruff>=0.1.0
+black>=23.0.0
+
+# Security scanning
+bandit>=1.7.5
+safety>=3.0.0
+semgrep>=1.45.0
+
+# Testing utilities
+hypothesis>=6.90.0
+faker>=20.0.0
+playwright>=1.40.0
