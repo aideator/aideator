@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     anthropic_api_key: str
+    anthropic_api_key_env_var: str = "ANTHROPIC_API_KEY"  # Environment variable name for Dagger
     api_key_header: str = "X-API-Key"
     allowed_origins: list[str] = ["*"]
     allowed_hosts: list[str] = ["*"]

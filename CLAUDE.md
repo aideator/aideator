@@ -18,12 +18,19 @@ I am the **primary development assistant** for AIdeator backend development. I p
 
 ### Core Components
 
-- **FastAPI Backend** - Async web framework for high-performance API
-- **Dagger SDK** - Container orchestration and pipeline execution
+- **FastAPI Backend** - Async web framework running on the host machine
+- **Dagger Module** - Container orchestration via CLI subprocess calls
 - **Server-Sent Events (SSE)** - Real-time streaming of agent thought processes
 - **SQLite + SQLModel** - Async database with Pydantic integration
 - **Anthropic Claude API** - LLM agent for code generation tasks
 - **Container Isolation** - Each agent runs in its own Dagger container
+
+### Refactored Architecture
+
+The architecture has been refactored to separate concerns:
+- **Host Machine**: FastAPI server, database, SSE streaming
+- **Dagger Containers**: Agent execution only (via module functions)
+- **No Persistent Connection**: Server doesn't maintain Dagger connection
 
 ### Key Workflows
 
@@ -32,29 +39,40 @@ I am the **primary development assistant** for AIdeator backend development. I p
 3. **Real-time Streaming** → Capture container stdout → Stream via SSE
 4. **Result Persistence** → Store winning variation → Cache for reuse
 
-### Dagger Pipeline Architecture
+### Refactored Pipeline Architecture
 
 ```python
-# Core pipeline structure
-async def create_agent_pipeline(repo_url: str, prompt: str, variations: int):
-    async with dagger.Connection() as client:
-        # Base container with dependencies
-        base = await create_base_container(client)
-        
-        # Clone repo in container
-        repo_container = await clone_repository(base, repo_url)
-        
-        # Spawn N agent containers
-        agents = [
-            create_agent_container(repo_container, prompt, i)
-            for i in range(variations)
+# Server runs on host, calls Dagger module via CLI
+class DaggerModuleService:
+    async def stream_agent_output(self, repo_url: str, prompt: str, variation_id: int):
+        cmd = [
+            "dagger", "call",
+            "-m", ".",  # Module at project root
+            "stream-agent",
+            "--repo-url", repo_url,
+            "--prompt", prompt,
+            "--variation-id", str(variation_id),
+            "--anthropic-api-key", f"env:{settings.anthropic_api_key_env_var}",
+            "stdout"
         ]
         
-        # Execute and stream in parallel
-        await asyncio.gather(*[
-            stream_agent_output(agent, i) 
-            for i, agent in enumerate(agents)
-        ])
+        # Stream output line by line
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True)
+        for line in process.stdout:
+            yield line.strip()
+
+# Dagger module defines container operations
+@function
+async def run_agent(
+    self,
+    repo_url: str,
+    prompt: str,
+    anthropic_api_key: dagger.Secret,
+    variation_id: int = 0,
+) -> str:
+    # Container operations happen in Dagger module
+    container = dag.container().from_("python:3.11-slim")
+    # ... setup and execution
 ```
 
 ## 🚀 Development Commands
@@ -77,8 +95,8 @@ uv pip install -r requirements.txt
 # Or install specific packages
 uv pip install fastapi uvicorn[standard] sqlmodel aiosqlite httpx dagger-io
 
-# Start Dagger engine (in separate terminal)
-dagger engine
+# Dagger engine starts automatically when needed
+# No persistent connection required
 
 # Run development server
 uv run uvicorn app.main:app --reload --port 8000
@@ -195,116 +213,72 @@ class Settings(BaseSettings):
 
 ## 🔧 Implementation Patterns
 
-### Dagger Container Management
+### Dagger Module Service (Refactored)
 
 ```python
-# app/services/dagger_service.py
-import dagger
-from contextlib import asynccontextmanager
-from typing import Optional
-
-class DaggerService:
-    """Manages Dagger client lifecycle and container operations"""
+# app/services/dagger_module_service.py
+class DaggerModuleService:
+    """Service to interact with Dagger modules via CLI - no persistent connection"""
     
     def __init__(self):
-        self.client: Optional[dagger.Client] = None
-    
-    async def connect(self):
-        """Connect to Dagger engine"""
-        self.client = dagger.Connection(dagger.Config(
-            log_output=True,
-            execute_timeout=600  # 10 minutes for long operations
-        ))
-    
-    async def disconnect(self):
-        """Cleanup Dagger connection"""
-        if self.client:
-            await self.client.close()
-    
-    async def create_agent_container(
-        self, 
-        repo_url: str, 
-        prompt: str, 
-        variation_id: int,
-        agent_config: dict = None
-    ) -> dagger.Container:
-        """Create an isolated agent container with proper configuration"""
-        settings = get_settings()
-        env_vars = DaggerEnvironment.get_agent_env(variation_id)
+        self.module_name = "aideator"
+        self.module_path = "."  # Module at project root
         
-        # Base container with caching
-        container = (
-            self.client.container()
-            .from_(settings.agent_container_image)
-            # Cache apt packages
-            .with_mounted_cache("/var/cache/apt", self.client.cache_volume("apt-cache"))
-            .with_mounted_cache("/var/lib/apt", self.client.cache_volume("apt-lib"))
-            .with_exec(["apt-get", "update"])
-            .with_exec(["apt-get", "install", "-y", "git", "--no-install-recommends"])
-            # Cache pip packages
-            .with_mounted_cache("/root/.cache/pip", self.client.cache_volume("pip-cache"))
-            .with_exec(["pip", "install", "--no-cache-dir", "anthropic", "aiofiles", "gitpython"])
-        )
+    async def stream_agent_output(
+        self,
+        repo_url: str,
+        prompt: str,
+        variation_id: int = 0,
+        agent_config: Optional[Dict[str, Any]] = None,
+    ) -> AsyncGenerator[str, None]:
+        """Stream agent output via Dagger module call"""
+        cmd = [
+            "dagger", "call",
+            "-m", self.module_path,
+            "stream-agent",
+            "--repo-url", repo_url,
+            "--prompt", prompt,
+            "--variation-id", str(variation_id),
+            "--anthropic-api-key", f"env:{settings.anthropic_api_key_env_var}",
+            "stdout"
+        ]
         
-        # Set up workspace and clone repo
-        container = (
-            container
-            .with_workdir(settings.dagger_workdir)
-            .with_exec(["git", "clone", "--depth", "1", repo_url, "."], 
-                      # Use timeout for clone operation
-                      experimental_exec_options=dagger.ExecOptions(
-                          timeout=settings.clone_timeout
-                      ))
-        )
-        
-        # Apply environment variables
-        for key, value in env_vars.items():
-            container = container.with_env_variable(key, value)
-        
-        # Mount secrets securely
-        for secret_name, secret_value in settings.get_dagger_secrets().items():
-            container = container.with_mounted_secret(
-                f"/secrets/{secret_name}",
-                self.client.set_secret(secret_name, secret_value)
-            )
-        
-        # Apply resource limits
-        container = (
-            container
-            .with_memory_limit(settings.agent_memory_limit)
-            .with_cpu_limit(settings.agent_cpu_limit)
-        )
-        
-        # Mount agent script and config
-        container = container.with_file(
-            "/app/agent.py",
-            self.client.host().file("./agent_scripts/streaming_agent.py")
-        )
-        
-        # Pass prompt via file to avoid command line length limits
-        container = container.with_new_file(
-            "/app/prompt.txt",
-            contents=prompt
-        )
-        
-        # Agent configuration
         if agent_config:
-            container = container.with_new_file(
-                "/app/config.json",
-                contents=json.dumps(agent_config)
-            )
+            cmd.extend(["--agent-config", json.dumps(agent_config)])
         
-        return container
+        # Stream output line by line
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1  # Line buffered
+        )
+        
+        for line in process.stdout:
+            if line.strip():
+                yield line.strip()
+    
+    def is_available(self) -> bool:
+        """Check if Dagger CLI is available"""
+        try:
+            subprocess.run(["dagger", "version"], capture_output=True, check=True)
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return False
 
-# FastAPI lifespan management
+# No Dagger in FastAPI lifespan
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
-    app.state.dagger = DaggerService()
-    await app.state.dagger.connect()
+    # Startup - only database initialization
+    await create_db_and_tables()
+    logger.info("Database initialized")
+    
+    # Dagger connections handled on-demand via module calls
     yield
+    
     # Shutdown
-    await app.state.dagger.disconnect()
+    logger.info("Shutting down application")
 ```
 
 ### Agent Execution Pipeline

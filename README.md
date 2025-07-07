@@ -46,13 +46,19 @@ uv run uvicorn app.main:app --reload
 # API docs at http://localhost:8000/docs
 ```
 
-### 3. Run with Dagger
+### 3. Test the Agent Functions
 
 ```bash
-# Ensure SSH_AUTH_SOCK is unset (known issue)
-export SSH_AUTH_SOCK=""
+# List available Dagger functions
+dagger functions
 
-# Run development server in container
+# Test a single agent directly
+dagger call run-agent \
+  --repo-url "https://github.com/octocat/Hello-World" \
+  --prompt "Analyze this repository" \
+  --anthropic-api-key env:ANTHROPIC_API_KEY
+
+# Run development server in container (optional)
 dagger call dev --source=. up --ports 8001:8000
 
 # Run tests
@@ -66,19 +72,25 @@ dagger call lint --source=.
 
 ```
 aideator/
-├── app/                    # FastAPI application
-│   ├── api/               # API endpoints
-│   ├── core/              # Core configuration and database
-│   ├── models/            # SQLModel database models
-│   ├── schemas/           # Pydantic validation schemas
-│   ├── services/          # Business logic and services
-│   └── main.py            # Application entry point
-├── src/                    # Dagger module
-│   ├── main.py            # Dagger functions (dev, test, lint)
-│   └── pyproject.toml     # Dagger module configuration
-├── tests/                  # Test suite
-├── pyproject.toml         # Project dependencies and config
-└── dagger.json            # Dagger module configuration
+├── app/                           # FastAPI application (runs on host)
+│   ├── api/                      # API endpoints
+│   ├── core/                     # Core configuration and database
+│   ├── models/                   # SQLModel database models
+│   ├── schemas/                  # Pydantic validation schemas
+│   ├── services/                 # Business logic and services
+│   │   ├── agent_orchestrator_v2.py  # Agent orchestration
+│   │   ├── dagger_module_service.py  # Dagger CLI wrapper
+│   │   └── sse_manager.py           # SSE streaming
+│   └── main.py                   # Application entry point
+├── src/                          # Main Dagger module
+│   └── main.py                   # Dagger functions (dev, test, lint, run-agent)
+├── dagger_module/                # Agent-specific Dagger assets
+│   └── src/aideator/
+│       ├── main.py              # Agent orchestration functions
+│       └── agent.py             # AI agent script
+├── tests/                        # Test suite
+├── pyproject.toml               # Project dependencies and config
+└── dagger.json                  # Dagger module configuration
 ```
 
 ## Development
@@ -158,6 +170,46 @@ DATABASE_URL=sqlite+aiosqlite:///./aideator.db
 ```
 
 ## Architecture
+
+### Overview
+
+AIdeator uses a refactored architecture that cleanly separates the FastAPI server (running on the host) from the Dagger-based agent orchestration (running in containers). This provides better separation of concerns and allows the web server to run independently of Dagger availability.
+
+### Key Components
+
+1. **FastAPI Server (Host)**
+   - Runs directly on the host machine with `uvicorn`
+   - No Dagger connection required at startup
+   - Handles HTTP requests, database operations, and SSE streaming
+   - Communicates with Dagger module via CLI when needed
+
+2. **Dagger Module (Containers)**
+   - All agent orchestration happens via the `aideator` Dagger module
+   - Provides functions for running single or parallel agents
+   - Handles container creation, dependency installation, and execution
+   - Agent script located at `dagger_module/src/aideator/agent.py`
+
+3. **Service Layer**
+   - `DaggerModuleService` uses subprocess to call Dagger CLI commands
+   - `AgentOrchestratorV2` manages parallel agent execution
+   - Streams output from Dagger module back to SSE clients
+   - Falls back gracefully if Dagger is not available
+
+### Architecture Flow
+
+```
+User Request → FastAPI Server (Host)
+                    ↓
+            AgentOrchestratorV2
+                    ↓
+            DaggerModuleService
+                    ↓
+            Dagger CLI (subprocess)
+                    ↓
+            Dagger Module Functions
+                    ↓
+            Agent Containers (N variations)
+```
 
 ### System Architecture
 
@@ -299,6 +351,109 @@ sequenceDiagram
 - Follow existing code patterns
 - Update API documentation
 - Run the full test suite before submitting
+
+## Manual Testing Guide
+
+### Step 1: Verify Server Health
+
+```bash
+# Check that server is running independently
+curl http://localhost:8000/health
+
+# Expected response:
+{
+  "status": "healthy",
+  "version": "1.0.0",
+  "dagger_module": "aideator"
+}
+```
+
+### Step 2: Create an Agent Run
+
+```bash
+# Create a run with 2 agent variations
+curl -X POST http://localhost:8000/api/v1/runs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "github_url": "https://github.com/octocat/Hello-World",
+    "prompt": "Analyze this repository and suggest improvements",
+    "variations": 2,
+    "agent_config": {
+      "model": "claude-3-opus-20240229",
+      "temperature": 0.7,
+      "max_tokens": 1000
+    }
+  }'
+
+# Response includes:
+{
+  "run_id": "run_abc123...",
+  "stream_url": "/api/v1/runs/run_abc123.../stream",
+  "status": "accepted",
+  "estimated_duration_seconds": 80
+}
+```
+
+### Step 3: Stream Real-time Output
+
+```bash
+# Stream agent outputs using the stream_url from above
+curl -N http://localhost:8000/api/v1/runs/run_abc123.../stream
+
+# You'll see Server-Sent Events:
+event: agent_output
+data: {"type": "agent_output", "variation_id": 0, "content": "[Agent 0] Starting analysis..."}
+
+event: agent_output
+data: {"type": "agent_output", "variation_id": 1, "content": "[Agent 1] Starting analysis..."}
+
+event: run_complete
+data: {"type": "run_complete", "status": "completed"}
+```
+
+### Step 4: Check Results
+
+```bash
+# List all runs
+curl http://localhost:8000/api/v1/runs | jq
+
+# Get specific run details
+curl http://localhost:8000/api/v1/runs/run_abc123 | jq
+
+# Get run outputs
+curl http://localhost:8000/api/v1/runs/run_abc123/outputs | jq
+```
+
+### Testing Parallel Execution
+
+```bash
+# Create multiple runs simultaneously
+# Terminal 1:
+curl -X POST http://localhost:8000/api/v1/runs \
+  -H "Content-Type: application/json" \
+  -d '{"github_url": "https://github.com/fastapi/fastapi", "prompt": "Analyze routing", "variations": 2}'
+
+# Terminal 2 (at the same time):
+curl -X POST http://localhost:8000/api/v1/runs \
+  -H "Content-Type: application/json" \
+  -d '{"github_url": "https://github.com/tiangolo/sqlmodel", "prompt": "Analyze ORM", "variations": 2}'
+```
+
+### Architecture Verification
+
+Test that the server runs independently of Dagger:
+
+```bash
+# 1. Stop Dagger engine
+docker stop dagger-engine-v0.18.12
+
+# 2. Server health should still work
+curl http://localhost:8000/health
+
+# 3. Creating runs will fail gracefully
+# 4. Restart Dagger
+docker start dagger-engine-v0.18.12
+```
 
 ## Troubleshooting
 
