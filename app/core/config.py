@@ -141,6 +141,9 @@ class Settings(BaseSettings):
     def database_url_async(self) -> str:
         """Get async database URL."""
         if "sqlite" in self.database_url:
+            # Handle both sqlite:// and sqlite+aiosqlite:// formats
+            if self.database_url.startswith("sqlite+aiosqlite://"):
+                return self.database_url
             return self.database_url.replace("sqlite://", "sqlite+aiosqlite://")
         return self.database_url
 

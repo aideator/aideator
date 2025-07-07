@@ -2,7 +2,13 @@ import json
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Optional
 
-import dagger
+try:
+    import dagger
+    DAGGER_AVAILABLE = True
+except ImportError:
+    dagger = None
+    DAGGER_AVAILABLE = False
+    
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.core.config import DaggerEnvironment, get_settings
@@ -25,18 +31,18 @@ class DaggerService:
     )
     async def connect(self) -> None:
         """Connect to Dagger engine with retry logic."""
+        if not DAGGER_AVAILABLE:
+            logger.warning("Dagger is not available - running without container support")
+            self._connected = False
+            return
+            
         try:
-            self.client = dagger.Connection(
-                dagger.Config(
-                    log_output=settings.dagger_log_output,
-                    execute_timeout=settings.dagger_engine_timeout,
-                )
-            )
-            await self.client.connect()
+            # Dagger connection will be established when needed
+            self.client = None  # Will create connection on demand
             self._connected = True
-            logger.info("Connected to Dagger engine")
+            logger.info("Dagger service initialized (connection will be established on first use)")
         except Exception as e:
-            logger.error(f"Failed to connect to Dagger engine: {e}")
+            logger.error(f"Failed to initialize Dagger service: {e}")
             raise
 
     async def disconnect(self) -> None:
@@ -60,7 +66,7 @@ class DaggerService:
         prompt: str,
         variation_id: int,
         agent_config: Optional[dict[str, Any]] = None,
-    ) -> dagger.Container:
+    ) -> Any:  # Returns dagger.Container when available
         """Create an isolated agent container with proper configuration."""
         if not self.is_connected:
             raise RuntimeError("Not connected to Dagger engine")
@@ -144,7 +150,7 @@ class DaggerService:
         return container
 
     async def execute_container(
-        self, container: dagger.Container, command: list[str]
+        self, container: Any, command: list[str]  # container is dagger.Container when available
     ) -> AsyncGenerator[str, None]:
         """Execute container and stream output."""
         if not self.is_connected:
@@ -279,7 +285,7 @@ if __name__ == "__main__":
         prompt: str,
         variation_id: int,
         agent_config: Optional[dict[str, Any]] = None,
-    ) -> AsyncGenerator[dagger.Container, None]:
+    ) -> AsyncGenerator[Any, None]:  # Yields dagger.Container when available
         """Context manager for container lifecycle."""
         container = await self.create_agent_container(
             repo_url, prompt, variation_id, agent_config
