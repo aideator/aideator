@@ -94,17 +94,45 @@ check_command "kubectl" "https://kubernetes.io/docs/tasks/tools/"
 check_command "helm" "https://helm.sh/docs/intro/install/"
 check_command "tilt" "https://docs.tilt.dev/install.html"
 check_command "k3d" "https://k3d.io/v5.6.0/#installation"
+check_command "ctlptl" "https://github.com/tilt-dev/ctlptl#installation"
 check_command "npm" "https://nodejs.org/"
+
+# Ensure ctlptl registry exists
+if ! docker ps | grep -q ctlptl-registry; then
+    echo "🔧 Creating ctlptl registry..."
+    ctlptl create registry ctlptl-registry --port 5005
+else
+    echo "✅ ctlptl-registry already exists"
+fi
+
+# Create registry config for k3d
+REGISTRY_CONFIG="/tmp/k3d-registry-config.yaml"
+echo "📝 Creating k3d registry configuration..."
+cat > "$REGISTRY_CONFIG" <<EOF
+mirrors:
+  "localhost:5005":
+    endpoint:
+      - http://ctlptl-registry:5000
+  "ctlptl-registry:5000":
+    endpoint:
+      - http://ctlptl-registry:5000
+  "ctlptl-registry:5005":
+    endpoint:
+      - http://ctlptl-registry:5000
+EOF
 
 # Create k3d cluster if it doesn't exist
 if ! k3d cluster list | grep -q "k3d-aideator"; then
-    echo "🔧 Creating k3d cluster with registry..."
+    echo "🔧 Creating k3d cluster with registry configuration..."
+    k3d cluster create aideator --registry-config "$REGISTRY_CONFIG"
     
-    echo "📦 Found existing ctlptl-registry, using it..."
-    k3d cluster create aideator --registry-use ctlptl-registry:5005
-
+    # Connect registry to k3d network
+    echo "🔗 Connecting registry to k3d network..."
+    docker network connect k3d-aideator ctlptl-registry 2>/dev/null || true
 else
     echo "✅ k3d cluster already exists"
+    # Ensure registry is connected even if cluster exists
+    docker network connect k3d-aideator ctlptl-registry 2>/dev/null || true
 fi
 
 # Set kubectl context
@@ -177,14 +205,18 @@ cd ..
 echo ""
 echo "✅ Setup complete!"
 echo ""
+echo "⚠️  IMPORTANT: You must now run 'tilt up' to build and push images to the registry!"
+echo ""
 echo "To start development, run:"
 echo "   tilt up"
 echo ""
-echo "This will start:"
-echo "   ✓ Kubernetes cluster"
-echo "   ✓ FastAPI backend with hot reload"
-echo "   ✓ Frontend with hot reload"
-echo "   ✓ Agent containers"
+echo "This will:"
+echo "   ✓ Build Docker images"
+echo "   ✓ Push images to the local registry (localhost:5005)"
+echo "   ✓ Deploy to Kubernetes"
+echo "   ✓ Start FastAPI backend with hot reload"
+echo "   ✓ Start Frontend with hot reload"
+echo "   ✓ Enable agent container orchestration"
 echo ""
 echo "📍 Services will be available at:"
 echo "   Frontend:  http://localhost:3000 (or next available port)"
@@ -195,6 +227,7 @@ echo ""
 echo "💡 Note: If port 3000 is busy, Tilt will automatically find the next available port"
 echo ""
 echo "🔧 Troubleshooting:"
+echo "   Image not found errors? Make sure you run 'tilt up' to build images!"
 echo "   Module resolution errors? Try:"
 echo "     cd frontend && rm -rf .next node_modules && npm install"
 echo "     tilt up"

@@ -18,6 +18,8 @@ AIdeator runs multiple AI agents simultaneously in isolated Kubernetes container
 
 Everything else will be installed automatically!
 
+> **Note**: The setup uses `ctlptl` for local registry management. If you already have a k3d cluster or ctlptl registry, the bootstrap script will reuse them.
+
 ### Setup & Run
 
 ```bash
@@ -74,6 +76,56 @@ cd frontend && npm test   # Frontend tests
 # Stop everything
 tilt down
 ```
+
+## Troubleshooting
+
+### Registry Issues
+
+If you encounter "image not found" errors:
+
+1. **Ensure images are built and pushed**:
+   ```bash
+   # Tilt should handle this automatically when you run 'tilt up'
+   # If you see "image not found" errors, you may need to:
+   
+   # Option 1: Let Tilt build everything (recommended)
+   tilt up
+   
+   # Option 2: Manually build and tag if Tilt uses dynamic tags
+   docker build -t localhost:5005/aideator-api:dev --target api .
+   docker push localhost:5005/aideator-api:dev
+   
+   docker build -t localhost:5005/aideator-agent:dev --target agent .
+   docker push localhost:5005/aideator-agent:dev
+   ```
+
+2. **Verify registry is running**:
+   ```bash
+   docker ps | grep ctlptl-registry
+   ```
+
+3. **Check registry contents**:
+   ```bash
+   curl http://localhost:5005/v2/_catalog
+   ```
+
+4. **Fix missing :dev tags**:
+   ```bash
+   # If agent jobs fail with "image not found", run:
+   ./scripts/fix-registry-tags.sh
+   ```
+
+5. **Reset everything**:
+   ```bash
+   k3d cluster delete aideator
+   docker rm -f ctlptl-registry
+   ./bootstrap.sh
+   tilt up
+   ```
+
+### Known Issues
+
+- **Tilt uses dynamic tags**: Tilt builds images with tags like `tilt-abc123...` but the job templates expect `:dev` tags. The Tiltfile includes a `tag-dev-images` resource that automatically creates these tags, but if it fails, run `./scripts/fix-registry-tags.sh`.
 
 ## Architecture
 

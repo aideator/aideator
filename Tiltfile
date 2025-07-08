@@ -11,6 +11,7 @@ local_resource(
 # Using k3d registry - ensure registry is configured correctly
 default_registry('localhost:5005', host_from_cluster='ctlptl-registry:5000')
 
+# Build API image
 docker_build(
     'aideator-api',
     context='.',
@@ -18,11 +19,43 @@ docker_build(
     target='api'
 )
 
+# Build Agent image  
 docker_build(
     'aideator-agent',
     context='.',
     dockerfile='./Dockerfile',
     target='agent'
+)
+
+# Create dev tags for the job templates
+# This ensures that after Tilt builds the images, we also tag them as :dev
+# We use a periodic refresh to ensure dev tags stay current
+local_resource(
+    'tag-dev-images',
+    cmd='''
+    # Find the latest tilt-built images and tag them as dev
+    API_IMAGE=$(docker images localhost:5005/aideator-api --format "{{.Repository}}:{{.Tag}}" | grep tilt | head -1)
+    AGENT_IMAGE=$(docker images localhost:5005/aideator-agent --format "{{.Repository}}:{{.Tag}}" | grep tilt | head -1)
+    
+    if [ -n "$API_IMAGE" ]; then
+        docker tag $API_IMAGE localhost:5005/aideator-api:dev >/dev/null 2>&1
+        docker push localhost:5005/aideator-api:dev >/dev/null 2>&1
+        echo "✅ Tagged aideator-api:dev"
+    else
+        echo "⏳ Waiting for aideator-api image..."
+    fi
+    
+    if [ -n "$AGENT_IMAGE" ]; then
+        docker tag $AGENT_IMAGE localhost:5005/aideator-agent:dev >/dev/null 2>&1
+        docker push localhost:5005/aideator-agent:dev >/dev/null 2>&1
+        echo "✅ Tagged aideator-agent:dev"
+    else
+        echo "⏳ Waiting for aideator-agent image..."
+    fi
+    ''',
+    deps=['./Dockerfile'],
+    auto_init=True,
+    trigger_mode=TRIGGER_MODE_AUTO
 )
 
 # Phase 3: Create namespace
