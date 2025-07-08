@@ -26,7 +26,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: agent
-          image: "ctlptl-registry:5000/aideator-agent:dev"
+          image: "aideator-registry:5000/aideator-agent:dev"
           imagePullPolicy: Always
           env:
             - name: OPENAI_API_KEY
