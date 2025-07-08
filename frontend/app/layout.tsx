@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AIdeator - Multi-Agent AI Orchestration",
-  description: "Run multiple AI agents in parallel and compare their solutions side-by-side",
+  title: "aideator - Multi-Agent Analysis Platform",
+  description: "Run multiple AI agents in parallel and compare their analysis side-by-side",
 };
 
 export default function RootLayout({

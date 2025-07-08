@@ -52,12 +52,8 @@ spec:
           args:
             - |
               VARIATION_ID=${JOB_COMPLETION_INDEX}
-              echo "🚀 Starting batch agent ${VARIATION_ID} for run {run_id}"
-              echo "📦 Repository: {repo_url}"
-              echo "💭 Prompt: {prompt}"
-              echo "🔄 Processing variation ${VARIATION_ID}..."
               export VARIATION_ID=${VARIATION_ID}
-              python -u /agent/main.py
+              python -u /app/agent/main.py
           resources:
             requests:
               memory: "256Mi"

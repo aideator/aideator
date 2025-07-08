@@ -316,15 +316,8 @@ class KubernetesService:
                 
                 log_line = line.decode().strip()
                 if log_line:
-                    log_entry = {
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "run_id": run_id,
-                        "variation_id": variation_id,
-                        "pod_name": pod_name,
-                        "message": log_line,
-                        "type": "agent_output"
-                    }
-                    yield json.dumps(log_entry)
+                    # Just yield the raw log line - the agent_orchestrator will handle parsing
+                    yield log_line
             
             # Wait for process to complete
             await process.wait()

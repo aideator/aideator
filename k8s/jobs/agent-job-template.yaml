@@ -46,14 +46,7 @@ spec:
               value: "INFO"
             - name: PYTHONUNBUFFERED
               value: "1"
-          command: ["/bin/sh", "-c"]
-          args:
-            - |
-              echo "🚀 Starting agent variation {variation_id} for run {run_id}"
-              echo "📦 Repository: {repo_url}"
-              echo "💭 Prompt: {prompt}"
-              echo "🔄 Starting processing..."
-              python -u /app/agent/main.py
+          command: ["python", "-u", "/app/agent/main.py"]
           resources:
             requests:
               memory: "256Mi"

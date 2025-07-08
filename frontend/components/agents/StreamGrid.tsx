@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { StreamCard } from './StreamCard';
+import { CollapsibleStreamCard } from './CollapsibleStreamCard';
 import { AlertCircle, Wifi, WifiOff, Users, Activity, TrendingUp, Sparkles } from 'lucide-react';
 
 interface StreamGridProps {
@@ -97,7 +97,7 @@ export function StreamGrid({
           
           return (
             <div key={variationId} className="h-full">
-              <StreamCard
+              <CollapsibleStreamCard
                 variationId={variationId}
                 content={content}
                 isStreaming={isThisAgentStreaming}
@@ -120,7 +120,7 @@ export function StreamGrid({
               Ready to Start Multi-Agent Generation
             </h3>
             <p className="text-lg text-gray-600 max-w-md mx-auto">
-              Configure your task above and click "Start Generation" to see real-time agent results here.
+              Configure your task above and click &quot;Start Generation&quot; to see real-time agent results here.
             </p>
           </div>
         </div>

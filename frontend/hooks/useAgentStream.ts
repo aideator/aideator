@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { StreamBuffer } from '@/lib/StreamBuffer';
 
 export interface StreamMessage {
   variation_id: number;
@@ -20,6 +21,8 @@ export interface AgentStreamHook extends AgentStreamState {
   stopStream: () => void;
   clearStreams: () => void;
   selectAgent: (variationId: number) => Promise<void>;
+  pauseStream: (variationId?: number) => void;
+  resumeStream: (variationId?: number) => void;
 }
 
 export function useAgentStream(): AgentStreamHook {
@@ -30,20 +33,79 @@ export function useAgentStream(): AgentStreamHook {
   
   const eventSourceRef = useRef<EventSource | null>(null);
   const currentRunIdRef = useRef<string | null>(null);
+  const streamBuffersRef = useRef<Map<number, StreamBuffer>>(new Map());
 
   const stopStream = useCallback(() => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
     }
+    // Destroy all stream buffers
+    streamBuffersRef.current.forEach(buffer => buffer.destroy());
+    streamBuffersRef.current.clear();
+    
     setIsStreaming(false);
     setConnectionState('disconnected');
     currentRunIdRef.current = null;
   }, []);
 
+  const pauseStream = useCallback((variationId?: number) => {
+    if (variationId !== undefined) {
+      // Pause specific stream
+      const buffer = streamBuffersRef.current.get(variationId);
+      if (buffer) {
+        buffer.pause();
+      }
+    } else {
+      // Pause all streams
+      streamBuffersRef.current.forEach(buffer => buffer.pause());
+    }
+  }, []);
+
+  const resumeStream = useCallback((variationId?: number) => {
+    if (variationId !== undefined) {
+      // Resume specific stream
+      const buffer = streamBuffersRef.current.get(variationId);
+      if (buffer) {
+        buffer.resume();
+      }
+    } else {
+      // Resume all streams
+      streamBuffersRef.current.forEach(buffer => buffer.resume());
+    }
+  }, []);
+
+  const createStreamBuffer = useCallback((variationId: number): StreamBuffer => {
+    const buffer = new StreamBuffer({
+      onToken: (token: string) => {
+        setStreams(prevStreams => {
+          const newStreams = new Map(prevStreams);
+          const existing = newStreams.get(variationId) || [];
+          newStreams.set(variationId, [...existing, token]);
+          return newStreams;
+        });
+      },
+      onFlush: () => {
+        console.log(`Stream buffer for agent ${variationId} flushed`);
+      }
+    }, {
+      tokensPerSecond: 50, // Smooth streaming rate
+      minChunkSize: 5,     // Start streaming after 5 chars
+      maxBufferSize: 1000, // Force drain at 1000 chars
+      respectWordBoundaries: true,
+      respectMarkdownBlocks: true
+    });
+    
+    streamBuffersRef.current.set(variationId, buffer);
+    return buffer;
+  }, []);
+
   const clearStreams = useCallback(() => {
     setStreams(new Map());
     setError(null);
+    // Destroy all stream buffers
+    streamBuffersRef.current.forEach(buffer => buffer.destroy());
+    streamBuffersRef.current.clear();
   }, []);
 
   const startStream = useCallback((runId: string) => {
@@ -75,24 +137,36 @@ export function useAgentStream(): AgentStreamHook {
       eventSource.addEventListener('agent_output', (event) => {
         try {
           const data: StreamMessage = JSON.parse(event.data);
-          console.log('Received agent output:', data);
           
-          // Check if content is a JSON string (log entry) or plain text
+          // Filter out JSON log entries - only show actual content
+          let shouldDisplay = true;
           let displayContent = data.content;
+          
           try {
             const logEntry = JSON.parse(data.content);
-            // If it's a log entry, extract the message or use the whole object
-            displayContent = logEntry.message || logEntry.result || JSON.stringify(logEntry, null, 2);
+            // If it's a JSON log entry with timestamp/level, skip it
+            if (logEntry.timestamp && logEntry.level) {
+              shouldDisplay = false;
+              console.log('Agent log:', logEntry.message || logEntry);
+            } else {
+              // It's JSON but not a log, display it formatted
+              displayContent = JSON.stringify(logEntry, null, 2);
+            }
           } catch {
-            // It's plain text, use as-is
+            // It's plain text markdown content, display as-is
+            displayContent = data.content;
           }
           
-          setStreams(prevStreams => {
-            const newStreams = new Map(prevStreams);
-            const existing = newStreams.get(data.variation_id) || [];
-            newStreams.set(data.variation_id, [...existing, displayContent]);
-            return newStreams;
-          });
+          if (shouldDisplay) {
+            // Get or create stream buffer for this variation
+            let buffer = streamBuffersRef.current.get(data.variation_id);
+            if (!buffer) {
+              buffer = createStreamBuffer(data.variation_id);
+            }
+            
+            // Add content to the smooth streaming buffer
+            buffer.add(displayContent);
+          }
         } catch (parseError) {
           console.error('Failed to parse agent_output event:', parseError, 'Raw data:', event.data);
         }
@@ -121,7 +195,11 @@ export function useAgentStream(): AgentStreamHook {
         try {
           const data = JSON.parse(event.data);
           console.log(`Agent ${data.variation_id} completed`);
-          // Could add completion state tracking here
+          // Complete the stream buffer for this variation
+          const buffer = streamBuffersRef.current.get(data.variation_id);
+          if (buffer) {
+            buffer.complete();
+          }
         } catch (parseError) {
           console.error('Failed to parse agent_complete event:', parseError);
         }
@@ -212,6 +290,8 @@ export function useAgentStream(): AgentStreamHook {
     stopStream,
     clearStreams,
     selectAgent,
+    pauseStream,
+    resumeStream,
   };
 }
 

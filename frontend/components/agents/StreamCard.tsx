@@ -1,8 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useAgentColor } from '@/hooks/useAgentStream';
 import { Clock, Zap, CheckCircle, Loader2 } from 'lucide-react';
+import { MemoizedMarkdown } from './MemoizedMarkdown';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface StreamCardProps {
   variationId: number;
@@ -20,10 +22,39 @@ export function StreamCard({
   className = '' 
 }: StreamCardProps) {
   const agentColor = useAgentColor(variationId);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [userScrolled, setUserScrolled] = useState(false);
   
   // Format the content for display
   const displayContent = content.join('');
   const hasContent = displayContent.length > 0;
+  
+  // Check if user has scrolled up
+  const handleScroll = useCallback(() => {
+    if (!contentRef.current) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = contentRef.current;
+    const isAtBottom = Math.abs(scrollHeight - scrollTop - clientHeight) < 50;
+    
+    if (!isAtBottom && !userScrolled) {
+      setUserScrolled(true);
+      setAutoScroll(false);
+    } else if (isAtBottom && userScrolled) {
+      setUserScrolled(false);
+      setAutoScroll(true);
+    }
+  }, [userScrolled]);
+  
+  // Auto-scroll to bottom when new content arrives (if enabled)
+  useEffect(() => {
+    if (contentRef.current && isStreaming && autoScroll) {
+      contentRef.current.scrollTo({
+        top: contentRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  }, [content, isStreaming, autoScroll]);
   
   // Agent color mappings
   const agentColorMap = {
@@ -105,30 +136,63 @@ export function StreamCard({
       </div>
 
       {/* Content Area */}
-      <div className={`flex-1 p-4 ${colors.light} ${colors.border} border overflow-y-auto`}>
-        {hasContent ? (
-          <div>
-            <pre className="whitespace-pre-wrap text-sm text-gray-700 font-mono">
-              {displayContent}
-            </pre>
-            {isStreaming && (
-              <span className={`inline-block w-2 h-4 ${colors.bg} animate-pulse ml-1`} />
+      <div className={`flex-1 p-4 ${colors.light} ${colors.border} border overflow-hidden relative`}>
+        <AnimatePresence mode="wait">
+          {hasContent ? (
+            <motion.div
+              key="content"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="h-full overflow-y-auto smooth-scroll"
+              ref={contentRef}
+              onScroll={handleScroll}
+            >
+              <MemoizedMarkdown 
+                content={displayContent} 
+                isStreaming={isStreaming}
+                className="text-sm"
+              />
+            </motion.div>
+          ) : (
+            <motion.div 
+              key="empty"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.3 }}
+              className="flex items-center justify-center h-full min-h-[200px]"
+            >
+              {isStreaming ? (
+                <div className="text-center">
+                  <Loader2 className={`w-8 h-8 ${colors.text} animate-spin mx-auto mb-3`} />
+                  <p className={`text-sm ${colors.text}`}>Processing...</p>
+                </div>
+              ) : (
+                <div className="text-center">
+                  <Clock className={`w-8 h-8 ${colors.text} mx-auto mb-3 opacity-50`} />
+                  <p className="text-sm text-gray-500">Waiting for agent to start...</p>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+        
+        {/* Auto-scroll indicator */}
+        {hasContent && isStreaming && (
+          <AnimatePresence>
+            {!autoScroll && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="auto-scroll-indicator paused"
+              >
+                Auto-scroll paused
+              </motion.div>
             )}
-          </div>
-        ) : (
-          <div className="flex items-center justify-center h-full min-h-[200px]">
-            {isStreaming ? (
-              <div className="text-center">
-                <Loader2 className={`w-8 h-8 ${colors.text} animate-spin mx-auto mb-3`} />
-                <p className={`text-sm ${colors.text}`}>Processing...</p>
-              </div>
-            ) : (
-              <div className="text-center">
-                <Clock className={`w-8 h-8 ${colors.text} mx-auto mb-3 opacity-50`} />
-                <p className="text-sm text-gray-500">Waiting for agent to start...</p>
-              </div>
-            )}
-          </div>
+          </AnimatePresence>
         )}
       </div>
 

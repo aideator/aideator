@@ -27,35 +27,36 @@ docker_build(
     target='agent'
 )
 
-# Create dev tags for the job templates
-# This ensures that after Tilt builds the images, we also tag them as :dev
-# We use a periodic refresh to ensure dev tags stay current
+# Custom build wrapper to tag images as :dev after successful builds
+# This uses a more reliable approach than sleep
+def tag_as_dev(image_name):
+    """Tags the latest Tilt-built image as :dev and pushes to registry"""
+    return '''
+    # Get the latest tilt-built image
+    LATEST_IMAGE=$(docker images localhost:5005/{image} --format "{{{{.Repository}}}}:{{{{.Tag}}}}" | grep tilt | head -1)
+    if [ -n "$LATEST_IMAGE" ]; then
+        docker tag $LATEST_IMAGE localhost:5005/{image}:dev
+        docker push localhost:5005/{image}:dev
+        echo "✅ Tagged {image}:dev -> $LATEST_IMAGE"
+    else
+        echo "⚠️  No tilt image found for {image}"
+    fi
+    '''.format(image=image_name)
+
+# Tag images as :dev after builds
 local_resource(
-    'tag-dev-images',
-    cmd='''
-    # Find the latest tilt-built images and tag them as dev
-    API_IMAGE=$(docker images localhost:5005/aideator-api --format "{{.Repository}}:{{.Tag}}" | grep tilt | head -1)
-    AGENT_IMAGE=$(docker images localhost:5005/aideator-agent --format "{{.Repository}}:{{.Tag}}" | grep tilt | head -1)
-    
-    if [ -n "$API_IMAGE" ]; then
-        docker tag $API_IMAGE localhost:5005/aideator-api:dev >/dev/null 2>&1
-        docker push localhost:5005/aideator-api:dev >/dev/null 2>&1
-        echo "✅ Tagged aideator-api:dev"
-    else
-        echo "⏳ Waiting for aideator-api image..."
-    fi
-    
-    if [ -n "$AGENT_IMAGE" ]; then
-        docker tag $AGENT_IMAGE localhost:5005/aideator-agent:dev >/dev/null 2>&1
-        docker push localhost:5005/aideator-agent:dev >/dev/null 2>&1
-        echo "✅ Tagged aideator-agent:dev"
-    else
-        echo "⏳ Waiting for aideator-agent image..."
-    fi
-    ''',
-    deps=['./Dockerfile'],
-    auto_init=True,
-    trigger_mode=TRIGGER_MODE_AUTO
+    'tag-api-dev',
+    cmd=tag_as_dev('aideator-api'),
+    deps=['./app'],
+    resource_deps=['aideator'],
+    labels=['build']
+)
+
+local_resource(
+    'tag-agent-dev',
+    cmd=tag_as_dev('aideator-agent'),
+    deps=['./agent'],
+    labels=['build']
 )
 
 # Phase 3: Create namespace

@@ -13,6 +13,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
+import logging
 
 import git
 from litellm import acompletion
@@ -42,6 +43,18 @@ class AideatorAgent:
         self.workspace = Path("/workspace")
         self.repo_dir = self.workspace / f"repo-{self.run_id}-{self.variation_id}"
         
+        # Set up file logging for JSON logs
+        self.log_dir = self.workspace / "logs"
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.log_file = self.log_dir / f"agent-{self.run_id}-{self.variation_id}.log"
+        
+        # Configure file logger
+        self.file_logger = logging.getLogger(f"agent_{self.run_id}_{self.variation_id}")
+        self.file_logger.setLevel(logging.DEBUG)
+        handler = logging.FileHandler(self.log_file)
+        handler.setFormatter(logging.Formatter('%(message)s'))
+        self.file_logger.addHandler(handler)
+        
         # Agent configuration based on variation
         self.config = self._get_variation_config()
     
@@ -58,7 +71,7 @@ class AideatorAgent:
         return configs[self.variation_id % len(configs)]
     
     def log(self, message: str, level: str = "INFO", **kwargs) -> None:
-        """Log a structured message to stdout."""
+        """Log a structured message to file."""
         log_entry = {
             "timestamp": datetime.utcnow().isoformat(),
             "level": level,
@@ -67,7 +80,8 @@ class AideatorAgent:
             "message": message,
             **kwargs
         }
-        print(json.dumps(log_entry), flush=True)
+        # Write JSON logs to file for debugging
+        self.file_logger.info(json.dumps(log_entry))
     
     def log_progress(self, step: str, details: Optional[str] = None) -> None:
         """Log progress information."""
@@ -94,6 +108,9 @@ class AideatorAgent:
                  provider="openai",
                  note="Direct SDK usage - no proxy needed")
         
+        # Log file location to file only, not stdout
+        self.log(f"Debug logs location: {self.log_file}", "INFO")
+        
         try:
             # Step 1: Clone repository
             await self._clone_repository()
@@ -111,20 +128,13 @@ class AideatorAgent:
                 "temperature": self.config["temperature"]
             })
             
-            # Output the actual response
-            print("\n" + "="*50)
-            print("AGENT RESPONSE:")
-            print("="*50)
-            print(response)
-            print("="*50)
-            
         except Exception as e:
             self.log_error("Agent execution failed", e)
             sys.exit(1)
     
     async def _clone_repository(self) -> None:
         """Clone the target repository."""
-        self.log_progress("Cloning repository", self.repo_url)
+        self.log("Cloning repository", "INFO", step="clone", details=self.repo_url)
         
         try:
             # Ensure workspace exists
@@ -142,7 +152,7 @@ class AideatorAgent:
                 depth=1  # Shallow clone for efficiency
             )
             
-            self.log_progress("Repository cloned successfully", f"Path: {self.repo_dir}")
+            self.log("Repository cloned successfully", "INFO", step="clone_complete", details=f"Path: {self.repo_dir}")
             
             # Log repository statistics
             file_count = sum(1 for _ in self.repo_dir.rglob("*") if _.is_file())
@@ -155,7 +165,7 @@ class AideatorAgent:
     
     async def _analyze_codebase(self) -> str:
         """Analyze the cloned codebase."""
-        self.log_progress("Analyzing codebase structure")
+        self.log("Analyzing codebase structure", "INFO", step="analyze")
         
         try:
             # Get file tree
@@ -180,8 +190,8 @@ class AideatorAgent:
             for file_path, content in key_files.items():
                 summary += f"\n### {file_path}\n```\n{content[:2000]}{'...' if len(content) > 2000 else ''}\n```\n"
             
-            self.log_progress("Codebase analysis completed", 
-                            f"Analyzed {len(key_files)} files")
+            self.log("Codebase analysis completed", "INFO", 
+                    step="analyze_complete", details=f"Analyzed {len(key_files)} files")
             
             return summary
             
@@ -242,8 +252,10 @@ class AideatorAgent:
     )
     async def _generate_llm_response(self, codebase_summary: str) -> str:
         """Generate LLM response based on codebase analysis."""
-        self.log_progress("Generating LLM response", 
-                         f"Model: {self.config['model']}, Temp: {self.config['temperature']}")
+        self.log("Generating LLM response", "INFO", 
+                step="llm_start", 
+                model=self.config['model'], 
+                temperature=self.config['temperature'])
         
         try:
             # Prepare the full prompt
@@ -264,10 +276,11 @@ Be thorough but concise in your response.
 """
             
             # Make API call via LiteLLM with streaming
-            self.log_progress("Starting LLM streaming", "Streaming response from model - UPDATED")
+            self.log("Starting LLM streaming", "INFO", step="streaming_start")
             
             response_text = ""
             chunk_count = 0
+            buffer = ""
             
             async for chunk in await acompletion(
                 model=f"openai/{self.config['model']}",
@@ -287,19 +300,47 @@ Be thorough but concise in your response.
                     response_text += chunk_text
                     chunk_count += 1
                     
-                    # Log streaming progress every 10 chunks
-                    if chunk_count % 10 == 0:
-                        self.log_progress(
-                            f"Streaming LLM response",
-                            f"chunks_received: {chunk_count}, chars_so_far: {len(response_text)}"
-                        )
+                    # Buffer management for smoother word-by-word streaming
+                    buffer += chunk_text
                     
-                    # Also print the chunk for real-time visibility
-                    print(chunk_text, end='', flush=True)
+                    # Flush buffer on word boundaries or punctuation
+                    if ' ' in buffer or '\n' in buffer or any(p in buffer for p in '.!?,:;'):
+                        # Find the last complete word boundary
+                        last_boundary = max(
+                            buffer.rfind(' '),
+                            buffer.rfind('\n'),
+                            max(buffer.rfind(p) for p in '.!?,:;')
+                        )
+                        
+                        if last_boundary > -1:
+                            # Print up to the boundary
+                            print(buffer[:last_boundary + 1], end='', flush=True)
+                            # Keep the rest in buffer
+                            buffer = buffer[last_boundary + 1:]
+                    
+                    # Force flush if buffer gets too large
+                    if len(buffer) > 50:
+                        print(buffer, end='', flush=True)
+                        buffer = ""
+                    
+                    # Log progress to file only, not to stdout
+                    if chunk_count % 50 == 0:
+                        self.log(
+                            f"Streaming in progress",
+                            "PROGRESS",
+                            step="streaming",
+                            details=f"chunks: {chunk_count}, chars: {len(response_text)}"
+                        )
             
-            print()  # New line after streaming
-            self.log_progress("LLM streaming completed", 
-                            f"Total chunks: {chunk_count}, Length: {len(response_text)} characters")
+            # Flush any remaining buffer
+            if buffer:
+                print(buffer, end='', flush=True)
+            
+            print("\n", flush=True)  # New line after streaming
+            self.log("LLM streaming completed", "INFO", 
+                    step="streaming_complete", 
+                    chunks=chunk_count, 
+                    length=len(response_text))
             
             return response_text
             

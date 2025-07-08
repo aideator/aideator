@@ -1,0 +1,169 @@
+/* Smooth streaming animations for AIdeator */
+
+/* Smooth scrolling behavior */
+.smooth-scroll {
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+}
+
+.smooth-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.smooth-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.smooth-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(156, 163, 175, 0.5);
+  border-radius: 3px;
+}
+
+.smooth-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(156, 163, 175, 0.7);
+}
+
+/* Text streaming animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes typewriter {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+/* Streaming text effect */
+.streaming-text {
+  animation: fadeIn 0.15s ease-out forwards;
+}
+
+/* Cursor animation for active streaming */
+.streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background-color: currentColor;
+  margin-left: 2px;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}
+
+/* Word-by-word appearance */
+.word-appear {
+  display: inline-block;
+  animation: wordFadeIn 0.2s ease-out forwards;
+  opacity: 0;
+}
+
+@keyframes wordFadeIn {
+  to {
+    opacity: 1;
+  }
+}
+
+/* Smooth token appearance */
+.token-appear {
+  display: inline;
+  animation: tokenFade 0.1s ease-out forwards;
+}
+
+@keyframes tokenFade {
+  from {
+    opacity: 0.3;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Auto-scroll indicator */
+.auto-scroll-indicator {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.auto-scroll-indicator.paused {
+  background: rgba(220, 38, 38, 0.8);
+}
+
+/* Streaming shimmer effect */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.streaming-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.1) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
+}
+
+/* Code block streaming */
+.streaming-code-line {
+  opacity: 0;
+  animation: codeFadeIn 0.3s ease-out forwards;
+}
+
+@keyframes codeFadeIn {
+  to {
+    opacity: 1;
+  }
+}
+
+/* Markdown element transitions */
+.markdown-content > * {
+  transition: opacity 0.2s ease-out;
+}
+
+.markdown-content.streaming > *:last-child {
+  position: relative;
+}
+
+.markdown-content.streaming > *:last-child::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background-color: currentColor;
+  margin-left: 2px;
+  animation: blink 1s infinite;
+  vertical-align: text-bottom;
+}

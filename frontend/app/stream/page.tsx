@@ -4,15 +4,7 @@ import React, { useState } from 'react';
 import { useAgentStream } from '@/hooks/useAgentStream';
 import { StreamGrid } from '@/components/agents/StreamGrid';
 import { createRun } from '@/lib/api';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Card } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { BrainCircuit, Play, Square, Settings, Zap, GitBranch, Users, Sparkles, AlertCircle } from 'lucide-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export default function StreamPage() {
   // Form state
@@ -105,20 +97,14 @@ export default function StreamPage() {
             <BrainCircuit className="h-10 w-10" />
           </div>
           <h1 className="text-5xl font-bold text-gray-900 mb-3">
-            AIdeator
+            aideator
           </h1>
           <p className="text-xl text-gray-600">
-            Multi-Agent AI Orchestration Platform
+            Multi-Agent Analysis Platform
           </p>
           
           {/* Connection Status */}
           <div className="flex items-center justify-center gap-4 mt-6">
-            {currentRunId && (
-              <span className="inline-flex items-center px-4 py-1 rounded-full text-sm bg-purple-100 text-purple-700">
-                <Sparkles className="w-4 h-4 mr-2" />
-                Run: {currentRunId.slice(0, 8)}...
-              </span>
-            )}
             <div className="flex items-center gap-2">
               <div className={`w-3 h-3 rounded-full ${
                 connectionState === 'connected' ? 'bg-green-500 animate-pulse' : 
@@ -126,7 +112,7 @@ export default function StreamPage() {
                 connectionState === 'error' ? 'bg-red-500' : 'bg-gray-400'
               }`} />
               <span className="text-sm text-gray-600">
-                {connectionState === 'connected' ? 'Connected' : 
+                {connectionState === 'connected' ? 'Ready' : 
                  connectionState === 'connecting' ? 'Connecting' : 
                  connectionState === 'error' ? 'Error' : 'Disconnected'}
               </span>
@@ -253,15 +239,6 @@ export default function StreamPage() {
               </button>
             )}
 
-            {/* Status Indicators */}
-            {isStreaming && (
-              <div className="ml-auto flex items-center gap-2 px-4 py-2 bg-purple-100 text-purple-700 rounded-lg">
-                <div className="w-2 h-2 bg-purple-600 rounded-full animate-pulse" />
-                <span className="text-sm font-medium">
-                  {streams.size} / {variations} agents active
-                </span>
-              </div>
-            )}
           </div>
         </div>
 

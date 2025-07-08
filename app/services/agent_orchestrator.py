@@ -147,6 +147,9 @@ class AgentOrchestrator:
         # Wait for all streaming tasks to complete
         await asyncio.gather(*tasks, return_exceptions=True)
         
+        # Send run completion event to frontend
+        await self.sse.send_run_complete(run_id, "completed")
+        
         # Update database status
         if db_session:
             await self._update_run_status(db_session, run_id, RunStatus.COMPLETED)
@@ -162,17 +165,30 @@ class AgentOrchestrator:
             async for log_line in self.kubernetes.stream_batch_job_logs(job_name, run_id):
                 try:
                     log_entry = json.loads(log_line)
+                    # Skip JSON log entries - only process non-log content
+                    if 'timestamp' in log_entry and 'level' in log_entry:
+                        # This is a structured log, skip it
+                        logger.debug(f"Agent log: {log_entry.get('message', log_entry)}")
+                        continue
+                    # If it's JSON but not a log, send it
                     if 'variation_id' in log_entry:
-                        await self.sse.send_agent_output(run_id, log_entry['variation_id'], log_entry['message'])
+                        await self.sse.send_agent_output(run_id, log_entry['variation_id'], json.dumps(log_entry))
                     else:
-                        await self.sse.send_agent_output(run_id, 0, log_entry['message'])
+                        await self.sse.send_agent_output(run_id, 0, json.dumps(log_entry))
                 except json.JSONDecodeError:
-                    # Handle raw text logs
+                    # This is plain text content (markdown), send it
                     await self.sse.send_agent_output(run_id, 0, log_line)
             
             # Send completion event
             await self._send_status_event(run_id, "completed", f"Batch job {job_name} completed")
             self.active_runs[run_id]["status"] = "completed"
+            
+            # Send SSE completion events to frontend
+            # For batch jobs, we need to send completion for all variations
+            variations = self.active_runs[run_id].get("variations", 1)
+            for i in range(variations):
+                await self.sse.send_agent_complete(run_id, i)
+            await self.sse.send_run_complete(run_id, "completed")
             
             # Update database status
             if db_session:
@@ -182,6 +198,12 @@ class AgentOrchestrator:
             logger.error(f"Error streaming batch job logs for run {run_id}: {e}")
             await self._send_error_event(run_id, f"Log streaming error: {str(e)}")
             self.active_runs[run_id]["status"] = "failed"
+            
+            # Send SSE error events to frontend
+            variations = self.active_runs[run_id].get("variations", 1)
+            for i in range(variations):
+                await self.sse.send_agent_error(run_id, i, str(e))
+            await self.sse.send_run_complete(run_id, "failed")
             
             # Update database status
             if db_session:
@@ -193,12 +215,15 @@ class AgentOrchestrator:
             async for log_line in self.kubernetes.stream_job_logs(job_name, run_id, variation_id):
                 try:
                     log_entry = json.loads(log_line)
-                    if 'variation_id' in log_entry:
-                        await self.sse.send_agent_output(run_id, log_entry['variation_id'], log_entry['message'])
-                    else:
-                        await self.sse.send_agent_output(run_id, 0, log_entry['message'])
+                    # Skip JSON log entries - only process non-log content
+                    if 'timestamp' in log_entry and 'level' in log_entry:
+                        # This is a structured log, skip it
+                        logger.debug(f"Agent log: {log_entry.get('message', log_entry)}")
+                        continue
+                    # If it's JSON but not a log, send it
+                    await self.sse.send_agent_output(run_id, variation_id, json.dumps(log_entry))
                 except json.JSONDecodeError:
-                    # Handle raw text logs
+                    # This is plain text content (markdown), send it
                     await self.sse.send_agent_output(run_id, variation_id, log_line)
             
             # Send job completion event
@@ -208,9 +233,14 @@ class AgentOrchestrator:
                 f"Job {job_name} (variation {variation_id}) completed"
             )
             
+            # Send SSE completion event to frontend
+            await self.sse.send_agent_complete(run_id, variation_id)
+            
         except Exception as e:
             logger.error(f"Error streaming job logs for {job_name}: {e}")
             await self._send_error_event(run_id, f"Job {job_name} error: {str(e)}")
+            # Send SSE error event to frontend
+            await self.sse.send_agent_error(run_id, variation_id, str(e))
     
     async def get_run_status(self, run_id: str) -> Dict[str, Any]:
         """Get the status of a run."""
@@ -260,7 +290,8 @@ class AgentOrchestrator:
     
     async def _send_status_event(self, run_id: str, status: str, message: str) -> None:
         """Send a status event via SSE."""
-        await self.sse.send_agent_output(run_id, 0, f"STATUS: {status} - {message}")
+        # Log the status internally but don't send to agent output
+        logger.info(f"Run {run_id} status: {status} - {message}")
     
     async def _send_error_event(self, run_id: str, error: str) -> None:
         """Send an error event via SSE."""

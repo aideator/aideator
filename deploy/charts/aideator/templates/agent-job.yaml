@@ -46,13 +46,7 @@ spec:
               value: "INFO"
             - name: PYTHONUNBUFFERED
               value: "1"
-          command: ["/bin/sh", "-c"]
-          args:
-            - |
-              echo "Starting agent variation {{ .Values.variationId | default "0" }} for run {{ .Values.runId | default "test-run" }}"
-              echo "Repository: {{ .Values.repoUrl | default "https://github.com/octocat/Hello-World" }}"
-              echo "Prompt: {{ .Values.prompt | default "Analyze this repository and describe what it does" }}"
-              python -u /app/agent/main.py
+          command: ["python", "-u", "/app/agent/main.py"]
           resources:
             {{- toYaml .Values.agents.resources | nindent 12 }}
   backoffLimit: 0
