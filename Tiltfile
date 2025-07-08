@@ -109,9 +109,15 @@ else:
 # Use a script that checks if install is needed before running
 frontend_cmd = '''
 cd frontend && \
+echo "📍 Current directory: $(pwd)" && \
+echo "📁 Checking for lib/api.ts: $(ls -la lib/api.ts 2>/dev/null || echo 'NOT FOUND')" && \
 if [ ! -d node_modules ] || [ package.json -nt node_modules ]; then \
     echo "📦 Installing dependencies..." && npm install; \
 fi && \
+if [ ! -d .next ]; then \
+    echo "🧹 No Next.js cache found, starting fresh..."; \
+fi && \
+echo "🚀 Starting Next.js on port ''' + frontend_port + '''..." && \
 PORT=''' + frontend_port + ''' npm run dev
 '''
 
