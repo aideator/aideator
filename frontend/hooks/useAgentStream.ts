@@ -297,6 +297,8 @@ export function useAgentStream(): AgentStreamHook {
 
 // Utility hook for formatting stream content
 export function useFormattedStream(content: string[]): string {
+  // Join content array while preserving original formatting
+  // The StreamBuffer already handles proper tokenization including newlines
   return content.join('');
 }
 

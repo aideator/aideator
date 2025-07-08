@@ -133,7 +133,7 @@ export function CollapsibleStreamCard({
                 )}
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-sm">Agent {variationId + 1}</h3>
+                <h3 className="font-semibold text-sm">gpt-4o-mini {variationId + 1}</h3>
                 <div className="flex items-center gap-2 mt-1">
                   {isStreaming ? (
                     <span className="text-[0.65rem] bg-white/20 px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -209,7 +209,7 @@ export function CollapsibleStreamCard({
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.3 }}
               className={`${colors.light} ${colors.border} border overflow-hidden`}
-              style={{ maxHeight: isFullscreen ? 'calc(100vh - 200px)' : '400px' }}
+              style={{ maxHeight: isFullscreen ? 'calc(100vh - 200px)' : '500px' }}
             >
               {hasContent ? (
                 <div
@@ -253,7 +253,7 @@ export function CollapsibleStreamCard({
               disabled={!hasContent && !isStreaming}
               className={`w-full px-4 py-2 ${colors.bg} ${colors.hover} text-white rounded-lg font-medium text-sm transition-all transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 focus:outline-none focus:ring-2 ${colors.ring}`}
             >
-              Select This Agent
+              I prefer this response
             </button>
           </div>
         )}

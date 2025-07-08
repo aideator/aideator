@@ -314,10 +314,11 @@ class KubernetesService:
                 if not line:
                     break
                 
-                log_line = line.decode().strip()
+                log_line = line.decode().rstrip('\n')
                 if log_line:
                     # Just yield the raw log line - the agent_orchestrator will handle parsing
-                    yield log_line
+                    # Add newline back to preserve original formatting
+                    yield log_line + '\n'
             
             # Wait for process to complete
             await process.wait()

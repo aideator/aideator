@@ -113,7 +113,7 @@ export function StreamCard({
               )}
             </div>
             <div>
-              <h3 className="font-semibold">Agent {variationId + 1}</h3>
+              <h3 className="font-semibold">gpt-4o-mini {variationId + 1}</h3>
               <div className="flex items-center gap-2 mt-1">
                 {isStreaming ? (
                   <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -214,7 +214,7 @@ export function StreamCard({
           disabled={!hasContent && !isStreaming}
           className={`w-full px-4 py-2 ${colors.bg} ${colors.hover} text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
         >
-          Select This Agent
+          I prefer this response
         </button>
       </div>
     </div>

@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import { motion } from 'framer-motion';
 
 interface CodeProps {
@@ -87,7 +88,7 @@ export const MemoizedMarkdown = memo(({ content, isStreaming = false, className 
       <h3 className="font-semibold mt-2 mb-1 text-gray-800" style={{ fontSize: '0.8rem' }}>{children}</h3>
     ),
     p: ({ children }: { children: React.ReactNode }) => (
-      <p className="mb-2 leading-tight text-gray-700" style={{ fontSize: '0.75rem', lineHeight: '1.4' }}>{children}</p>
+      <p className="mb-2 leading-normal text-gray-700" style={{ fontSize: '0.75rem', lineHeight: '1.5' }}>{children}</p>
     ),
     ul: ({ children }: { children: React.ReactNode }) => (
       <ul className="list-disc list-inside mb-2 space-y-0.5" style={{ fontSize: '0.75rem' }}>{children}</ul>
@@ -128,6 +129,9 @@ export const MemoizedMarkdown = memo(({ content, isStreaming = false, className 
     td: ({ children }: { children: React.ReactNode }) => (
       <td className="border border-gray-300 px-2 py-1" style={{ fontSize: '0.7rem' }}>{children}</td>
     ),
+    pre: ({ children }: { children: React.ReactNode }) => (
+      <pre className="whitespace-pre-wrap font-mono text-xs bg-gray-100 p-2 rounded my-2 overflow-x-auto">{children}</pre>
+    ),
   }), []);
 
   return (
@@ -141,7 +145,7 @@ export const MemoizedMarkdown = memo(({ content, isStreaming = false, className 
           className={isStreaming && block.isLast ? 'streaming-text' : ''}
         >
           <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
+            remarkPlugins={[remarkGfm, remarkBreaks]}
             components={components}
           >
             {block.content}

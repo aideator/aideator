@@ -39,9 +39,11 @@ export async function createRun(data: CreateRunRequest): Promise<CreateRunRespon
 
     console.log("Response status:", response.status)
     console.log("Response ok:", response.ok)
+    console.log("Response headers:", response.headers)
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: "Unknown error" }))
+      console.error("API Error Response:", errorData)
       throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`)
     }
 
@@ -71,6 +73,7 @@ export async function selectWinner(runId: string, variationId: number): Promise<
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: "Unknown error" }))
+      console.error("API Error Response:", errorData)
       throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`)
     }
   } catch (error) {
@@ -90,6 +93,7 @@ export async function getRunStatus(runId: string) {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: "Unknown error" }))
+      console.error("API Error Response:", errorData)
       throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`)
     }
 

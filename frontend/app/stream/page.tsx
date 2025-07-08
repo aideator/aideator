@@ -1,19 +1,36 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { useAgentStream } from '@/hooks/useAgentStream';
-import { StreamGrid } from '@/components/agents/StreamGrid';
-import { createRun } from '@/lib/api';
-import { BrainCircuit, Play, Square, Settings, Zap, GitBranch, Users, Sparkles, AlertCircle } from 'lucide-react';
+import React, { useState } from "react";
+import { useAgentStream } from "@/hooks/useAgentStream";
+import { StreamGrid } from "@/components/agents/StreamGrid";
+import { createRun } from "@/lib/api";
+import {
+  BrainCircuit,
+  Play,
+  Square,
+  Settings,
+  Zap,
+  GitBranch,
+  Users,
+  AlertCircle,
+  ChevronUp,
+  ChevronDown,
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 export default function StreamPage() {
   // Form state
-  const [githubUrl, setGithubUrl] = useState('https://github.com/octocat/Hello-World');
-  const [prompt, setPrompt] = useState('Analyze this repository and suggest improvements.');
+  const [githubUrl, setGithubUrl] = useState(
+    "https://github.com/octocat/Hello-World",
+  );
+  const [prompt, setPrompt] = useState(
+    "Analyze this repository and suggest improvements.",
+  );
   const [variations, setVariations] = useState(3);
   const [isStarting, setIsStarting] = useState(false);
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [isConfigExpanded, setIsConfigExpanded] = useState(true);
 
   // Streaming state
   const {
@@ -31,16 +48,16 @@ export default function StreamPage() {
     try {
       setIsStarting(true);
       setFormError(null);
-      
+
       // Validate inputs
       if (!githubUrl.trim()) {
-        throw new Error('GitHub URL is required');
+        throw new Error("GitHub URL is required");
       }
       if (!prompt.trim()) {
-        throw new Error('Prompt is required');
+        throw new Error("Prompt is required");
       }
-      if (variations < 1 || variations > 5) {
-        throw new Error('Variations must be between 1 and 5');
+      if (variations < 1 || variations > 3) {
+        throw new Error("Variations must be between 1 and 3");
       }
 
       // Clear previous streams
@@ -53,15 +70,19 @@ export default function StreamPage() {
         variations: variations,
       });
 
-      console.log('Run created:', response);
+      console.log("Run created:", response);
       setCurrentRunId(response.run_id);
 
       // Start streaming
       startStream(response.run_id);
 
+      // Collapse config panel to maximize screen space
+      setIsConfigExpanded(false);
     } catch (error) {
-      console.error('Failed to start generation:', error);
-      setFormError(error instanceof Error ? error.message : 'Failed to start generation');
+      console.error("Failed to start generation:", error);
+      setFormError(
+        error instanceof Error ? error.message : "Failed to start generation",
+      );
     } finally {
       setIsStarting(false);
     }
@@ -74,7 +95,7 @@ export default function StreamPage() {
 
   const handleSelectAgent = async (variationId: number) => {
     if (!currentRunId) {
-      console.error('No current run to select from');
+      console.error("No current run to select from");
       return;
     }
 
@@ -82,7 +103,7 @@ export default function StreamPage() {
       await selectAgent(variationId);
       console.log(`Selected agent ${variationId} for run ${currentRunId}`);
     } catch (error) {
-      console.error('Failed to select agent:', error);
+      console.error("Failed to select agent:", error);
     }
   };
 
@@ -91,158 +112,258 @@ export default function StreamPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
       <div className="container mx-auto px-4 py-8 max-w-7xl">
-        {/* Header */}
-        <header className="text-center mb-12">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-600 text-white mb-6 shadow-xl">
-            <BrainCircuit className="h-10 w-10" />
-          </div>
-          <h1 className="text-5xl font-bold text-gray-900 mb-3">
+        {/* Header - Compact when streaming */}
+        <motion.header
+          layout
+          className={`text-center ${isStreaming && !isConfigExpanded ? "mb-6" : "mb-12"}`}
+        >
+          <motion.div
+            layout
+            className={`inline-flex items-center justify-center rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-xl ${
+              isStreaming && !isConfigExpanded
+                ? "w-12 h-12 mb-3"
+                : "w-20 h-20 mb-6"
+            }`}
+          >
+            <BrainCircuit
+              className={`${
+                isStreaming && !isConfigExpanded ? "h-6 w-6" : "h-10 w-10"
+              }`}
+            />
+          </motion.div>
+          <motion.h1
+            layout
+            className={`font-bold text-gray-900 ${
+              isStreaming && !isConfigExpanded
+                ? "text-3xl mb-2"
+                : "text-5xl mb-3"
+            }`}
+          >
             aideator
-          </h1>
-          <p className="text-xl text-gray-600">
-            Multi-Agent Analysis Platform
-          </p>
-          
-          {/* Connection Status */}
-          <div className="flex items-center justify-center gap-4 mt-6">
-            <div className="flex items-center gap-2">
-              <div className={`w-3 h-3 rounded-full ${
-                connectionState === 'connected' ? 'bg-green-500 animate-pulse' : 
-                connectionState === 'connecting' ? 'bg-yellow-500 animate-pulse' : 
-                connectionState === 'error' ? 'bg-red-500' : 'bg-gray-400'
-              }`} />
-              <span className="text-sm text-gray-600">
-                {connectionState === 'connected' ? 'Ready' : 
-                 connectionState === 'connecting' ? 'Connecting' : 
-                 connectionState === 'error' ? 'Error' : 'Disconnected'}
-              </span>
-            </div>
-          </div>
-        </header>
+          </motion.h1>
+          <AnimatePresence>
+            {(!isStreaming || isConfigExpanded) && (
+              <motion.p
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="text-xl text-gray-600"
+              >
+                Multi-Agent Analysis Platform
+              </motion.p>
+            )}
+          </AnimatePresence>
 
-        {/* Configuration Panel */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 mb-10">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-indigo-500 text-white">
-              <Settings className="h-6 w-6" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">
-                Generation Configuration
-              </h2>
-              <p className="text-gray-600">Configure your multi-agent task parameters</p>
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* GitHub URL */}
-              <div className="lg:col-span-2">
-                <label htmlFor="github-url" className="block text-sm font-medium text-gray-700 mb-2">
-                  <div className="flex items-center gap-2">
-                    <GitBranch className="h-4 w-4" />
-                    GitHub Repository URL
-                  </div>
-                </label>
-                <input
-                  id="github-url"
-                  type="url"
-                  placeholder="https://github.com/username/repository"
-                  value={githubUrl}
-                  onChange={(e) => setGithubUrl(e.target.value)}
-                  disabled={isStreaming}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+          {/* Connection Status - only show when not disconnected */}
+          {connectionState !== "disconnected" && (
+            <div className="flex items-center justify-center gap-4 mt-6">
+              <div className="flex items-center gap-2">
+                <div
+                  className={`w-3 h-3 rounded-full ${
+                    connectionState === "connected"
+                      ? "bg-green-500 animate-pulse"
+                      : connectionState === "connecting"
+                        ? "bg-yellow-500 animate-pulse"
+                        : connectionState === "error"
+                          ? "bg-red-500"
+                          : ""
+                  }`}
                 />
-              </div>
-
-              {/* Variations */}
-              <div>
-                <label htmlFor="variations" className="block text-sm font-medium text-gray-700 mb-2">
-                  <div className="flex items-center gap-2">
-                    <Users className="h-4 w-4" />
-                    Agent Variations
-                  </div>
-                </label>
-                <select 
-                  value={variations} 
-                  onChange={(e) => setVariations(parseInt(e.target.value))}
-                  disabled={isStreaming}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
-                >
-                  {[1, 2, 3, 4, 5].map(num => (
-                    <option key={num} value={num}>
-                      {num} {num === 1 ? 'Agent' : 'Agents'}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Prompt */}
-            <div>
-              <label htmlFor="prompt" className="block text-sm font-medium text-gray-700 mb-2">
-                <div className="flex items-center gap-2">
-                  <Zap className="h-4 w-4" />
-                  Task Prompt
-                </div>
-              </label>
-              <textarea
-                id="prompt"
-                placeholder="Describe what you want the agents to do with this repository..."
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                disabled={isStreaming}
-                rows={4}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all resize-none"
-              />
-            </div>
-          </div>
-
-          {/* Error Display */}
-          {formError && (
-            <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <div className="flex items-center gap-2 text-red-800">
-                <AlertCircle className="h-5 w-5" />
-                <span className="font-medium">{formError}</span>
+                <span className="text-sm text-gray-600">
+                  {connectionState === "connected"
+                    ? "Ready"
+                    : connectionState === "connecting"
+                      ? "Connecting"
+                      : connectionState === "error"
+                        ? "Error"
+                        : ""}
+                </span>
               </div>
             </div>
           )}
+        </motion.header>
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-4 mt-6">
-            {!isStreaming ? (
-              <button
-                onClick={handleStartGeneration}
-                disabled={isStarting || !githubUrl.trim() || !prompt.trim()}
-                className="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Play className="inline w-5 h-5 mr-2" />
-                {isStarting ? 'Starting Generation...' : 'Start Generation'}
-              </button>
-            ) : (
-              <button
-                onClick={handleStopGeneration}
-                className="px-6 py-3 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-all"
-              >
-                <Square className="inline w-5 h-5 mr-2" />
-                Stop Generation
-              </button>
-            )}
-            
-            {hasActiveStreams && (
-              <button
-                onClick={clearStreams}
-                disabled={isStreaming}
-                className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Clear Results
-              </button>
-            )}
-
+        {/* Configuration Panel - Collapsible */}
+        <div className="bg-white rounded-2xl shadow-xl mb-8 overflow-hidden transition-all duration-300">
+          {/* Header - Always visible */}
+          <div
+            className="p-6 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors"
+            onClick={() => setIsConfigExpanded(!isConfigExpanded)}
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-indigo-500 text-white">
+                <Settings className="h-6 w-6" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">
+                  Generation Configuration
+                </h2>
+                {!isConfigExpanded && (
+                  <p className="text-gray-600 text-sm mt-1 line-clamp-1">
+                    {githubUrl} · {prompt.substring(0, 50)}...
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              {!isConfigExpanded && !isStreaming && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleStartGeneration();
+                  }}
+                  disabled={isStarting || !githubUrl.trim() || !prompt.trim()}
+                  className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Play className="inline w-4 h-4 mr-2" />
+                  Start
+                </button>
+              )}
+              {isConfigExpanded ? (
+                <ChevronUp className="h-5 w-5 text-gray-500" />
+              ) : (
+                <ChevronDown className="h-5 w-5 text-gray-500" />
+              )}
+            </div>
           </div>
+
+          {/* Collapsible Content */}
+          <AnimatePresence>
+            {isConfigExpanded && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3, ease: "easeInOut" }}
+                className="overflow-hidden"
+              >
+                <div className="p-8 pt-0 space-y-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* GitHub URL */}
+                    <div className="lg:col-span-2">
+                      <label
+                        htmlFor="github-url"
+                        className="block text-sm font-medium text-gray-700 mb-2"
+                      >
+                        <div className="flex items-center gap-2">
+                          <GitBranch className="h-4 w-4" />
+                          GitHub Repository URL
+                        </div>
+                      </label>
+                      <input
+                        id="github-url"
+                        type="url"
+                        placeholder="https://github.com/username/repository"
+                        value={githubUrl}
+                        onChange={(e) => setGithubUrl(e.target.value)}
+                        disabled={isStreaming}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+                      />
+                    </div>
+
+                    {/* Variations */}
+                    <div>
+                      <label
+                        htmlFor="variations"
+                        className="block text-sm font-medium text-gray-700 mb-2"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4" />
+                          Model Variations
+                        </div>
+                      </label>
+                      <select
+                        value={variations}
+                        onChange={(e) =>
+                          setVariations(parseInt(e.target.value))
+                        }
+                        disabled={isStreaming}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+                      >
+                        {[1, 2, 3].map((num) => (
+                          <option key={num} value={num}>
+                            {num} {num === 1 ? "Model" : "Models"}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Prompt */}
+                  <div>
+                    <label
+                      htmlFor="prompt"
+                      className="block text-sm font-medium text-gray-700 mb-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Zap className="h-4 w-4" />
+                        Task Prompt
+                      </div>
+                    </label>
+                    <textarea
+                      id="prompt"
+                      placeholder="Describe what you want the agents to do with this repository..."
+                      value={prompt}
+                      onChange={(e) => setPrompt(e.target.value)}
+                      disabled={isStreaming}
+                      rows={4}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all resize-none"
+                    />
+                  </div>
+
+                  {/* Error Display */}
+                  {formError && (
+                    <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                      <div className="flex items-center gap-2 text-red-800">
+                        <AlertCircle className="h-5 w-5" />
+                        <span className="font-medium">{formError}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center gap-4 mt-6">
+                    {!isStreaming ? (
+                      <button
+                        onClick={handleStartGeneration}
+                        disabled={
+                          isStarting || !githubUrl.trim() || !prompt.trim()
+                        }
+                        className="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Play className="inline w-5 h-5 mr-2" />
+                        {isStarting
+                          ? "Starting Generation..."
+                          : "Start Generation"}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleStopGeneration}
+                        className="px-6 py-3 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-all"
+                      >
+                        <Square className="inline w-5 h-5 mr-2" />
+                        Stop Generation
+                      </button>
+                    )}
+
+                    {hasActiveStreams && (
+                      <button
+                        onClick={clearStreams}
+                        disabled={isStreaming}
+                        className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Clear Results
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Streaming Grid */}
+        {/* TODO: Future enhancement - Add diff view mode to compare 2-4 models side by side */}
         <StreamGrid
           streams={streams}
           isStreaming={isStreaming}
@@ -251,6 +372,27 @@ export default function StreamPage() {
           onSelectAgent={handleSelectAgent}
           maxVariations={variations}
         />
+
+        {/* Floating Stop Button - shows when streaming and config is collapsed */}
+        <AnimatePresence>
+          {isStreaming && !isConfigExpanded && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.8, y: 20 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              className="fixed bottom-8 right-8 z-50"
+            >
+              <button
+                onClick={handleStopGeneration}
+                className="px-6 py-3 bg-red-600 text-white rounded-full font-semibold hover:bg-red-700 transition-all shadow-lg hover:shadow-xl flex items-center gap-2"
+              >
+                <Square className="w-5 h-5" />
+                Stop Generation
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
