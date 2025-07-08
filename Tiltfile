@@ -9,7 +9,7 @@ local_resource(
 
 # Phase 2: Build containers
 # Using k3d registry - ensure registry is configured correctly
-default_registry('localhost:5005', host_from_cluster='aideator-registry:5000')
+default_registry('localhost:5005', host_from_cluster='ctlptl-registry:5000')
 
 docker_build(
     'aideator-api',
