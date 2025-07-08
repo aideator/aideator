@@ -19,7 +19,6 @@ from app.schemas.runs import (
     RunListItem,
     SelectWinnerRequest,
 )
-from app.services.agent_orchestrator_docker import AgentOrchestratorDocker
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -36,7 +35,7 @@ router = APIRouter()
 async def create_run(
     request: CreateRunRequest,
     background_tasks: BackgroundTasks,
-    orchestrator: AgentOrchestratorDocker = Depends(get_orchestrator),
+    orchestrator = Depends(get_orchestrator),
     db: AsyncSession = Depends(get_session),
     current_user: Optional[User] = Depends(get_current_user_from_api_key),
 ) -> CreateRunResponse:

@@ -10,7 +10,8 @@ from app.core.config import get_settings
 from app.core.database import get_session
 from app.core.logging import get_logger
 from app.models.user import APIKey, User
-from app.services.agent_orchestrator_docker import agent_orchestrator_docker
+from app.services.agent_orchestrator import AgentOrchestrator
+from app.services.kubernetes_service import KubernetesService
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -20,9 +21,13 @@ security = HTTPBearer(auto_error=False)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-def get_orchestrator() -> "AgentOrchestratorDocker":
+# Initialize services
+kubernetes_service = KubernetesService()
+agent_orchestrator = AgentOrchestrator(kubernetes_service)
+
+def get_orchestrator() -> AgentOrchestrator:
     """Get agent orchestrator instance."""
-    return agent_orchestrator_docker
+    return agent_orchestrator
 
 
 async def get_current_user_from_api_key(

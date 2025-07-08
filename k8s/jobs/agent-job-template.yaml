@@ -1,0 +1,71 @@
+# Agent job template for dynamic instantiation
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "agent-{run_id}-{variation_id}"
+  labels:
+    app: aideator-agent
+    run-id: "{run_id}"
+    variation-id: "{variation_id}"
+    component: agent
+spec:
+  ttlSecondsAfterFinished: 3600  # 1 hour cleanup
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: aideator-agent
+        run-id: "{run_id}"
+        variation-id: "{variation_id}"
+        component: agent
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: agent
+          image: "aideator-agent:dev"
+          imagePullPolicy: Always
+          env:
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: anthropic-secret
+                  key: api-key
+            - name: REPO_URL
+              value: "{repo_url}"
+            - name: PROMPT
+              value: "{prompt}"
+            - name: VARIATION_ID
+              value: "{variation_id}"
+            - name: RUN_ID
+              value: "{run_id}"
+            - name: LOG_LEVEL
+              value: "INFO"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "🚀 Starting agent variation {variation_id} for run {run_id}"
+              echo "📦 Repository: {repo_url}"
+              echo "💭 Prompt: {prompt}"
+              echo "🔄 Starting processing..."
+              python -u /agent/main.py
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+      volumes:
+        - name: workspace
+          emptyDir: {}
+      nodeSelector:
+        kubernetes.io/arch: amd64

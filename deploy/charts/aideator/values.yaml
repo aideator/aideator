@@ -1,0 +1,109 @@
+# Default values for AIdeator
+replicaCount: 1
+
+image:
+  repository: aideator-api
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+agentImage:
+  repository: aideator-agent
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  port: 8000
+  targetPort: 8000
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: aideator.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# FastAPI configuration
+config:
+  debug: false
+  logLevel: INFO
+  maxVariations: 5
+  apiV1Prefix: /api/v1
+
+# Agent configuration
+agents:
+  defaultImage: aideator-agent
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+  jobTTL: 3600  # 1 hour
+
+# Database configuration
+database:
+  type: sqlite
+  url: "sqlite+aiosqlite:///./data/aideator.db"
+  
+# Storage for SQLite database
+persistence:
+  enabled: true
+  storageClass: ""
+  size: 1Gi
+  accessMode: ReadWriteOnce
+
+# Secrets
+secrets:
+  anthropic:
+    name: anthropic-secret
+    key: api-key
+
+# Resources for FastAPI
+resources:
+  requests:
+    memory: "512Mi"
+    cpu: "250m"
+  limits:
+    memory: "2Gi"
+    cpu: "1000m"
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+# Service account
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# RBAC for kubectl logs access
+rbac:
+  create: true
+  rules:
+    - apiGroups: [""]
+      resources: ["pods", "pods/log"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["batch"]
+      resources: ["jobs"]
+      verbs: ["create", "get", "list", "watch", "delete"]
