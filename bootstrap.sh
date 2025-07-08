@@ -41,21 +41,33 @@ if ! command -v direnv &> /dev/null; then
         echo "⚠️  Please install direnv manually: https://direnv.net/docs/installation.html"
     fi
     
-    # Add direnv hook to shell
+    # Add direnv hook to shell (idempotent)
     SHELL_NAME=$(basename "$SHELL")
+    HOOK_COMMAND=""
+    RC_FILE=""
+    
     case "$SHELL_NAME" in
         bash)
-            echo 'eval "$(direnv hook bash)"' >> ~/.bashrc
+            HOOK_COMMAND='eval "$(direnv hook bash)"'
+            RC_FILE="$HOME/.bashrc"
             ;;
         zsh)
-            echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc
+            HOOK_COMMAND='eval "$(direnv hook zsh)"'
+            RC_FILE="$HOME/.zshrc"
             ;;
         fish)
-            echo 'direnv hook fish | source' >> ~/.config/fish/config.fish
+            HOOK_COMMAND='direnv hook fish | source'
+            RC_FILE="$HOME/.config/fish/config.fish"
             ;;
     esac
     
-    echo "✅ direnv installed (restart your shell or source your rc file)"
+    # Only add if not already present
+    if [ -n "$RC_FILE" ] && [ -f "$RC_FILE" ]; then
+        if ! grep -q "direnv hook" "$RC_FILE"; then
+            echo "$HOOK_COMMAND" >> "$RC_FILE"
+            echo "✅ direnv hook added to $RC_FILE (restart your shell or source your rc file)"
+        fi
+    fi
 else
     echo "✅ direnv already installed"
 fi
@@ -148,10 +160,15 @@ else
     echo "✅ aideator-secret already exists"
 fi
 
-# Install frontend dependencies
-echo "📦 Installing frontend dependencies..."
+# Install frontend dependencies (only if needed)
+echo "📦 Checking frontend dependencies..."
 cd frontend
-npm install
+if [ ! -d "node_modules" ] || [ "package.json" -nt "node_modules" ]; then
+    echo "📦 Installing frontend dependencies..."
+    npm install
+else
+    echo "✅ Frontend dependencies up to date"
+fi
 cd ..
 
 echo ""

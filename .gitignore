@@ -80,6 +80,7 @@ logs/
 .env.local
 .env.*.local
 !.env.example
+!.envrc
 
 # Temporary files
 tmp/
