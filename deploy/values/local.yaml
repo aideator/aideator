@@ -2,12 +2,12 @@
 replicaCount: 1
 
 image:
-  repository: localhost:5005/aideator-api
+  repository: aideator-api
   tag: "dev"
   pullPolicy: Always
 
 agentImage:
-  repository: localhost:5005/aideator-agent
+  repository: aideator-agent
   tag: "dev"
   pullPolicy: Always
 
