@@ -28,14 +28,12 @@ export function StreamGrid({
   // Connection status indicator
   const getConnectionStatus = () => {
     switch (connectionState) {
-      case 'connected':
-        return { icon: Wifi, colorClass: 'text-green-600 bg-green-50', text: 'Connected' };
       case 'connecting':
         return { icon: Wifi, colorClass: 'text-yellow-600 bg-yellow-50', text: 'Connecting...' };
       case 'error':
         return { icon: WifiOff, colorClass: 'text-red-600 bg-red-50', text: 'Connection Error' };
       default:
-        return null; // Don't show disconnected status
+        return null; // Don't show ready/connected/disconnected status
     }
   };
   
@@ -44,7 +42,7 @@ export function StreamGrid({
   
   return (
     <div className="w-full">
-      {/* Status bar - only show when there's something to show */}
+      {/* Status bar - only show when connecting, error, or streaming */}
       {(connectionStatus || isStreaming) && (
         <div className="mb-6 flex justify-end items-center gap-3">
           {connectionStatus && (

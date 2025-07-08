@@ -154,29 +154,21 @@ export default function StreamPage() {
             )}
           </AnimatePresence>
 
-          {/* Connection Status - only show when not disconnected */}
-          {connectionState !== "disconnected" && (
+          {/* Connection Status - only show when connecting or error */}
+          {(connectionState === "connecting" || connectionState === "error") && (
             <div className="flex items-center justify-center gap-4 mt-6">
               <div className="flex items-center gap-2">
                 <div
                   className={`w-3 h-3 rounded-full ${
-                    connectionState === "connected"
-                      ? "bg-green-500 animate-pulse"
-                      : connectionState === "connecting"
-                        ? "bg-yellow-500 animate-pulse"
-                        : connectionState === "error"
-                          ? "bg-red-500"
-                          : ""
+                    connectionState === "connecting"
+                      ? "bg-yellow-500 animate-pulse"
+                      : "bg-red-500"
                   }`}
                 />
                 <span className="text-sm text-gray-600">
-                  {connectionState === "connected"
-                    ? "Ready"
-                    : connectionState === "connecting"
-                      ? "Connecting"
-                      : connectionState === "error"
-                        ? "Error"
-                        : ""}
+                  {connectionState === "connecting"
+                    ? "Connecting"
+                    : "Error"}
                 </span>
               </div>
             </div>
