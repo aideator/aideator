@@ -37,6 +37,7 @@ class KubernetesService:
         repo_url: str,
         prompt: str,
         agent_config: Optional[Dict[str, Any]] = None,
+        agent_mode: Optional[str] = None,
     ) -> str:
         """Create a Kubernetes job for an agent variation."""
         job_name = f"agent-{run_id}-{variation_id}"
@@ -52,6 +53,7 @@ class KubernetesService:
             variation_id=variation_id,
             repo_url=repo_url,
             prompt=prompt.replace('"', '\\"'),  # Escape quotes
+            agent_mode=agent_mode or "litellm",  # Default to litellm
         )
         
         # Create temporary file for job manifest

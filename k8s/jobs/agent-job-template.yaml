@@ -34,6 +34,13 @@ spec:
                 secretKeyRef:
                   name: openai-secret
                   key: api-key
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: anthropic-secret
+                  key: api-key
+            - name: AGENT_MODE
+              value: "{agent_mode}"
             - name: REPO_URL
               value: "{repo_url}"
             - name: PROMPT

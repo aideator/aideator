@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useAgentStream } from "@/hooks/useAgentStream";
 import { useRepositoryList } from "@/hooks/useRepositoryList";
+import { useAgentMode } from "@/hooks/useAgentMode";
 import { StreamGrid } from "@/components/agents/StreamGrid";
 import { createRun } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ import {
   ChevronUp,
   ChevronDown,
   Plus,
+  Settings2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -32,10 +34,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
 
 export default function StreamPage() {
   // Repository list
   const { repositories, addRepository, isValidGitHubUrl } = useRepositoryList();
+  
+  // Agent mode
+  const { agentMode, setAgentMode, isLiteLLM } = useAgentMode();
   
   // Form state
   const [githubUrl, setGithubUrl] = useState(repositories[0] || "https://github.com/octocat/Hello-World");
@@ -87,6 +94,7 @@ export default function StreamPage() {
         github_url: githubUrl,
         prompt: prompt,
         variations: variations,
+        agent_mode: agentMode,
       });
 
       console.log("Run created:", response);
@@ -295,28 +303,57 @@ export default function StreamPage() {
                           GitHub Repository URL
                         </div>
                       </label>
-                      <Select
-                        value={githubUrl}
-                        onValueChange={handleSelectChange}
-                        disabled={isStreaming}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {repositories.map((repo) => (
-                            <SelectItem key={repo} value={repo}>
-                              {repo}
+                      <div className="flex items-center">
+                        <Select
+                          value={githubUrl}
+                          onValueChange={handleSelectChange}
+                          disabled={isStreaming}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {repositories.map((repo) => (
+                              <SelectItem key={repo} value={repo}>
+                                {repo}
+                              </SelectItem>
+                            ))}
+                            <SelectItem value="add-new">
+                              <div className="flex items-center gap-2">
+                                <Plus className="h-4 w-4" />
+                                Add New Repository...
+                              </div>
                             </SelectItem>
-                          ))}
-                          <SelectItem value="add-new">
-                            <div className="flex items-center gap-2">
-                              <Plus className="h-4 w-4" />
-                              Add New Repository...
+                          </SelectContent>
+                        </Select>
+                        
+                        {/* Agent Mode Toggle - Subtle */}
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button className="ml-2 p-1.5 text-gray-400 hover:text-gray-600 transition-colors">
+                              <Settings2 className="h-4 w-4" />
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-56">
+                            <div className="space-y-2">
+                              <p className="text-sm font-medium">Agent Mode</p>
+                              <div className="flex items-center justify-between">
+                                <label htmlFor="agent-mode-switch" className="text-sm text-gray-600">
+                                  {isLiteLLM ? 'LiteLLM' : 'Claude CLI'}
+                                </label>
+                                <Switch
+                                  id="agent-mode-switch"
+                                  checked={!isLiteLLM}
+                                  onCheckedChange={(checked) => setAgentMode(checked ? 'claude-cli' : 'litellm')}
+                                />
+                              </div>
+                              <p className="text-xs text-gray-500">
+                                {isLiteLLM ? 'Using LiteLLM with GPT-4' : 'Using Claude Code CLI'}
+                              </p>
                             </div>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
+                          </PopoverContent>
+                        </Popover>
+                      </div>
                     </div>
 
                     {/* Variations */}
