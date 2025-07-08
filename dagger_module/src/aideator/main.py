@@ -14,14 +14,15 @@ class Aideator:
         self,
         repo_url: str,
         prompt: str,
+        anthropic_api_key: dagger.Secret,
         variation_id: int = 0,
         agent_config: Optional[str] = None,  # JSON string
-        anthropic_api_key: dagger.Secret,
         container_image: str = "python:3.11-slim",
         memory_limit: str = "512m",
         cpu_limit: str = "0.5",
-        workdir: str = "/workspace",
+        work_dir: str = "/workspace",
         clone_timeout: int = 300,
+        use_claude_code: bool = False,
     ) -> str:
         """
         Run a single AI agent in an isolated container.
@@ -35,8 +36,9 @@ class Aideator:
             container_image: Base container image
             memory_limit: Container memory limit
             cpu_limit: Container CPU limit
-            workdir: Working directory in container
+            work_dir: Working directory in container
             clone_timeout: Git clone timeout in seconds
+            use_claude_code: Use Claude Code CLI instead of basic agent
             
         Returns:
             Agent output as a string
@@ -44,12 +46,12 @@ class Aideator:
         # Create base container with dependencies
         container = await self._create_base_container(
             container_image,
-            workdir,
+            work_dir,
             clone_timeout,
         )
         
         # Clone repository
-        container = await self._clone_repository(container, repo_url, workdir)
+        container = await self._clone_repository(container, repo_url, work_dir)
         
         # Set up agent environment
         container = await self._setup_agent_environment(
@@ -63,9 +65,14 @@ class Aideator:
         )
         
         # Execute agent and return output
-        return await container.with_exec([
-            "python", "-u", "/app/agent.py"
-        ]).stdout()
+        if use_claude_code:
+            return await container.with_exec([
+                "python3", "-u", "/app/claude_code_agent.py"
+            ]).stdout()
+        else:
+            return await container.with_exec([
+                "python3", "-u", "/app/agent.py"
+            ]).stdout()
     
     @function
     async def run_parallel_agents(
@@ -73,13 +80,14 @@ class Aideator:
         repo_url: str,
         prompt: str,
         variations: int,
-        agent_config: Optional[str] = None,  # JSON string
         anthropic_api_key: dagger.Secret,
+        agent_config: Optional[str] = None,  # JSON string
         container_image: str = "python:3.11-slim",
         memory_limit: str = "512m",
         cpu_limit: str = "0.5",
-        workdir: str = "/workspace",
+        work_dir: str = "/workspace",
         clone_timeout: int = 300,
+        use_claude_code: bool = False,
     ) -> List[str]:
         """
         Run multiple AI agents in parallel containers.
@@ -93,7 +101,7 @@ class Aideator:
             container_image: Base container image
             memory_limit: Container memory limit per agent
             cpu_limit: Container CPU limit per agent
-            workdir: Working directory in container
+            work_dir: Working directory in container
             clone_timeout: Git clone timeout in seconds
             
         Returns:
@@ -105,14 +113,15 @@ class Aideator:
             output = await self.run_agent(
                 repo_url=repo_url,
                 prompt=prompt,
+                anthropic_api_key=anthropic_api_key,
                 variation_id=i,
                 agent_config=agent_config,
-                anthropic_api_key=anthropic_api_key,
                 container_image=container_image,
                 memory_limit=memory_limit,
                 cpu_limit=cpu_limit,
-                workdir=workdir,
+                workdir=work_dir,
                 clone_timeout=clone_timeout,
+                use_claude_code=use_claude_code,
             )
             outputs.append(output)
         
@@ -123,14 +132,15 @@ class Aideator:
         self,
         repo_url: str,
         prompt: str,
+        anthropic_api_key: dagger.Secret,
         variation_id: int = 0,
         agent_config: Optional[str] = None,  # JSON string
-        anthropic_api_key: dagger.Secret,
         container_image: str = "python:3.11-slim",
         memory_limit: str = "512m",
         cpu_limit: str = "0.5",
-        workdir: str = "/workspace",
+        work_dir: str = "/workspace",
         clone_timeout: int = 300,
+        use_claude_code: bool = False,
     ) -> dagger.Container:
         """
         Create and return a container ready to stream agent output.
@@ -147,7 +157,7 @@ class Aideator:
             container_image: Base container image
             memory_limit: Container memory limit
             cpu_limit: Container CPU limit
-            workdir: Working directory in container
+            work_dir: Working directory in container
             clone_timeout: Git clone timeout in seconds
             
         Returns:
@@ -156,12 +166,12 @@ class Aideator:
         # Create base container with dependencies
         container = await self._create_base_container(
             container_image,
-            workdir,
+            work_dir,
             clone_timeout,
         )
         
         # Clone repository
-        container = await self._clone_repository(container, repo_url, workdir)
+        container = await self._clone_repository(container, repo_url, work_dir)
         
         # Set up agent environment
         container = await self._setup_agent_environment(
@@ -175,19 +185,81 @@ class Aideator:
         )
         
         # Return container ready for execution
-        return container.with_exec([
-            "python", "-u", "/app/agent.py"
-        ])
+        if use_claude_code:
+            return container.with_exec([
+                "python3", "-u", "/app/claude_code_agent.py"
+            ])
+        else:
+            return container.with_exec([
+                "python3", "-u", "/app/agent.py"
+            ])
+    
+    @function
+    async def test_stream(self) -> dagger.Container:
+        """Test streaming functionality with simple output."""
+        return (
+            dag.container()
+            .from_("python:3.11-slim")
+            .with_file("/app/test_agent.py", dag.current_module().source().file("aideator/test_agent.py"))
+            .with_workdir("/app")
+            .with_exec(["python3", "-u", "test_agent.py"])
+        )
+    
+    @function
+    async def run_claude_code(
+        self,
+        repo_url: str,
+        prompt: str,
+        anthropic_api_key: dagger.Secret,
+        container_image: str = "python:3.11-slim",
+        memory_limit: str = "2g",  # More memory for Claude Code
+        cpu_limit: str = "2.0",    # More CPU for Claude Code
+    ) -> str:
+        """
+        Run Claude Code CLI directly on a repository.
+        
+        This is a dedicated function for running Claude Code with optimal settings.
+        
+        Args:
+            repo_url: GitHub repository URL to analyze
+            prompt: Task prompt for Claude Code
+            anthropic_api_key: Anthropic API key secret
+            container_image: Base container image
+            memory_limit: Container memory limit (default 2g for Claude Code)
+            cpu_limit: Container CPU limit (default 2.0 for Claude Code)
+            
+        Returns:
+            Claude Code output as a string
+        """
+        # Use the existing run_agent with Claude Code enabled
+        return await self.run_agent(
+            repo_url=repo_url,
+            prompt=prompt,
+            anthropic_api_key=anthropic_api_key,
+            variation_id=0,
+            agent_config=None,
+            container_image=container_image,
+            memory_limit=memory_limit,
+            cpu_limit=cpu_limit,
+            work_dir="/workspace",
+            clone_timeout=300,
+            use_claude_code=True,
+        )
     
     async def _create_base_container(
         self,
         container_image: str,
-        workdir: str,
+        work_dir: str,
         clone_timeout: int,
     ) -> dagger.Container:
         """Create base container with all dependencies."""
-        # Get agent script from module
-        agent_script = dag.current_module().source().file("agent.py")
+        # Get agent scripts from module
+        agent_script = dag.current_module().source().file("aideator/agent.py")
+        claude_code_agent_script = dag.current_module().source().file("aideator/claude_code_agent.py")
+        
+        # Use node:20-slim for Claude Code support
+        if "python" in container_image:
+            container_image = "node:20-slim"
         
         container = (
             dag.container()
@@ -204,8 +276,17 @@ class Aideator:
             .with_exec(["apt-get", "update"])
             .with_exec([
                 "apt-get", "install", "-y",
-                "git", "curl",
+                "git", "curl", "ca-certificates", "python3", "python3-pip", "ripgrep",
                 "--no-install-recommends"
+            ])
+            # Cache npm packages
+            .with_mounted_cache(
+                "/root/.npm",
+                dag.cache_volume("npm-cache")
+            )
+            # Install Claude Code CLI via npm
+            .with_exec([
+                "npm", "install", "-g", "@anthropic-ai/claude-code"
             ])
             # Cache pip packages
             .with_mounted_cache(
@@ -213,16 +294,17 @@ class Aideator:
                 dag.cache_volume("pip-cache")
             )
             .with_exec([
-                "pip", "install", "--no-cache-dir",
+                "pip3", "install", "--no-cache-dir", "--break-system-packages",
                 "anthropic>=0.18.0",
                 "aiofiles>=23.0.0",
                 "gitpython>=3.1.0",
                 "structlog>=23.0.0",
                 "tenacity>=8.2.0",
             ])
-            # Mount agent script
+            # Mount agent scripts
             .with_file("/app/agent.py", agent_script)
-            .with_workdir(workdir)
+            .with_file("/app/claude_code_agent.py", claude_code_agent_script)
+            .with_workdir(work_dir)
         )
         
         return container
@@ -231,7 +313,7 @@ class Aideator:
         self,
         container: dagger.Container,
         repo_url: str,
-        workdir: str,
+        work_dir: str,
     ) -> dagger.Container:
         """Clone repository into container."""
         return container.with_exec([

@@ -47,22 +47,6 @@ class AIAgent:
     async def analyze_repository(self) -> None:
         """Analyze the repository and generate response."""
         print(f"[Agent {self.variation_id}] Starting analysis...")
-        sys.stdout.flush()
-        
-        # Show thinking process
-        print(f"[Agent {self.variation_id}] Loading configuration...")
-        sys.stdout.flush()
-        await asyncio.sleep(0.5)
-        
-        print(f"[Agent {self.variation_id}] Model: {self.config['model']}")
-        print(f"[Agent {self.variation_id}] Temperature: {self.config['temperature']}")
-        sys.stdout.flush()
-        await asyncio.sleep(0.5)
-        
-        print(f"[Agent {self.variation_id}] Scanning repository structure...")
-        sys.stdout.flush()
-        await asyncio.sleep(1)
-        
         print(f"[Agent {self.variation_id}] Repository contents:")
         
         # List repository files
@@ -76,14 +60,8 @@ class AIAgent:
             for file in files:
                 if not file.startswith("."):
                     print(f"{subindent}{file}")
-                    sys.stdout.flush()
 
-        print(f"\n[Agent {self.variation_id}] Preparing to analyze...")
-        sys.stdout.flush()
-        await asyncio.sleep(1)
-        
-        print(f"[Agent {self.variation_id}] Sending request to Claude...")
-        sys.stdout.flush()
+        print(f"\n[Agent {self.variation_id}] Sending request to Claude...")
         
         try:
             # Create message with repository context
@@ -107,15 +85,7 @@ Please provide your analysis and any code changes needed.
             )
 
             print(f"\n[Agent {self.variation_id}] Response from Claude:")
-            sys.stdout.flush()
-            
-            # Stream the response line by line
-            response_text = message.content[0].text
-            for line in response_text.split('\n'):
-                if line.strip():
-                    print(f"[Agent {self.variation_id}] {line}")
-                    sys.stdout.flush()
-                    await asyncio.sleep(0.1)  # Small delay to show streaming
+            print(message.content[0].text)
             print(f"\n[Agent {self.variation_id}] Analysis complete.")
             
         except Exception as e:

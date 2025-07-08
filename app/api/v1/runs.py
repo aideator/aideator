@@ -79,6 +79,7 @@ async def create_run(
         variations=request.variations,
         agent_config=request.agent_config,
         db_session=db,
+        use_claude_code=request.use_claude_code,
     )
     
     return CreateRunResponse(

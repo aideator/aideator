@@ -74,6 +74,10 @@ class CreateRunRequest(BaseModel):
         None,
         description="Optional agent configuration",
     )
+    use_claude_code: bool = Field(
+        default=False,
+        description="Use Claude Code CLI instead of basic Claude API",
+    )
 
     @field_validator("github_url")
     @classmethod

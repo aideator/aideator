@@ -31,6 +31,7 @@ class AgentOrchestratorV2:
         variations: int,
         agent_config: Optional[AgentConfig] = None,
         db_session: Optional[AsyncSession] = None,
+        use_claude_code: bool = False,
     ) -> None:
         """Execute N agent variations in parallel containers."""
         logger.info(
@@ -64,6 +65,7 @@ class AgentOrchestratorV2:
                     prompt=prompt,
                     variation_id=i,
                     agent_config=agent_config.model_dump() if agent_config else None,
+                    use_claude_code=use_claude_code,
                 )
             )
             tasks.append(task)
@@ -99,6 +101,7 @@ class AgentOrchestratorV2:
         prompt: str,
         variation_id: int,
         agent_config: Optional[Dict[str, Any]] = None,
+        use_claude_code: bool = False,
     ) -> None:
         """Execute a single agent variation using Dagger module."""
         logger.info(
@@ -114,6 +117,7 @@ class AgentOrchestratorV2:
                 prompt=prompt,
                 variation_id=variation_id,
                 agent_config=agent_config,
+                use_claude_code=use_claude_code,
             ):
                 # Send output to SSE
                 await self.sse.send_agent_output(run_id, variation_id, line)
