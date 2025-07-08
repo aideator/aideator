@@ -90,19 +90,44 @@ k8s_resource(
     resource_deps=['create-secrets']
 )
 
-# Phase 7: Frontend setup - ensure packages are installed
+# Phase 7: Check if port 3000 is available
+local_resource(
+    name='port-check',
+    cmd='''
+    if lsof -Pi :3000 -sTCP:LISTEN -t >/dev/null 2>&1; then
+        echo "❌ ERROR: Port 3000 is already in use!"
+        echo ""
+        echo "Process using port 3000:"
+        lsof -Pi :3000 -sTCP:LISTEN || true
+        echo ""
+        echo "Another process is using port 3000. Please either:"
+        echo "1. Stop the other process using port 3000"
+        echo "2. Configure Next.js to use a different port:"
+        echo "   - Create frontend/.env.local with: PORT=3001"
+        echo "   - Update the readiness_probe port in Tiltfile to match"
+        echo ""
+        exit 1
+    else
+        echo "✅ Port 3000 is available"
+    fi
+    ''',
+    labels=['frontend']
+)
+
+# Phase 8: Frontend setup - ensure packages are installed
 local_resource(
     name='frontend-setup',
     cmd='cd frontend && npm install',
     deps=['frontend/package.json', 'frontend/package-lock.json'],
-    labels=['frontend']
+    labels=['frontend'],
+    resource_deps=['port-check']  # Check port before installing
 )
 
-# Phase 8: Frontend (optional - runs outside container for hot reload)
+# Phase 9: Frontend (optional - runs outside container for hot reload)
 local_resource(
     name='frontend',
     cmd='cd frontend && npm run dev',
-    serve_cmd='cd frontend && npm run dev',
+    serve_cmd='cd frontend && PORT=3000 npm run dev',  # Explicitly set port
     deps=['frontend/'],
     labels=['frontend'],
     allow_parallel=True,
@@ -111,7 +136,28 @@ local_resource(
         http_get=http_get_action(port=3000, path='/'),
         period_secs=5,
         failure_threshold=3
-    )
+    ),
+    links=['http://localhost:3000']  # Add explicit link in Tilt UI
+)
+
+# Add a post-startup validation
+local_resource(
+    name='frontend-validate',
+    cmd='''
+    echo "Waiting for frontend to start..."
+    sleep 5
+    if curl -s http://localhost:3000 | grep -q "AIdeator"; then
+        echo "✅ Frontend is running correctly on port 3000"
+    else
+        echo "⚠️  WARNING: Port 3000 is responding but doesn't appear to be AIdeator!"
+        echo "Another application may be running on this port."
+        echo "Tilt UI link may navigate to the wrong application."
+    fi
+    ''',
+    resource_deps=['frontend'],
+    labels=['frontend'],
+    auto_init=False,  # Only run after frontend starts
+    trigger_mode=TRIGGER_MODE_MANUAL
 )
 
 print("🚀 AIdeator development environment ready!")
