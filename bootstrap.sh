@@ -99,7 +99,15 @@ check_command "npm" "https://nodejs.org/"
 # Create k3d cluster if it doesn't exist
 if ! k3d cluster list | grep -q "k3d-aideator"; then
     echo "🔧 Creating k3d cluster with registry..."
-    k3d cluster create aideator --registry-create aideator-registry:0.0.0.0:5005
+    
+    # Check if ctlptl-registry exists
+    if k3d registry list | grep -q "ctlptl-registry"; then
+        echo "📦 Found existing ctlptl-registry, using it..."
+        k3d cluster create aideator --registry-use ctlptl-registry:5005
+    else
+        echo "📦 Creating new aideator-registry..."
+        k3d cluster create aideator --registry-create aideator-registry:0.0.0.0:5005
+    fi
 else
     echo "✅ k3d cluster already exists"
 fi
