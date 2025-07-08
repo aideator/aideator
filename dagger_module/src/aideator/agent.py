@@ -25,10 +25,11 @@ class AIAgent:
 
     def _load_config(self) -> Dict[str, Any]:
         """Load agent configuration."""
-        config_path = Path("/app/config.json")
-        if config_path.exists():
-            with open(config_path) as f:
-                return json.load(f)
+        # Try current directory first, then /app
+        for path in [Path("config.json"), Path("/app/config.json")]:
+            if path.exists():
+                with open(path) as f:
+                    return json.load(f)
         return {
             "model": os.environ.get("DEFAULT_AGENT_MODEL", "claude-3-opus-20240229"),
             "max_tokens": 4096,
@@ -37,8 +38,12 @@ class AIAgent:
 
     def _load_prompt(self) -> str:
         """Load prompt from file."""
-        with open("/app/prompt.txt") as f:
-            return f.read().strip()
+        # Try current directory first, then /app
+        for path in [Path("prompt.txt"), Path("/app/prompt.txt")]:
+            if path.exists():
+                with open(path) as f:
+                    return f.read().strip()
+        raise FileNotFoundError("prompt.txt not found")
 
     @retry(
         stop=stop_after_attempt(3),

@@ -10,7 +10,7 @@ from app.core.config import get_settings
 from app.core.database import get_session
 from app.core.logging import get_logger
 from app.models.user import APIKey, User
-from app.services.agent_orchestrator_v2 import agent_orchestrator_v2
+from app.services.agent_orchestrator_docker import agent_orchestrator_docker
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -20,9 +20,9 @@ security = HTTPBearer(auto_error=False)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-def get_orchestrator() -> "AgentOrchestratorV2":
+def get_orchestrator() -> "AgentOrchestratorDocker":
     """Get agent orchestrator instance."""
-    return agent_orchestrator_v2
+    return agent_orchestrator_docker
 
 
 async def get_current_user_from_api_key(
