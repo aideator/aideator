@@ -144,7 +144,7 @@ if [ ! -f .env ]; then
     echo "📝 Creating .env file from .env.example..."
     cp .env.example .env
     echo ""
-    echo "⚠️  Please edit .env and add your OPENAI_API_KEY"
+    echo "⚠️  Please edit .env and add your OPENAI_API_KEY and ANTHROPIC_API_KEY"
     echo "   Then run this script again."
     echo ""
     exit 1
@@ -155,9 +155,15 @@ if [ -f .env ]; then
     export $(grep -v '^#' .env | xargs)
 fi
 
-# Check for required API key
-if [ -z "${OPENAI_API_KEY:-}" ] || [ "${OPENAI_API_KEY}" = "your-anthropic-api-key-here" ]; then
+# Check for required API keys
+if [ -z "${OPENAI_API_KEY:-}" ] || [ "${OPENAI_API_KEY}" = "your-openai-api-key-here" ]; then
     echo "❌ OPENAI_API_KEY not set in .env file"
+    echo "   Please edit .env and add your OpenAI API key"
+    exit 1
+fi
+
+if [ -z "${ANTHROPIC_API_KEY:-}" ] || [ "${ANTHROPIC_API_KEY}" = "your-anthropic-api-key-here" ]; then
+    echo "❌ ANTHROPIC_API_KEY not set in .env file"
     echo "   Please edit .env and add your Anthropic API key"
     exit 1
 fi
@@ -180,6 +186,19 @@ if ! kubectl get secret openai-secret -n aideator &> /dev/null; then
     fi
 else
     echo "✅ openai-secret already exists"
+fi
+
+if ! kubectl get secret anthropic-secret -n aideator &> /dev/null; then
+    if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+        echo "🔧 Creating anthropic-secret..."
+        kubectl create secret generic anthropic-secret \
+            --from-literal=api-key="$ANTHROPIC_API_KEY" \
+            -n aideator
+    else
+        echo "⚠️  Skipping anthropic-secret creation (ANTHROPIC_API_KEY not set)"
+    fi
+else
+    echo "✅ anthropic-secret already exists"
 fi
 
 if ! kubectl get secret aideator-secret -n aideator &> /dev/null; then

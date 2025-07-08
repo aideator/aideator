@@ -108,6 +108,28 @@ local_resource(
     else
         echo "openai-secret already exists"
     fi
+    
+    if ! kubectl get secret anthropic-secret -n aideator 2>/dev/null; then
+        if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "ERROR: ANTHROPIC_API_KEY environment variable not set!"
+            echo "Please set it with: export ANTHROPIC_API_KEY='your-api-key'"
+            echo "Creating anthropic-secret with placeholder (Claude Code CLI will fail)..."
+            kubectl create secret generic anthropic-secret \
+                --from-literal=api-key="sk-ant-placeholder-please-set-ANTHROPIC_API_KEY" \
+                -n aideator
+            echo ""
+            echo "⚠️  WARNING: Claude Code CLI will not work without a valid ANTHROPIC_API_KEY!"
+            echo "⚠️  Set the environment variable and run: tilt up"
+            echo ""
+        else
+            echo "Creating anthropic-secret..."
+            kubectl create secret generic anthropic-secret \
+                --from-literal=api-key="$ANTHROPIC_API_KEY" \
+                -n aideator
+        fi
+    else
+        echo "anthropic-secret already exists"
+    fi
     """,
     deps=["deploy/charts/aideator/values.yaml"],
     labels=["setup"],

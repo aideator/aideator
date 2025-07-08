@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     openai_api_key: str  # Required for LiteLLM
     openai_api_key_env_var: str = "OPENAI_API_KEY"  # Environment variable name for containers
+    anthropic_api_key: str  # Required for Claude Code CLI
+    anthropic_api_key_env_var: str = "ANTHROPIC_API_KEY"  # Environment variable name for containers
     api_key_header: str = "X-API-Key"
     allowed_origins: list[str] = ["*"]
     allowed_hosts: list[str] = ["*"]
@@ -119,6 +121,14 @@ class Settings(BaseSettings):
             raise ValueError("Invalid OpenAI API key format")
         return v
 
+    @field_validator("anthropic_api_key")
+    @classmethod
+    def validate_anthropic_key(cls, v: str) -> str:
+        """Validate Anthropic API key format."""
+        if not v.startswith("sk-ant-"):
+            raise ValueError("Invalid Anthropic API key format")
+        return v
+
     @model_validator(mode="after")
     def validate_settings(self) -> "Settings":
         """Validate settings combinations."""
@@ -134,6 +144,7 @@ class Settings(BaseSettings):
         """Get secrets to mount in Kubernetes containers."""
         return {
             "openai-api-key": self.openai_api_key,
+            "anthropic-api-key": self.anthropic_api_key,
         }
 
     @property

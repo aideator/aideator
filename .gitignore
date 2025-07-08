@@ -135,3 +135,6 @@ prometheus_data/
 grafana_data/
 
 .direnv/
+
+# Specstory
+.specstory/
