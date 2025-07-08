@@ -26,7 +26,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: batch-agent
-          image: "aideator-registry:5000/aideator-agent:dev"
+          image: "aideator-agent:dev"
           imagePullPolicy: Always
           env:
             - name: ANTHROPIC_API_KEY
