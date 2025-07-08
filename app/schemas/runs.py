@@ -78,6 +78,11 @@ class CreateRunRequest(BaseModel):
         default=False,
         description="Use Claude Code CLI instead of basic Claude API",
     )
+    agent_mode: Optional[str] = Field(
+        default="litellm",
+        description="Agent execution mode: 'litellm' or 'claude-cli'",
+        examples=["litellm", "claude-cli"],
+    )
 
     @field_validator("github_url")
     @classmethod
@@ -101,6 +106,14 @@ class CreateRunRequest(BaseModel):
         if len(v) < 10:
             raise ValueError("Prompt must be at least 10 characters after trimming")
         return v
+
+    @field_validator("agent_mode")
+    @classmethod
+    def validate_agent_mode(cls, v: Optional[str]) -> str:
+        """Validate agent mode."""
+        if v not in ["litellm", "claude-cli", None]:
+            raise ValueError("Agent mode must be 'litellm' or 'claude-cli'")
+        return v or "litellm"
 
     model_config = {
         "json_schema_extra": {

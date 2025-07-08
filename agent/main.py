@@ -8,6 +8,7 @@ import asyncio
 import json
 import os
 import sys
+import subprocess
 import tempfile
 import time
 from datetime import datetime
@@ -94,6 +95,17 @@ class AideatorAgent:
     async def run(self) -> None:
         """Main agent execution flow."""
         self.log(f"🚀 Starting AIdeator Agent", "INFO", config=self.config)
+        
+        # Log agent mode
+        agent_mode = os.getenv("AGENT_MODE", "litellm")
+        self.log(f"🎯 Agent mode: {agent_mode}", "INFO", agent_mode=agent_mode)
+        
+        # Log CLI tool versions
+        claude_version = self._get_cli_version("claude")
+        self.log(f"🤖 Claude CLI version: {claude_version}", "INFO", claude_version=claude_version)
+        
+        gemini_version = self._get_cli_version("gemini")
+        self.log(f"💎 Gemini CLI version: {gemini_version}", "INFO", gemini_version=gemini_version)
         
         # Log LiteLLM SDK configuration
         self.log("🔧 Using LiteLLM SDK", "INFO", 
@@ -242,12 +254,106 @@ class AideatorAgent:
         total_size = sum(f.stat().st_size for f in path.rglob('*') if f.is_file())
         return round(total_size / (1024 * 1024), 2)
     
+    def _get_cli_version(self, command: str) -> str:
+        """Get version of a CLI tool."""
+        try:
+            result = subprocess.run(
+                [command, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+            else:
+                return f"Error: {result.stderr.strip()}"
+        except subprocess.TimeoutExpired:
+            return "Error: Command timed out"
+        except FileNotFoundError:
+            return "Error: Command not found"
+        except Exception as e:
+            return f"Error: {str(e)}"
+    
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=10)
     )
     async def _generate_llm_response(self, codebase_summary: str) -> str:
         """Generate LLM response based on codebase analysis."""
+        agent_mode = os.getenv("AGENT_MODE", "litellm")
+        
+        if agent_mode == "claude-cli":
+            return await self._generate_claude_cli_response()
+        else:
+            return await self._generate_litellm_response(codebase_summary)
+    
+    async def _generate_claude_cli_response(self) -> str:
+        """Generate response using Claude CLI."""
+        self.log_progress("Generating response using Claude CLI", 
+                         "Executing claude command with JSON output")
+        
+        try:
+            # Change to repository directory for context
+            original_dir = os.getcwd()
+            os.chdir(self.repo_dir)
+            
+            # Execute Claude CLI
+            self.log_progress("Executing Claude CLI", f"Working directory: {self.repo_dir}")
+            
+            result = await asyncio.create_subprocess_exec(
+                "claude",
+                "-p",
+                self.prompt,
+                "--output-format",
+                "json",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=os.environ  # Includes ANTHROPIC_API_KEY
+            )
+            
+            # Wait for completion with timeout
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    result.communicate(),
+                    timeout=30.0
+                )
+            except asyncio.TimeoutError:
+                result.terminate()
+                await result.wait()
+                raise RuntimeError("Claude CLI execution timed out after 30 seconds")
+            
+            # Change back to original directory
+            os.chdir(original_dir)
+            
+            if result.returncode == 0:
+                # Parse JSON output
+                try:
+                    response_data = json.loads(stdout.decode())
+                    # Extract content from JSON structure
+                    # The exact structure may vary, so we'll handle different possibilities
+                    if isinstance(response_data, dict):
+                        content = response_data.get("content", response_data.get("text", str(response_data)))
+                    else:
+                        content = str(response_data)
+                    
+                    self.log_progress("Claude CLI completed successfully", 
+                                    f"Response length: {len(content)} characters")
+                    return content
+                    
+                except json.JSONDecodeError as e:
+                    self.log_error(f"Failed to parse Claude CLI JSON output", e)
+                    # Fall back to raw output if JSON parsing fails
+                    return stdout.decode()
+            else:
+                error_msg = stderr.decode() if stderr else "Unknown error"
+                raise RuntimeError(f"Claude CLI failed with exit code {result.returncode}: {error_msg}")
+                
+        except Exception as e:
+            self.log_error(f"Claude CLI execution failed", e)
+            raise RuntimeError(f"Failed to generate Claude CLI response: {e}")
+    
+    async def _generate_litellm_response(self, codebase_summary: str) -> str:
+        """Generate response using LiteLLM (original implementation)."""
         self.log_progress("Generating LLM response", 
                          f"Model: {self.config['model']}, Temp: {self.config['temperature']}")
         

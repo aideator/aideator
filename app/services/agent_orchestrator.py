@@ -36,6 +36,7 @@ class AgentOrchestrator:
         prompt: str,
         variations: int,
         agent_config: Optional[AgentConfig] = None,
+        agent_mode: Optional[str] = None,
         db_session: Optional[AsyncSession] = None,
         use_batch_job: bool = True,
     ) -> None:
@@ -66,9 +67,9 @@ class AgentOrchestrator:
         
         try:
             if use_batch_job:
-                await self._execute_batch_job(run_id, repo_url, prompt, variations, db_session)
+                await self._execute_batch_job(run_id, repo_url, prompt, variations, agent_mode, db_session)
             else:
-                await self._execute_individual_jobs(run_id, repo_url, prompt, variations, db_session)
+                await self._execute_individual_jobs(run_id, repo_url, prompt, variations, agent_mode, db_session)
             
         except Exception as e:
             logger.error(f"Error executing variations for run {run_id}: {e}")
@@ -89,6 +90,7 @@ class AgentOrchestrator:
         repo_url: str,
         prompt: str,
         variations: int,
+        agent_mode: Optional[str] = None,
         db_session: Optional[AsyncSession] = None,
     ) -> None:
         """Execute agents using a single batch job."""
@@ -116,6 +118,7 @@ class AgentOrchestrator:
         repo_url: str,
         prompt: str,
         variations: int,
+        agent_mode: Optional[str] = None,
         db_session: Optional[AsyncSession] = None,
     ) -> None:
         """Execute agents using individual jobs."""
@@ -127,6 +130,7 @@ class AgentOrchestrator:
                 variation_id=i,
                 repo_url=repo_url,
                 prompt=prompt,
+                agent_mode=agent_mode,
             )
             jobs.append((job_name, i))
         

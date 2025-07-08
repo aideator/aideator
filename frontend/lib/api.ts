@@ -7,6 +7,7 @@ interface CreateRunRequest {
   github_url: string
   prompt: string
   variations: number
+  agent_mode?: string
   agent_config?: {
     model: string
     temperature: number
