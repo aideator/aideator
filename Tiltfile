@@ -50,6 +50,22 @@ k8s_resource(
     labels=['api']
 )
 
+# Phase 7: Frontend (optional - runs outside container for hot reload)
+local_resource(
+    name='frontend',
+    cmd='cd frontend && npm run dev',
+    serve_cmd='cd frontend && npm run dev',
+    deps=['frontend/'],
+    labels=['frontend'],
+    allow_parallel=True,
+    readiness_probe=probe(
+        http_get=http_get_action(port=3000, path='/'),
+        period_secs=5,
+        failure_threshold=3
+    )
+)
+
 print("🚀 AIdeator development environment ready!")
+print("🔗 Frontend: http://localhost:3000")
 print("🔗 FastAPI: http://localhost:8000")
 print("📊 Docs: http://localhost:8000/docs")
