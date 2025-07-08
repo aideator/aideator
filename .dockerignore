@@ -1,0 +1,73 @@
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.gitignore
+.mypy_cache
+.pytest_cache
+.hypothesis
+venv/
+env/
+.env
+
+# Node / Frontend
+frontend/node_modules
+frontend/.next
+frontend/out
+frontend/.cache
+frontend/dist
+frontend/build
+frontend/*.log
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.env*.local
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tilt
+.tiltbuild
+
+# SQLite databases (for development)
+*.db
+*.sqlite
+*.sqlite3
+
+# Documentation
+*.md
+docs/
+README.md
+
+# Test files
+tests/
+test_*.py
+*_test.py
+
+# Kubernetes
+deploy/
+# k8s/ is needed by Dockerfile, don't ignore it
+# *.yaml files are needed too
+# *.yml
+Tiltfile
