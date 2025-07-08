@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Application settings with validation and Dagger support."""
+    """Application settings with validation and Kubernetes support."""
 
     # API Configuration
     api_v1_prefix: str = "/api/v1"
@@ -25,7 +25,8 @@ class Settings(BaseSettings):
     secret_key: str
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
-    anthropic_api_key: str
+    openai_api_key: str  # Required for LiteLLM
+    openai_api_key_env_var: str = "OPENAI_API_KEY"  # Environment variable name for containers
     api_key_header: str = "X-API-Key"
     allowed_origins: list[str] = ["*"]
     allowed_hosts: list[str] = ["*"]
@@ -36,12 +37,10 @@ class Settings(BaseSettings):
     database_pool_size: int = 5
     database_pool_recycle: int = 3600
 
-    # Dagger Configuration
-    dagger_log_output: bool = True
-    dagger_engine_timeout: int = 600  # 10 minutes
-    dagger_cache_volume: str = "aideator-cache"
-    dagger_workdir: str = "/workspace"
-    dagger_engine_port: int = 8080
+    # Kubernetes Configuration
+    kubernetes_namespace: str = "aideator"
+    kubernetes_job_ttl: int = 3600  # 1 hour
+    kubernetes_workdir: str = "/workspace"
 
     # Agent Configuration
     max_variations: int = Field(default=5, ge=1, le=10)
@@ -50,7 +49,7 @@ class Settings(BaseSettings):
     agent_memory_limit: str = "512m"
     agent_cpu_limit: float = Field(default=0.5, ge=0.1, le=2.0)
     agent_timeout: int = 300  # 5 minutes
-    default_agent_model: str = "claude-3-opus-20240229"
+    default_agent_model: str = "gpt-4o-mini"
 
     # Repository Configuration
     clone_timeout: int = 300  # 5 minutes
@@ -112,12 +111,12 @@ class Settings(BaseSettings):
             raise ValueError("Secret key must be at least 32 characters long")
         return v
 
-    @field_validator("anthropic_api_key")
+    @field_validator("openai_api_key")
     @classmethod
-    def validate_anthropic_key(cls, v: str) -> str:
-        """Validate Anthropic API key format."""
-        if not v.startswith("sk-ant-"):
-            raise ValueError("Invalid Anthropic API key format")
+    def validate_openai_key(cls, v: str) -> str:
+        """Validate OpenAI API key format."""
+        if not v.startswith("sk-"):
+            raise ValueError("Invalid OpenAI API key format")
         return v
 
     @model_validator(mode="after")
@@ -131,22 +130,25 @@ class Settings(BaseSettings):
             )
         return self
 
-    def get_dagger_secrets(self) -> dict[str, str]:
-        """Get secrets to mount in Dagger containers."""
+    def get_kubernetes_secrets(self) -> dict[str, str]:
+        """Get secrets to mount in Kubernetes containers."""
         return {
-            "anthropic-api-key": self.anthropic_api_key,
+            "openai-api-key": self.openai_api_key,
         }
 
     @property
     def database_url_async(self) -> str:
         """Get async database URL."""
         if "sqlite" in self.database_url:
+            # Handle both sqlite:// and sqlite+aiosqlite:// formats
+            if self.database_url.startswith("sqlite+aiosqlite://"):
+                return self.database_url
             return self.database_url.replace("sqlite://", "sqlite+aiosqlite://")
         return self.database_url
 
 
-class DaggerEnvironment:
-    """Manages environment variables for Dagger containers."""
+class KubernetesEnvironment:
+    """Manages environment variables for Kubernetes containers."""
 
     @staticmethod
     def get_agent_env(variation_id: int) -> dict[str, str]:
@@ -163,7 +165,7 @@ class DaggerEnvironment:
         settings = get_settings()
         return {
             "PYTHON_VERSION": "3.11",
-            "WORKDIR": settings.dagger_workdir,
+            "WORKDIR": settings.kubernetes_workdir,
         }
 
 

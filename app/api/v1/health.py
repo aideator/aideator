@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.database import get_session
-from app.services.dagger_service import DaggerService
 
 settings = get_settings()
 router = APIRouter()
@@ -31,7 +30,7 @@ async def detailed_health_check(
         "version": settings.version,
         "checks": {
             "database": False,
-            "dagger": False,
+            "kubernetes": False,
         },
     }
 
@@ -43,8 +42,7 @@ async def detailed_health_check(
         health_status["status"] = "degraded"
         health_status["checks"]["database"] = str(e)
 
-    # Check Dagger (if available in app state)
-    # This is a simplified check - in production you'd access app.state.dagger
-    health_status["checks"]["dagger"] = "Not initialized"
+    # Kubernetes service check would go here
+    health_status["checks"]["kubernetes"] = "Not implemented"
 
     return health_status

@@ -11,7 +11,7 @@ from app.core.database import get_session
 from app.core.logging import get_logger
 from app.models.user import APIKey, User
 from app.services.agent_orchestrator import AgentOrchestrator
-from app.services.dagger_service import DaggerService
+from app.services.kubernetes_service import KubernetesService
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -21,21 +21,13 @@ security = HTTPBearer(auto_error=False)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-async def get_dagger_service(request: Request) -> DaggerService:
-    """Get Dagger service from app state."""
-    if not hasattr(request.app.state, "dagger") or request.app.state.dagger is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Dagger service not available",
-        )
-    return request.app.state.dagger
+# Initialize services
+kubernetes_service = KubernetesService()
+agent_orchestrator = AgentOrchestrator(kubernetes_service)
 
-
-def get_orchestrator(
-    dagger: DaggerService = Depends(get_dagger_service),
-) -> AgentOrchestrator:
+def get_orchestrator() -> AgentOrchestrator:
     """Get agent orchestrator instance."""
-    return AgentOrchestrator(dagger)
+    return agent_orchestrator
 
 
 async def get_current_user_from_api_key(

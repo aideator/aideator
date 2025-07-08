@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import Column, JSON
 from sqlmodel import Field, SQLModel
 
 
@@ -53,7 +54,7 @@ class APIKey(SQLModel, table=True):
     expires_at: Optional[datetime] = Field(default=None)
 
     # Permissions
-    scopes: list[str] = Field(default_factory=list)
+    scopes: list[str] = Field(default_factory=list, sa_column=Column(JSON))
 
     # Usage tracking
     total_requests: int = Field(default=0)

@@ -19,7 +19,6 @@ from app.schemas.runs import (
     RunListItem,
     SelectWinnerRequest,
 )
-from app.services.agent_orchestrator import AgentOrchestrator
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -36,18 +35,18 @@ router = APIRouter()
 async def create_run(
     request: CreateRunRequest,
     background_tasks: BackgroundTasks,
-    orchestrator: AgentOrchestrator = Depends(get_orchestrator),
+    orchestrator = Depends(get_orchestrator),
     db: AsyncSession = Depends(get_session),
     current_user: Optional[User] = Depends(get_current_user_from_api_key),
 ) -> CreateRunResponse:
     """
     Create a new agent run that will spawn N containerized LLM agents.
     
-    The run is processed asynchronously in the background using Dagger containers.
+    The run is processed asynchronously in the background using Kubernetes Jobs.
     Connect to the returned stream_url to receive real-time agent outputs.
     """
-    # Generate run ID
-    run_id = f"run_{uuid.uuid4().hex}"
+    # Generate run ID (use hyphens for Kubernetes compatibility)
+    run_id = f"run-{uuid.uuid4().hex}"
     
     # Create run record
     run = Run(
@@ -79,6 +78,7 @@ async def create_run(
         variations=request.variations,
         agent_config=request.agent_config,
         db_session=db,
+        use_batch_job=False,  # Use individual jobs for now
     )
     
     return CreateRunResponse(

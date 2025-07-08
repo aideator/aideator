@@ -114,9 +114,23 @@ media/
 results/
 output/
 
+# Generated files
+openapi.yaml
+pydantic_schemas.py
+
+# Local development files
+aideator.db
+*.db-shm
+*.db-wal
+server.log
+server_new.log
+cluster-config.yaml
+
 # Redis dump
 dump.rdb
 
 # Monitoring
 prometheus_data/
 grafana_data/
+
+.direnv/

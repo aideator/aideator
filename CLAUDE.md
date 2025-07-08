@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-AIdeator is a Dagger-powered LLM orchestration platform that runs multiple AI agents in isolated containers, streaming their thought processes in real-time. By containerizing each agent variation, we ensure reproducibility, isolation, and scalability. As the primary coding assistant, I help build a sophisticated FastAPI + Dagger backend that orchestrates containerized Claude agents, captures their reasoning, and delivers insights through Server-Sent Events.
+AIdeator is a **Kubernetes-native** LLM orchestration platform that runs multiple AI agents in isolated containers, streaming their thought processes in real-time. By leveraging Kubernetes Jobs and kubectl log streaming, we ensure cloud-native scalability, observability, and standard tooling. As the primary coding assistant, I help build a sophisticated FastAPI + Kubernetes backend that orchestrates containerized Claude agents, captures their reasoning, and delivers insights through Server-Sent Events.
 
 ## 🎯 My Role & Capabilities
 
@@ -10,110 +10,207 @@ I am the **primary development assistant** for AIdeator backend development. I p
 
 - **Production-Ready Code**: No mock data, proper async patterns, comprehensive error handling
 - **FastAPI Expertise**: Async route handlers, SSE streaming, proper dependency injection
-- **Dagger Integration**: Container orchestration, pipeline design, parallel execution
-- **Real-time Streaming**: Server-Sent Events implementation for concurrent agent output
-- **Security First**: Container isolation, secret management, SQL injection prevention
+- **Kubernetes Integration**: Job orchestration, kubectl log streaming, Helm charts
+- **Real-time Streaming**: Server-Sent Events powered by native Kubernetes logs
+- **Cloud-Native Patterns**: Tilt development, local registries, declarative deployments
+- **Security First**: RBAC, secret management, resource limits, SQL injection prevention
 
 ## 🏗️ Architecture Understanding
 
 ### Core Components
 
-- **FastAPI Backend** - Async web framework for high-performance API
-- **Dagger SDK** - Container orchestration and pipeline execution
+- **FastAPI Backend** - Async web framework running as a Kubernetes deployment
+- **Kubernetes Jobs** - Isolated agent execution with automatic cleanup (TTL)
+- **kubectl Logs** - Native log streaming from agent containers
 - **Server-Sent Events (SSE)** - Real-time streaming of agent thought processes
 - **SQLite + SQLModel** - Async database with Pydantic integration
 - **Anthropic Claude API** - LLM agent for code generation tasks
-- **Container Isolation** - Each agent runs in its own Dagger container
+- **Helm Charts** - Declarative deployment and configuration management
+
+### Kubernetes-Native Architecture
+
+The architecture leverages native Kubernetes features:
+- **Pods & Jobs**: Each agent runs as a Kubernetes Job
+- **Service Accounts**: RBAC for kubectl operations
+- **ConfigMaps & Secrets**: Configuration and API key management
+- **Local Registry**: Development with localhost:5005
+- **Tilt**: Streamlined local development workflow
 
 ### Key Workflows
 
-1. **Job Submission** → Create Dagger pipeline → Build containers → Execute agents
-2. **Container Orchestration** → Parallel container execution → Resource isolation
-3. **Real-time Streaming** → Capture container stdout → Stream via SSE
-4. **Result Persistence** → Store winning variation → Cache for reuse
+1. **Job Submission** → Create Kubernetes Job → Agent container execution
+2. **Log Streaming** → kubectl logs -f → SSE to client → Real-time output
+   - KubernetesService streams logs via `kubectl logs -f job/{job_name}`
+   - Logs are parsed and forwarded as SSE events
+   - Each log line becomes a `data:` event with variation_id
+3. **Job Management** → Status tracking → TTL cleanup → Resource limits
+4. **Development** → Tilt up → Hot reload → Port forwarding (automatic)
 
-### Dagger Pipeline Architecture
+### Kubernetes Integration Architecture
 
 ```python
-# Core pipeline structure
-async def create_agent_pipeline(repo_url: str, prompt: str, variations: int):
-    async with dagger.Connection() as client:
-        # Base container with dependencies
-        base = await create_base_container(client)
+# FastAPI service runs in a pod with kubectl access
+class KubernetesService:
+    async def create_agent_job(self, run_id: str, variation_id: int, repo_url: str, prompt: str):
+        # Create Job from template
+        job_manifest = self.render_job_template(
+            run_id=run_id,
+            variation_id=variation_id,
+            repo_url=repo_url,
+            prompt=prompt
+        )
         
-        # Clone repo in container
-        repo_container = await clone_repository(base, repo_url)
+        # Apply via kubectl
+        subprocess.run(["kubectl", "apply", "-f", "-"], input=job_manifest)
         
-        # Spawn N agent containers
-        agents = [
-            create_agent_container(repo_container, prompt, i)
-            for i in range(variations)
-        ]
+    async def stream_job_logs(self, job_name: str) -> AsyncGenerator[str, None]:
+        # Stream logs via kubectl
+        process = await asyncio.create_subprocess_exec(
+            "kubectl", "logs", "-f", f"job/{job_name}",
+            stdout=asyncio.subprocess.PIPE
+        )
         
-        # Execute and stream in parallel
-        await asyncio.gather(*[
-            stream_agent_output(agent, i) 
-            for i, agent in enumerate(agents)
-        ])
+        async for line in process.stdout:
+            yield line.decode().strip()
+
+# Agent runs in a Kubernetes Job
+# Container entrypoint: python /agent/main.py
+# Logs streamed via kubectl logs -f
+```
+
+### LiteLLM Streaming Architecture
+
+```python
+# Agent uses LiteLLM with streaming for real-time output
+async for chunk in await acompletion(
+    model="openai/gpt-4o-mini",
+    messages=[{"role": "user", "content": prompt}],
+    stream=True  # Enable streaming
+):
+    if chunk.choices and chunk.choices[0].delta.content:
+        chunk_text = chunk.choices[0].delta.content
+        # This gets logged and streamed via kubectl logs
+        print(chunk_text, end='', flush=True)
 ```
 
 ## 🚀 Development Commands
 
-### Environment Setup with uv (Modern Python Package Manager)
+### Local Development with Tilt
 
 ```bash
-# Install uv (if not already installed)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# Start development environment
+tilt up
 
-# Install Dagger CLI
-curl -L https://dl.dagger.io/dagger/install.sh | sh
+# This will:
+# 1. Start/verify k3d cluster
+# 2. Build containers locally
+# 3. Push to local registry (localhost:5005)
+# 4. Deploy via Helm
+# 5. Set up port forwarding
+# 6. Watch for file changes
 
-# Create new project with uv
-uv init
+# Access services
+# FastAPI: http://localhost:8000
+# API Docs: http://localhost:8000/docs
+# Tilt UI: http://localhost:10350
 
-# Install dependencies
-uv pip install -r requirements.txt
+# Stop environment
+tilt down
 
-# Or install specific packages
-uv pip install fastapi uvicorn[standard] sqlmodel aiosqlite httpx dagger-io
-
-# Start Dagger engine (in separate terminal)
-dagger engine
-
-# Run development server
-uv run uvicorn app.main:app --reload --port 8000
+# Delete namespace too
+tilt down --delete-namespaces
 ```
 
-### Testing & Quality with Modern Tools
+### Development Testing with Tilt
 
 ```bash
-# Run all tests with pytest
-uv run pytest
+# The Helm chart deploys an agent-job-dev-test with defaults:
+# - Repository: https://github.com/octocat/Hello-World
+# - Prompt: "Analyze this repository and describe what it does"
+# - This allows testing agent functionality without the API
 
-# Run tests with coverage
-uv run pytest --cov=app --cov-report=html --cov-report=term-missing
+# Monitor the test job
+kubectl logs -f job/agent-job-dev-test -n aideator
 
-# Run async tests
-uv run pytest -v --asyncio-mode=auto
+# Delete and recreate to test changes
+kubectl delete job agent-job-dev-test -n aideator
+# Tilt will automatically recreate it
 
-# Run specific test file
-uv run pytest tests/test_api.py -v
+# To trigger agent rebuild after code changes:
+touch agent/main.py
+# Wait ~10 seconds for Tilt to rebuild and redeploy
+```
 
-# Run tests matching pattern
-uv run pytest -k "test_create" -v
+### Agent Job Template with Fallback Values
 
-# E2E tests with markers
-uv run pytest -m "e2e" -v
+The agent-job.yaml Helm template uses a smart fallback pattern:
 
-# Linting with ruff (replaces flake8, black, isort, and more)
-uv run ruff check .              # Check for issues
-uv run ruff check --fix .        # Auto-fix issues
-uv run ruff format .             # Format code (replaces black)
+```yaml
+# Default values for development/testing
+env:
+  - name: REPO_URL
+    value: "{{ .Values.repoUrl | default "https://github.com/octocat/Hello-World" }}"
+  - name: PROMPT  
+    value: "{{ .Values.prompt | default "Analyze this repository and describe what it does" }}"
+  - name: RUN_ID
+    value: "{{ .Values.runId | default "test-run" }}"
+```
 
-# Type checking with mypy
-uv run mypy app/                 # Type check app directory
-uv run mypy app/ --strict        # Strict mode
-uv run mypy app/ --show-error-codes  # Show error codes for ignores
+**Benefits:**
+1. **Development**: Job runs immediately with sensible defaults for testing
+2. **Production**: KubernetesService overrides with real values via Helm
+3. **Single Template**: No duplication between dev and prod configurations
+4. **Always Testable**: Agent changes can be tested without the full API
+
+### Kubernetes Commands
+
+```bash
+# Check pods
+kubectl get pods -n aideator
+
+# Check jobs
+kubectl get jobs -n aideator
+
+# Stream logs from a specific job
+kubectl logs -f job/agent-run123-0 -n aideator
+
+# Describe a job
+kubectl describe job agent-run123-0 -n aideator
+
+# Delete completed jobs
+kubectl delete jobs --field-selector status.successful=1 -n aideator
+```
+
+### Helm Commands
+
+```bash
+# Install AIdeator
+helm install aideator ./deploy/charts/aideator -n aideator --create-namespace
+
+# Upgrade with new values
+helm upgrade aideator ./deploy/charts/aideator -n aideator -f deploy/values/production.yaml
+
+# Check status
+helm status aideator -n aideator
+
+# Uninstall
+helm uninstall aideator -n aideator
+```
+
+### Testing & Quality
+
+```bash
+# Run tests (same as before)
+pytest
+pytest --cov=app --cov-report=html
+
+# Linting and formatting
+ruff check .
+ruff format .
+mypy app/
+
+# Run in container for consistency
+docker run --rm -v $(pwd):/app aideator-api:dev pytest
 ```
 
 ## 📋 Quality Standards
@@ -125,1085 +222,549 @@ uv run mypy app/ --show-error-codes  # Show error codes for ignores
 - **Proper Error Handling**: HTTPException for API errors, try/except blocks
 - **Type Hints**: Full type annotations with mypy strict mode compliance
 - **Runtime Validation**: Pydantic models for all inputs/outputs
-- **Security**: Parameterized queries, input validation, secure defaults
-- **Code Style**: Enforced by ruff with line length 88, Python 3.11+ features
+- **Security**: RBAC, secrets management, resource limits
+- **Cloud-Native**: Follow Kubernetes best practices, use standard tooling
 
-### Modern Python Standards
+### Kubernetes Best Practices
 
-- **Type Annotations**: All functions must have type hints (enforced by mypy)
-- **Pydantic Everywhere**: Use Pydantic for all data validation
-- **Docstrings**: Google-style docstrings for all public functions
-- **Import Order**: Automatically handled by ruff (stdlib → third-party → local)
-- **Async/Await**: Consistent async patterns, no blocking I/O in async functions
-- **Error Messages**: Descriptive errors with proper exception hierarchy
+- **Resource Limits**: Always set memory/CPU limits on containers
+- **Health Checks**: Readiness and liveness probes on all deployments
+- **Labels**: Consistent labeling for resource selection
+- **Namespaces**: Logical separation of resources
+- **RBAC**: Minimal permissions for service accounts
+- **Secrets**: Never hardcode sensitive data
+- **TTL**: Set ttlSecondsAfterFinished on Jobs
 
-### Pydantic Validation Patterns
+### Development Standards
 
-```python
-from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Optional
-from datetime import datetime
-
-# Use descriptive Field definitions
-class CreateRunRequest(BaseModel):
-    github_url: HttpUrl = Field(
-        ...,
-        description="Public GitHub repository URL",
-        examples=["https://github.com/fastapi/fastapi"]
-    )
-    prompt: constr(min_length=10, max_length=2000) = Field(
-        ...,
-        description="Prompt for the LLM agents"
-    )
-    
-    # Custom validators for complex logic
-    @field_validator('github_url')
-    @classmethod
-    def validate_github_url(cls, v: HttpUrl) -> HttpUrl:
-        if not str(v).startswith('https://github.com/'):
-            raise ValueError('Must be a GitHub URL')
-        return v
-    
-    # Model-level validation
-    @model_validator(mode='after')
-    def validate_request(self) -> 'CreateRunRequest':
-        # Complex validation across fields
-        return self
-
-# Use Pydantic Settings for config
-from pydantic_settings import BaseSettings
-
-class Settings(BaseSettings):
-    # All config validated at startup
-    anthropic_api_key: str
-    max_variations: int = Field(default=5, ge=1, le=10)
-    
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        case_sensitive=False
-    )
-```
-
-### API Design Principles
-
-- **RESTful Conventions**: Proper HTTP methods and status codes
-- **Response Models**: Pydantic models for request/response validation
-- **Error Responses**: Consistent error format with helpful messages
-- **Documentation**: OpenAPI/Swagger auto-generated from Pydantic models
-- **Versioning**: API versioning through URL path (/api/v1/)
-- **Validation Errors**: Automatic 422 responses with field-level details
+- **Tilt First**: Always use Tilt for local development
+- **Hot Reload**: Leverage Tilt's live_update for fast iteration
+- **Local Registry**: Use localhost:5005 to avoid remote pushes
+- **Helm Values**: Environment-specific configurations
+- **GitOps Ready**: Declarative configurations for all environments
 
 ## 🔧 Implementation Patterns
 
-### Dagger Container Management
+### Kubernetes Service Implementation
 
 ```python
-# app/services/dagger_service.py
-import dagger
-from contextlib import asynccontextmanager
-from typing import Optional
-
-class DaggerService:
-    """Manages Dagger client lifecycle and container operations"""
-    
-    def __init__(self):
-        self.client: Optional[dagger.Client] = None
-    
-    async def connect(self):
-        """Connect to Dagger engine"""
-        self.client = dagger.Connection(dagger.Config(
-            log_output=True,
-            execute_timeout=600  # 10 minutes for long operations
-        ))
-    
-    async def disconnect(self):
-        """Cleanup Dagger connection"""
-        if self.client:
-            await self.client.close()
-    
-    async def create_agent_container(
-        self, 
-        repo_url: str, 
-        prompt: str, 
-        variation_id: int,
-        agent_config: dict = None
-    ) -> dagger.Container:
-        """Create an isolated agent container with proper configuration"""
-        settings = get_settings()
-        env_vars = DaggerEnvironment.get_agent_env(variation_id)
-        
-        # Base container with caching
-        container = (
-            self.client.container()
-            .from_(settings.agent_container_image)
-            # Cache apt packages
-            .with_mounted_cache("/var/cache/apt", self.client.cache_volume("apt-cache"))
-            .with_mounted_cache("/var/lib/apt", self.client.cache_volume("apt-lib"))
-            .with_exec(["apt-get", "update"])
-            .with_exec(["apt-get", "install", "-y", "git", "--no-install-recommends"])
-            # Cache pip packages
-            .with_mounted_cache("/root/.cache/pip", self.client.cache_volume("pip-cache"))
-            .with_exec(["pip", "install", "--no-cache-dir", "anthropic", "aiofiles", "gitpython"])
-        )
-        
-        # Set up workspace and clone repo
-        container = (
-            container
-            .with_workdir(settings.dagger_workdir)
-            .with_exec(["git", "clone", "--depth", "1", repo_url, "."], 
-                      # Use timeout for clone operation
-                      experimental_exec_options=dagger.ExecOptions(
-                          timeout=settings.clone_timeout
-                      ))
-        )
-        
-        # Apply environment variables
-        for key, value in env_vars.items():
-            container = container.with_env_variable(key, value)
-        
-        # Mount secrets securely
-        for secret_name, secret_value in settings.get_dagger_secrets().items():
-            container = container.with_mounted_secret(
-                f"/secrets/{secret_name}",
-                self.client.set_secret(secret_name, secret_value)
-            )
-        
-        # Apply resource limits
-        container = (
-            container
-            .with_memory_limit(settings.agent_memory_limit)
-            .with_cpu_limit(settings.agent_cpu_limit)
-        )
-        
-        # Mount agent script and config
-        container = container.with_file(
-            "/app/agent.py",
-            self.client.host().file("./agent_scripts/streaming_agent.py")
-        )
-        
-        # Pass prompt via file to avoid command line length limits
-        container = container.with_new_file(
-            "/app/prompt.txt",
-            contents=prompt
-        )
-        
-        # Agent configuration
-        if agent_config:
-            container = container.with_new_file(
-                "/app/config.json",
-                contents=json.dumps(agent_config)
-            )
-        
-        return container
-
-# FastAPI lifespan management
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    app.state.dagger = DaggerService()
-    await app.state.dagger.connect()
-    yield
-    # Shutdown
-    await app.state.dagger.disconnect()
-```
-
-### Agent Execution Pipeline
-
-```python
-# app/services/agent_orchestrator.py
+# app/services/kubernetes_service.py
 import asyncio
-from typing import AsyncIterator
-import json
+import subprocess
+import yaml
+from typing import AsyncGenerator, Dict, Any
 
-class AgentOrchestrator:
-    def __init__(self, dagger_service: DaggerService, sse_manager: SSEManager):
-        self.dagger = dagger_service
-        self.sse = sse_manager
-    
-    async def execute_variations(
-        self, 
+class KubernetesService:
+    def __init__(self, namespace: str = "aideator"):
+        self.namespace = namespace
+        self.job_template_path = "k8s/jobs/agent-job-template.yaml"
+        
+    async def create_agent_job(
+        self,
         run_id: str,
-        repo_url: str, 
-        prompt: str, 
-        variations: int
-    ):
-        """Execute N agent variations in parallel containers"""
-        tasks = []
+        variation_id: int,
+        repo_url: str,
+        prompt: str,
+    ) -> str:
+        """Create a Kubernetes Job for an agent."""
+        job_name = f"agent-{run_id}-{variation_id}"
         
-        for i in range(variations):
-            container = await self.dagger.create_agent_container(
-                repo_url, prompt, i
-            )
-            task = asyncio.create_task(
-                self.stream_container_output(container, run_id, i)
-            )
-            tasks.append(task)
+        # Load and render template
+        with open(self.job_template_path) as f:
+            template = f.read()
+            
+        job_manifest = template.format(
+            run_id=run_id,
+            variation_id=variation_id,
+            repo_url=repo_url,
+            prompt=prompt.replace('"', '\\"'),
+            job_name=job_name
+        )
         
-        # Execute all containers in parallel
-        await asyncio.gather(*tasks, return_exceptions=True)
+        # Apply via kubectl
+        process = subprocess.Popen(
+            ["kubectl", "apply", "-f", "-", "--namespace", self.namespace],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        
+        stdout, stderr = process.communicate(input=job_manifest)
+        
+        if process.returncode != 0:
+            raise RuntimeError(f"Failed to create job: {stderr}")
+            
+        return job_name
     
-    async def stream_container_output(
-        self, 
-        container: dagger.Container, 
-        run_id: str, 
-        variation_id: int
-    ):
-        """Stream container stdout to SSE"""
-        # Execute the agent script with validated config
-        exec_result = container.with_exec([
-            "python", "-u", "/app/agent.py", 
-            "--variation", str(variation_id)
-        ])
+    async def stream_job_logs(
+        self,
+        job_name: str,
+        variation_id: int,
+    ) -> AsyncGenerator[str, None]:
+        """Stream logs from a Kubernetes Job."""
+        # Wait for pod to be ready
+        await self._wait_for_pod(job_name)
         
-        # Stream stdout line by line
-        async for line in exec_result.stdout().lines():
-            if line.strip():
-                await self.sse.send_event(run_id, {
+        # Start streaming logs
+        cmd = [
+            "kubectl", "logs", "-f",
+            f"job/{job_name}",
+            "--namespace", self.namespace,
+            "--tail", "0"  # Only new logs
+        ]
+        
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        async for line in process.stdout:
+            log_line = line.decode().strip()
+            if log_line:
+                yield json.dumps({
                     "variation_id": variation_id,
-                    "type": "agent_output",
-                    "content": line.strip()
+                    "content": log_line,
+                    "timestamp": datetime.utcnow().isoformat()
                 })
 ```
 
-### FastAPI Implementation with OpenAPI
+### Agent Orchestrator with Kubernetes
 
 ```python
-# app/main.py
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-
-from app.core.config import get_settings
-from app.api.v1 import runs, streams, health
-from app.services.dagger_service import DaggerService
-
-settings = get_settings()
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Manage app lifecycle including Dagger engine."""
-    # Startup
-    app.state.dagger = DaggerService()
-    await app.state.dagger.connect()
-    
-    yield
-    
-    # Shutdown
-    await app.state.dagger.disconnect()
-
-app = FastAPI(
-    title=settings.project_name,
-    version=settings.version,
-    openapi_url=f"{settings.api_v1_prefix}/openapi.json",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    lifespan=lifespan
-)
-
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Include routers
-app.include_router(health.router, tags=["System"])
-app.include_router(
-    runs.router,
-    prefix=settings.api_v1_prefix,
-    tags=["Runs"]
-)
-app.include_router(
-    streams.router,
-    prefix=settings.api_v1_prefix,
-    tags=["Streaming"]
-)
-
-# Route implementation matching OpenAPI spec
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from app.schemas.runs import CreateRunRequest, CreateRunResponse
-from app.services.agent_orchestrator import AgentOrchestrator
-
-router = APIRouter(prefix="/runs")
-
-@router.post(
-    "",
-    response_model=CreateRunResponse,
-    status_code=202,
-    summary="Create a new agent run",
-    response_description="Run accepted for processing"
-)
-async def create_run(
-    request: CreateRunRequest,
-    background_tasks: BackgroundTasks,
-    orchestrator: AgentOrchestrator = Depends(get_orchestrator),
-    db: AsyncSession = Depends(get_db),
-) -> CreateRunResponse:
-    """
-    Create a new agent run that will spawn N containerized LLM agents.
-    
-    The run is processed asynchronously in the background using Dagger containers.
-    Connect to the returned stream_url to receive real-time agent outputs.
-    """
-    # Validate GitHub URL
-    if not request.github_url.startswith("https://github.com/"):
-        raise HTTPException(
-            status_code=400,
-            detail="Only public GitHub repositories are supported"
-        )
-    
-    # Create run in database
-    run = await create_run_record(db, request)
-    
-    # Schedule background orchestration
-    background_tasks.add_task(
-        orchestrator.execute_variations,
-        run_id=run.id,
-        repo_url=request.github_url,
-        prompt=request.prompt,
-        variations=request.variations,
-        agent_config=request.agent_config
-    )
-    
-    return CreateRunResponse(
-        run_id=run.id,
-        stream_url=f"{settings.api_v1_prefix}/runs/{run.id}/stream",
-        status="accepted",
-        estimated_duration_seconds=request.variations * 40  # Rough estimate
-    )
-```
-
-### Pydantic Validation Flow Example
-
-```python
-# app/api/v1/runs.py
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from pydantic import ValidationError
-
-from app.schemas import (
-    CreateRunRequest, 
-    CreateRunResponse,
-    RunDetails,
-    ErrorResponse
-)
-from app.services.agent_orchestrator import AgentOrchestrator
-from app.core.deps import get_db, get_orchestrator
-
-router = APIRouter(prefix="/runs")
-
-@router.post(
-    "",
-    response_model=CreateRunResponse,  # Pydantic validates response
-    responses={
-        400: {"model": ErrorResponse},
-        422: {"model": ValidationErrorResponse}
-    }
-)
-async def create_run(
-    request: CreateRunRequest,  # Pydantic validates request automatically
-    background_tasks: BackgroundTasks,
-    orchestrator: AgentOrchestrator = Depends(get_orchestrator),
-    db: AsyncSession = Depends(get_db),
-) -> CreateRunResponse:
-    """
-    Create a new agent run with automatic validation.
-    
-    Pydantic ensures:
-    - GitHub URL is valid and starts with https://github.com/
-    - Prompt is 10-2000 characters
-    - Variations is between 1-5
-    - Agent config has valid model, temperature, etc.
-    """
-    try:
-        # Create execution context with validated data
-        context = AgentExecutionContext(
-            run_id=uuid4(),
-            variation_id=0,
-            repo_url=request.github_url,
-            prompt=request.prompt,
-            config=request.agent_config or AgentConfig(),
-            container_config=DaggerContainerConfig(
-                memory_limit=settings.agent_memory_limit,
-                cpu_limit=settings.agent_cpu_limit
+# app/services/agent_orchestrator.py
+class AgentOrchestrator:
+    def __init__(self, kubernetes_service: KubernetesService, sse_manager: SSEManager):
+        self.k8s = kubernetes_service
+        self.sse = sse_manager
+        
+    async def execute_variations(
+        self,
+        run_id: str,
+        repo_url: str,
+        prompt: str,
+        variations: int,
+    ):
+        """Execute N agent variations as Kubernetes Jobs."""
+        jobs = []
+        
+        # Create all jobs
+        for i in range(variations):
+            job_name = await self.k8s.create_agent_job(
+                run_id=run_id,
+                variation_id=i,
+                repo_url=repo_url,
+                prompt=prompt
             )
-        )
+            jobs.append((job_name, i))
+            
+        # Stream logs from all jobs concurrently
+        tasks = []
+        for job_name, variation_id in jobs:
+            task = asyncio.create_task(
+                self._stream_job_output(run_id, job_name, variation_id)
+            )
+            tasks.append(task)
+            
+        await asyncio.gather(*tasks, return_exceptions=True)
         
-        # Context is fully validated by Pydantic
-        run = await create_run_in_db(db, context)
-        
-        # Schedule background task
-        background_tasks.add_task(
-            orchestrator.execute_with_context,
-            context
-        )
-        
-        # Response is validated before returning
-        return CreateRunResponse(
-            run_id=run.id,
-            stream_url=f"{settings.api_v1_prefix}/runs/{run.id}/stream",
-            status="accepted",
-            estimated_duration_seconds=request.variations * 40
-        )
-        
-    except ValidationError as e:
-        # Pydantic validation errors are automatically 422
-        raise
-    except Exception as e:
-        # Other errors become 500
-        logger.error(f"Failed to create run: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error"
-        )
-
-# Streaming with validated events
-async def stream_events(run_id: UUID) -> AsyncIterator[str]:
-    """Stream validated SSE events"""
-    async for event in orchestrator.get_events(run_id):
-        # Each event is a Pydantic model
-        if isinstance(event, AgentOutputEvent):
-            yield f"event: {event.event_type.value}\n"
-            yield f"data: {event.model_dump_json()}\n\n"
-        elif isinstance(event, ErrorEvent):
-            yield f"event: error\n"
-            yield f"data: {event.model_dump_json()}\n\n"
+    async def _stream_job_output(
+        self,
+        run_id: str,
+        job_name: str,
+        variation_id: int
+    ):
+        """Stream output from a single job."""
+        try:
+            async for log_line in self.k8s.stream_job_logs(job_name, variation_id):
+                await self.sse.send_agent_output(run_id, variation_id, log_line)
+                
+            await self.sse.send_agent_complete(run_id, variation_id)
+            
+        except Exception as e:
+            await self.sse.send_agent_error(run_id, variation_id, str(e))
 ```
 
-### SSE Streaming Pattern
+### Tiltfile Configuration
 
 ```python
-from fastapi import Response
-from fastapi.responses import StreamingResponse
-import asyncio
-import json
+# Tiltfile
+# Phase 1: Check cluster
+local_resource(
+    name="cluster-check",
+    cmd="kubectl cluster-info",
+    labels=["cluster"]
+)
 
-async def event_generator(run_id: str):
-    """Generate SSE events for agent outputs."""
-    async for event in agent_stream:
-        yield f"event: message\ndata: {json.dumps(event)}\n\n"
-    
-    yield f"event: complete\ndata: {json.dumps({'status': 'completed'})}\n\n"
+# Phase 2: Build containers
+docker_build(
+    'aideator-api',
+    context='.',
+    dockerfile='./Dockerfile',
+    target='api',
+    live_update=[
+        sync('./app', '/app/app'),
+        run('pip install -r requirements.txt', trigger=['./requirements.txt'])
+    ]
+)
 
-@router.get("/{run_id}/stream")
-async def stream_run(run_id: str) -> StreamingResponse:
-    """Stream agent outputs via Server-Sent Events."""
-    return StreamingResponse(
-        event_generator(run_id),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",  # Disable nginx buffering
-        }
-    )
+docker_build(
+    'aideator-agent',
+    context='.',
+    dockerfile='./Dockerfile',
+    target='agent'
+)
+
+# Phase 3: Deploy with Helm
+k8s_yaml(helm(
+    'deploy/charts/aideator',
+    name='aideator',
+    namespace='aideator',
+    values=['deploy/values/local.yaml']
+))
+
+# Phase 4: Port forwarding
+k8s_resource(
+    'aideator',
+    port_forwards=['8000:8000'],
+    labels=['api']
+)
 ```
 
-### Database Pattern (SQLite with SQLModel)
+### Helm Values Structure
 
-```python
-from sqlmodel import Field, SQLModel, Session, select
-from datetime import datetime
-from typing import Optional
+```yaml
+# deploy/values/local.yaml
+image:
+  repository: aideator-api
+  tag: dev
+  pullPolicy: Always
 
-class Run(SQLModel, table=True):
-    """Database model for agent runs."""
-    id: str = Field(primary_key=True)
-    github_url: str
-    prompt: str
-    variations: int
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    winning_variation: Optional[int] = None
+service:
+  type: ClusterIP
+  port: 8000
 
-async def get_run(db: AsyncSession, run_id: str) -> Optional[Run]:
-    """Retrieve a run by ID."""
-    result = await db.execute(select(Run).where(Run.id == run_id))
-    return result.scalar_one_or_none()
+agents:
+  image: aideator-agent:dev
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+  jobTTL: 3600  # 1 hour
+
+# These values are used by agent-job.yaml
+# If not provided, template defaults are used
+# agentJobName: "agent-run-123-0"  # Optional
+# runId: "run-123"                  # Optional
+# variationId: "0"                  # Optional  
+# repoUrl: "https://github.com/..." # Optional
+# prompt: "Analyze this code"       # Optional
+
+env:
+  - name: KUBERNETES_NAMESPACE
+    valueFrom:
+      fieldRef:
+        fieldPath: metadata.namespace
+        
+rbac:
+  create: true
+  rules:
+    - apiGroups: ["batch"]
+      resources: ["jobs"]
+      verbs: ["create", "get", "list", "delete"]
+    - apiGroups: [""]
+      resources: ["pods", "pods/log"]
+      verbs: ["get", "list"]
 ```
 
 ## 🔐 Security Practices
 
-### SQL Injection Prevention
+### Kubernetes Security
 
-```python
-# ❌ NEVER do this
-query = f"SELECT * FROM runs WHERE id = '{run_id}'"
+```yaml
+# Pod Security Context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  capabilities:
+    drop: ["ALL"]
 
-# ✅ Always use parameterized queries
-result = await db.execute(
-    select(Run).where(Run.id == run_id)
-)
+# Network Policies (future)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aideator-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: aideator
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: aideator
+  egress:
+  - to:
+    - namespaceSelector: {}
 ```
 
-### Environment Configuration for Dagger
-
-```python
-# app/core/config.py
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
-from functools import lru_cache
-
-class Settings(BaseSettings):
-    """Application settings with validation and Dagger support."""
-    # API Configuration
-    api_v1_prefix: str = "/api/v1"
-    project_name: str = "AIdeator"
-    version: str = "1.0.0"
-    debug: bool = False
-    
-    # Security
-    anthropic_api_key: str
-    api_key_header: str = "X-API-Key"
-    allowed_origins: list[str] = ["*"]
-    
-    # Database
-    database_url: str = "sqlite+aiosqlite:///./aideator.db"
-    database_echo: bool = False
-    
-    # Dagger Configuration
-    dagger_log_output: bool = True
-    dagger_engine_timeout: int = 600  # 10 minutes
-    dagger_cache_volume: str = "aideator-cache"
-    dagger_workdir: str = "/workspace"
-    
-    # Agent Configuration
-    max_variations: int = 5
-    max_prompt_length: int = 2000
-    agent_container_image: str = "python:3.11-slim"
-    agent_memory_limit: str = "512m"
-    agent_cpu_limit: float = 0.5
-    
-    # Repository Configuration
-    clone_timeout: int = 300  # 5 minutes
-    max_repo_size_mb: int = 100
-    
-    # SSE Configuration
-    sse_ping_interval: int = 30
-    sse_retry_timeout: int = 3000
-    
-    # Redis (optional, for production)
-    redis_url: Optional[str] = None
-    
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False
-    )
-    
-    def get_dagger_secrets(self) -> dict[str, str]:
-        """Get secrets to mount in Dagger containers."""
-        return {
-            "anthropic-api-key": self.anthropic_api_key,
-        }
-
-@lru_cache
-def get_settings() -> Settings:
-    """Cached settings instance."""
-    return Settings()
-
-# Dagger-specific environment setup
-class DaggerEnvironment:
-    """Manages environment variables for Dagger containers."""
-    
-    @staticmethod
-    def get_agent_env(variation_id: int) -> dict[str, str]:
-        """Get environment variables for agent container."""
-        return {
-            "PYTHONUNBUFFERED": "1",
-            "AGENT_VARIATION_ID": str(variation_id),
-            "LOG_LEVEL": "INFO",
-        }
-    
-    @staticmethod
-    def get_build_args() -> dict[str, str]:
-        """Get build args for container construction."""
-        settings = get_settings()
-        return {
-            "PYTHON_VERSION": "3.11",
-            "WORKDIR": settings.dagger_workdir,
-        }
-```
-
-### Environment File Example
+### Secret Management
 
 ```bash
-# .env.example
-# API Configuration
-API_V1_PREFIX=/api/v1
-PROJECT_NAME=AIdeator
-VERSION=1.0.0
-DEBUG=false
+# Required secrets for deployment
+# 1. OpenAI API key (for LiteLLM)
+kubectl create secret generic openai-secret \
+  --from-literal=api-key="$OPENAI_API_KEY" \
+  -n aideator
 
-# Security
-ANTHROPIC_API_KEY=sk-ant-api03-...
-API_KEY_HEADER=X-API-Key
-ALLOWED_ORIGINS=["http://localhost:3000","https://app.aideator.com"]
+# 2. Application secret key
+kubectl create secret generic aideator-secret \
+  --from-literal=secret-key="$(openssl rand -hex 32)" \
+  -n aideator
 
-# Database
-DATABASE_URL=sqlite+aiosqlite:///./aideator.db
-DATABASE_ECHO=false
+# Verify secrets exist
+kubectl get secrets -n aideator
+```
 
-# Dagger Configuration
-DAGGER_LOG_OUTPUT=true
-DAGGER_ENGINE_TIMEOUT=600
-DAGGER_CACHE_VOLUME=aideator-cache
-DAGGER_WORKDIR=/workspace
+### RBAC Configuration
 
-# Agent Configuration
-MAX_VARIATIONS=5
-MAX_PROMPT_LENGTH=2000
-AGENT_CONTAINER_IMAGE=python:3.11-slim
-AGENT_MEMORY_LIMIT=512m
-AGENT_CPU_LIMIT=0.5
-
-# Repository Configuration
-CLONE_TIMEOUT=300
-MAX_REPO_SIZE_MB=100
-
-# SSE Configuration
-SSE_PING_INTERVAL=30
-SSE_RETRY_TIMEOUT=3000
-
-# Redis (optional)
-# REDIS_URL=redis://localhost:6379/0
+```yaml
+# Minimal permissions for the service account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: aideator-job-manager
+rules:
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["create", "get", "list", "watch", "delete"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
 ```
 
 ## 🧪 Testing Approach
 
-### Modern Test Configuration
+### End-to-End Testing (Black Box)
 
-```toml
-# pyproject.toml
-[tool.pytest.ini_options]
-minversion = "7.0"
-testpaths = ["tests"]
-asyncio_mode = "auto"
-addopts = [
-    "--strict-markers",
-    "--tb=short",
-    "--cov=app",
-    "--cov-branch",
-    "--cov-report=term-missing:skip-covered",
-    "--cov-fail-under=80",
-]
-markers = [
-    "unit: Unit tests (fast)",
-    "integration: Integration tests (slower)",
-    "e2e: End-to-end tests (slowest)",
-]
+Treat the application as a black box when testing. **Do NOT use kubectl port-forward** - rely on Tilt's built-in port forwarding or the exposed service interface.
 
-[tool.coverage.run]
-source = ["app"]
-omit = ["*/tests/*", "*/migrations/*"]
+```bash
+# 1. Start the application with Tilt
+tilt up
 
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "if __name__ == .__main__.:",
-    "raise NotImplementedError",
-    "if TYPE_CHECKING:",
-]
+# 2. Wait for services to be ready (Tilt handles port forwarding)
+# API available at: http://localhost:8000
+# Tilt UI at: http://localhost:10350
+
+# 3. Test API endpoints directly
+curl http://localhost:8000/api/v1/health | jq
+
+# 4. When testing SSE streaming, ALWAYS use timeout to avoid hanging
+timeout 15 curl -N -H "X-API-Key: $API_KEY" \
+  http://localhost:8000/api/v1/runs/${RUN_ID}/stream
+
+# 5. Monitor agent output (kubectl logs are streamed via SSE)
+# The streaming works by:
+# - API creates Kubernetes Job
+# - KubernetesService uses kubectl logs -f to stream pod logs
+# - Logs are forwarded to SSE clients in real-time
 ```
 
-### Unit Test Pattern with Fixtures
+### Testing Checklist
 
-```python
-import pytest
-from httpx import AsyncClient
-from sqlmodel import SQLModel, create_engine
-from sqlmodel.ext.asyncio.session import AsyncSession
-from sqlalchemy.ext.asyncio import create_async_engine
+```bash
+# Health Check
+curl -s http://localhost:8000/api/v1/health | jq
 
-from app.main import app
-from app.models import Run
-from app.database import get_session
+# User Registration
+curl -X POST http://localhost:8000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username": "test", "email": "test@example.com", "password": "TestPass123"}' | jq
 
-# Fixtures
-@pytest.fixture
-async def async_client():
-    """Create an async test client."""
-    async with AsyncClient(app=app, base_url="http://test") as client:
-        yield client
+# Login (use email, not username)
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "test@example.com", "password": "TestPass123"}' | jq
 
-@pytest.fixture
-async def db_session():
-    """Create a test database session with rollback."""
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
-    
-    async with AsyncSession(engine) as session:
-        yield session
-        await session.rollback()
+# Create API Key
+curl -X POST http://localhost:8000/api/v1/auth/api-keys \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Test Key", "description": "For testing"}' | jq
 
-# Override dependency
-@pytest.fixture(autouse=True)
-def override_get_session(db_session):
-    """Override the database session dependency."""
-    app.dependency_overrides[get_session] = lambda: db_session
+# Create Run
+curl -X POST http://localhost:8000/api/v1/runs \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"github_url": "https://github.com/octocat/Hello-World", "prompt": "Add README", "variations": 1}' | jq
 
-# Unit test example
-@pytest.mark.unit
-async def test_create_run(async_client: AsyncClient, db_session: AsyncSession):
-    """Test creating a new run."""
-    response = await async_client.post("/api/v1/runs", json={
-        "github_url": "https://github.com/user/repo",
-        "prompt": "Refactor the main function",
-        "variations": 3
-    })
-    
-    assert response.status_code == 202
-    data = response.json()
-    assert "run_id" in data
-    assert "stream_url" in data
-    
-    # Verify database
-    run = await db_session.get(Run, data["run_id"])
-    assert run is not None
-    assert run.github_url == "https://github.com/user/repo"
-
-# Parametrized test example
-@pytest.mark.parametrize("variations,expected_status", [
-    (1, 202),
-    (5, 202),
-    (0, 422),  # Invalid: too few
-    (6, 422),  # Invalid: too many
-])
-async def test_create_run_variations(
-    async_client: AsyncClient, 
-    variations: int, 
-    expected_status: int
-):
-    """Test run creation with different variation counts."""
-    response = await async_client.post("/api/v1/runs", json={
-        "github_url": "https://github.com/user/repo",
-        "prompt": "Test prompt",
-        "variations": variations
-    })
-    assert response.status_code == expected_status
+# Stream Output (with timeout!)
+timeout 20 curl -N -H "X-API-Key: $API_KEY" \
+  http://localhost:8000/api/v1/runs/${RUN_ID}/stream | grep -E "(event:|data:)"
 ```
 
-### E2E Test Pattern
+### Verifying Streaming Works (Compare kubectl vs SSE)
 
-```python
-import asyncio
-from typing import AsyncGenerator
+```bash
+# CRITICAL: Test that kubectl logs match SSE output
+# This verifies the entire streaming pipeline
 
-import pytest
-from httpx import AsyncClient, ASGITransport
-from playwright.async_api import async_playwright, Page
+# Terminal 1: Monitor kubectl logs directly
+RUN_ID="run-abc123"
+kubectl logs -f job/agent-${RUN_ID}-0 -n aideator | \
+  grep -E "Starting LLM streaming|Streaming LLM|chunks_received"
 
-@pytest.fixture
-async def api_server():
-    """Start the API server for E2E tests."""
-    # In practice, you might use a subprocess or docker container
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
+# Terminal 2: Monitor SSE stream from API
+timeout 30 curl -N -H "X-API-Key: $API_KEY" \
+  http://localhost:8000/api/v1/runs/${RUN_ID}/stream 2>/dev/null | \
+  while IFS= read -r line; do
+    if [[ $line == data:* ]] && echo "$line" | grep -q "Streaming"; then
+      echo "SSE: $line"
+    fi
+  done
 
-@pytest.fixture
-async def browser_page() -> AsyncGenerator[Page, None]:
-    """Create a browser page for E2E tests."""
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
-        yield page
-        await browser.close()
-
-@pytest.mark.e2e
-async def test_full_flow(api_server: AsyncClient, browser_page: Page):
-    """Test the complete user flow from submission to selection."""
-    # Create a run via API
-    response = await api_server.post("/api/v1/runs", json={
-        "github_url": "https://github.com/fastapi/fastapi",
-        "prompt": "Add type hints to main.py",
-        "variations": 3
-    })
-    assert response.status_code == 202
-    run_id = response.json()["run_id"]
-    
-    # Connect to SSE stream
-    stream_url = f"/api/v1/runs/{run_id}/stream"
-    events = []
-    
-    async with api_server.stream("GET", stream_url) as stream:
-        async for line in stream.aiter_lines():
-            if line.startswith("data: "):
-                events.append(line[6:])
-            if len(events) >= 10:  # Collect some events
-                break
-    
-    # Verify we got events
-    assert len(events) > 0
-    
-    # Select a winning variation
-    response = await api_server.post(f"/api/v1/runs/{run_id}/select", json={
-        "winning_variation_id": 1
-    })
-    assert response.status_code == 200
+# Both should show the same streaming events!
+# If SSE is missing events that kubectl shows, there's a problem
 ```
 
-### Test Utilities
+### Unit Testing
 
-```python
-# tests/conftest.py
-import pytest
-from typing import AsyncGenerator
-from sqlmodel import SQLModel
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
+```bash
+# Run unit tests locally
+pytest tests/
 
-from app.config import settings
-from app.main import app
+# Run with coverage
+pytest --cov=app --cov-report=html
 
-# Test database URL
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
-
-@pytest.fixture(scope="function")
-async def test_db() -> AsyncGenerator[AsyncSession, None]:
-    """Create a fresh test database for each test."""
-    engine = create_async_engine(TEST_DATABASE_URL, echo=False)
-    
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.drop_all)
-        await conn.run_sync(SQLModel.metadata.create_all)
-    
-    async_session_maker = sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False
-    )
-    
-    async with async_session_maker() as session:
-        yield session
-
-# Factory fixtures
-@pytest.fixture
-def make_run():
-    """Factory for creating test runs."""
-    def _make_run(**kwargs):
-        defaults = {
-            "github_url": "https://github.com/test/repo",
-            "prompt": "Test prompt",
-            "variations": 3,
-        }
-        return Run(**{**defaults, **kwargs})
-    return _make_run
+# Run in Docker (for consistency)
+docker run --rm -v $(pwd):/app \
+  -e SECRET_KEY=test-secret-key-32-chars-minimum \
+  -e OPENAI_API_KEY=sk-test-key \
+  aideator-api:dev pytest
 ```
 
 ## 🚨 Common Pitfalls to Avoid
 
 ### What I Never Do
 
-- ❌ Use synchronous I/O in async functions (open, requests, time.sleep)
-- ❌ Return static/mock data in production endpoints
-- ❌ Use string formatting for SQL queries
-- ❌ Forget to handle exceptions in async operations
-- ❌ Mix sync and async database operations
+- ❌ Hardcode cluster URLs or namespaces
+- ❌ Skip resource limits on containers
+- ❌ Use `kubectl exec` for normal operations
+- ❌ Ignore Job TTL settings
+- ❌ Mix development and production configs
+- ❌ Use kubectl port-forward when Tilt is running
+- ❌ Test without timeouts on streaming endpoints
+- ❌ Run e2e tests inside containers (treat as black box)
+- ❌ Forget to create required secrets before deployment
+- ❌ Use OpenRouter references (we use LiteLLM with OpenAI)
+- ❌ Assume Tilt will instantly rebuild (wait 10+ seconds)
 
 ### What I Always Do
 
-- ✅ Use `async def` for all route handlers
-- ✅ Implement proper error handling with HTTPException
-- ✅ Add response_model to endpoints for validation
-- ✅ Use dependency injection for database sessions
-- ✅ Set appropriate status codes (201 for POST, 202 for async operations)
-- ✅ Validate all user inputs with Pydantic models
+- ✅ Use Kubernetes Jobs for batch workloads
+- ✅ Set resource requests and limits
+- ✅ Implement proper RBAC
+- ✅ Use ConfigMaps and Secrets appropriately
+- ✅ Add meaningful labels and annotations
+- ✅ Test with Tilt before manual deployment
+- ✅ Use timeout when testing SSE/streaming endpoints
+- ✅ Treat the API as a black box for e2e tests
+- ✅ Verify kubectl logs streaming works via SSE
+- ✅ Create openai-secret before deployment: `kubectl create secret generic openai-secret --from-literal=api-key=$OPENAI_API_KEY -n aideator`
+- ✅ Use agent-job-dev-test for testing agent changes
+- ✅ Touch files to trigger Tilt rebuilds when needed
 
 ## 🔄 Development Workflow
 
-### Modern Tool Configuration
+### Kubernetes Development Flow
 
-```toml
-# pyproject.toml - Complete configuration
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+1. **Start Tilt**: `tilt up` - Handles everything automatically
+2. **Make Changes**: Edit code, Tilt detects and rebuilds
+3. **Check Logs**: Use Tilt UI or `kubectl logs`
+4. **Debug Jobs**: `kubectl describe job <name>`
+5. **Clean Up**: `tilt down` or `kubectl delete jobs --all`
 
-[project]
-name = "aideator"
-version = "0.1.0"
-description = "Dagger-powered LLM orchestration platform"
-requires-python = ">=3.11"
-dependencies = [
-    "fastapi>=0.104.0",
-    "uvicorn[standard]>=0.24.0",
-    "pydantic>=2.5.0",
-    "pydantic-settings>=2.0.0",
-    "sqlmodel>=0.0.14",
-    "aiosqlite>=0.19.0",
-    "httpx>=0.25.0",
-    "dagger-io>=0.9.0",
-    "anthropic>=0.18.0",
-    "python-multipart>=0.0.6",
-    "sse-starlette>=2.0.0",
-    "structlog>=23.0.0",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.4.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-cov>=4.1.0",
-    "pytest-mock>=3.12.0",
-    "mypy>=1.7.0",
-    "ruff>=0.1.0",
-    "httpx>=0.25.0",  # For testing
-    "hypothesis>=6.90.0",  # Property testing
-]
-
-[tool.ruff]
-# Enable pycodestyle, pyflakes, bugbear, and more
-select = ["E", "F", "B", "W", "I", "N", "UP", "S", "A", "C4", "RET", "SIM", "TCH"]
-ignore = ["E501", "B008"]  # Line length handled by formatter, B008 for FastAPI Depends
-line-length = 88
-target-version = "py311"
-
-[tool.ruff.per-file-ignores]
-"tests/*" = ["S101", "S106"]  # Allow assert and hardcoded passwords in tests
-
-[tool.mypy]
-python_version = "3.11"
-strict = true
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
-strict_equality = true
-
-# Per-module options
-[[tool.mypy.overrides]]
-module = "tests.*"
-ignore_errors = true
-
-[tool.pytest.ini_options]
-minversion = "7.0"
-testpaths = ["tests"]
-asyncio_mode = "auto"
-```
-
-### Ruff Configuration (Alternative)
-
-```toml
-# ruff.toml - If you prefer separate config
-[lint]
-select = [
-    "E",   # pycodestyle errors
-    "F",   # pyflakes
-    "I",   # isort
-    "B",   # bugbear
-    "C4",  # comprehensions
-    "UP",  # pyupgrade
-    "ARG", # unused arguments
-    "SIM", # simplify
-    "TCH", # type checking
-]
-
-[format]
-quote-style = "double"
-indent-style = "space"
-line-ending = "auto"
-```
-
-### Before Committing
+### Deployment Flow
 
 ```bash
-# Run all checks with uv
-uv run ruff check --fix .        # Fix linting issues
-uv run ruff format .             # Format code
-uv run mypy app/                 # Type check
-uv run pytest                    # Run tests
-uv run pytest --cov=app --cov-fail-under=80  # Ensure coverage
+# Development
+tilt up
 
-# Or create a Makefile
-# Makefile
-.PHONY: check
-check:
-	uv run ruff check .
-	uv run ruff format --check .
-	uv run mypy app/
-	uv run pytest --cov=app --cov-fail-under=80
+# Staging
+helm upgrade --install aideator ./deploy/charts/aideator \
+  -n aideator-staging \
+  -f deploy/values/staging.yaml
+
+# Production
+helm upgrade --install aideator ./deploy/charts/aideator \
+  -n aideator-prod \
+  -f deploy/values/production.yaml \
+  --atomic \
+  --wait
 ```
-
-### API Development Flow
-
-1. Define Pydantic models with strict validation
-2. Implement async route handler with type hints
-3. Add comprehensive error handling
-4. Write unit and integration tests
-5. Run full quality check suite
-6. Update OpenAPI documentation
-
-## 🪝 CNS Hooks Integration
-
-The project uses CNS hooks for quality enforcement:
-
-### Active Hooks for Python/FastAPI
-
-- **secret-scanner.py** - Prevents API key exposure
-- **pre-commit-validator.py** - Runs ruff, mypy, and tests automatically
-- **no-mock-code.py** - Ensures production-ready implementations
-- **env-sync-validator.py** - Keeps .env files synchronized
-- **fastapi-async-validator.py** - Enforces async best practices
-- **python-type-hints-validator.py** - Encourages type annotations
-- **mypy-strict-mode.py** - Ensures mypy strict compliance
-- **python-testing-standards.py** - Enforces pytest best practices
-- **sqlite-security-validator.py** - Prevents SQL injection
-
-### Hook Benefits
-
-- **Automatic Quality Gates**: Validates code before commits
-- **Modern Tool Integration**: Works with uv, ruff, mypy
-- **FastAPI-Specific**: Detects async/await issues, route patterns
-- **Security First**: SQL injection prevention, secret scanning
-- **Test Quality**: Ensures proper test structure and coverage
 
 ## 📚 Key Technologies
 
 ### Core Stack
 
 - **FastAPI** - Modern async web framework with automatic OpenAPI
+- **Kubernetes** - Container orchestration and job management
+- **kubectl** - Native log streaming and resource management
+- **Helm** - Package manager for Kubernetes applications
+- **Tilt** - Local Kubernetes development environment
+- **k3d** - Lightweight local Kubernetes clusters
 - **SQLite + SQLModel** - Lightweight database with async ORM
 - **Pydantic** - Data validation and serialization
-- **HTTPX** - Async HTTP client for Claude API integration
-- **asyncio** - Concurrent task orchestration for N agents
-- **Server-Sent Events** - Real-time streaming protocol
+
+### Kubernetes Components
+
+- **Jobs** - Batch processing for agent execution
+- **Deployments** - FastAPI service hosting
+- **Services** - Network access to pods
+- **ConfigMaps** - Configuration management
+- **Secrets** - Sensitive data storage
+- **RBAC** - Access control for kubectl operations
 
 ### Development Tools
 
-- **uv** - Fast Python package manager (10-100x faster than pip)
-- **pytest** - Testing framework with async support
-- **pytest-asyncio** - Async test support
-- **pytest-cov** - Coverage reporting
-- **ruff** - All-in-one Python linter and formatter (replaces black, flake8, isort)
-- **mypy** - Static type checker with strict mode
-- **hypothesis** - Property-based testing for edge cases
-
-### Testing Stack
-
-- **Unit Tests**: pytest with fixtures and parametrization
-- **Integration Tests**: httpx AsyncClient for API testing
-- **E2E Tests**: playwright for full flow testing
-- **Coverage**: 80% minimum enforced by hooks
-- **Mocking**: pytest-mock for external dependencies
+- **Tilt** - Kubernetes development workflow
+- **ctlptl** - Cluster lifecycle management
+- **k3d** - Local Kubernetes clusters
+- **Local Registry** - Fast container iteration
+- **Port Forwarding** - Local service access
 
 ## 🎯 MVP Success Criteria
 
-The backend successfully:
+The Kubernetes-native backend successfully:
 
-1. Accepts job submissions with repo URL and prompt
-2. Clones repositories to temporary locations
-3. Orchestrates N concurrent Claude API calls
-4. Streams real-time agent outputs via SSE
-5. Persists user's winning variation selection
+1. Creates Kubernetes Jobs for each agent variation
+2. Streams logs via kubectl to SSE endpoints
+3. Manages Job lifecycle with TTL and cleanup
+4. Provides RBAC-secured kubectl operations
+5. Deploys via Helm with environment-specific values
+6. Enables rapid development with Tilt
+
+## 🌟 Key Advantages of Kubernetes Approach
+
+1. **Native Integration**: Uses standard Kubernetes APIs and tooling
+2. **Observability**: Full visibility through kubectl and Kubernetes events
+3. **Scalability**: Leverages Kubernetes scheduling and resource management
+4. **Portability**: Runs on any Kubernetes cluster (local, cloud, on-prem)
+5. **Security**: Built-in RBAC, network policies, and secrets management
+6. **Developer Experience**: Tilt provides excellent local development workflow
 
 ______________________________________________________________________
 
-**I am your primary coding assistant for AIdeator. I build production-ready FastAPI backends with real-time streaming, ensuring robust async patterns and comprehensive error handling.**
+**I am your primary coding assistant for AIdeator. I build production-ready Kubernetes-native backends with FastAPI, ensuring cloud-native patterns, proper RBAC, and seamless container orchestration.**

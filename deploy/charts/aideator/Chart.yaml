@@ -1,0 +1,19 @@
+apiVersion: v2
+name: aideator
+description: AIdeator - Kubernetes-based LLM orchestration platform
+version: 0.1.0
+appVersion: "1.0.0"
+type: application
+
+keywords:
+  - ai
+  - llm
+  - orchestration
+  - kubernetes
+  - fastapi
+
+maintainers:
+  - name: AIdeator Team
+    email: team@aideator.com
+
+dependencies: []

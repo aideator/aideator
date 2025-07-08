@@ -1,0 +1,58 @@
+# Template for agent jobs - instantiated by FastAPI
+# In dev, this deploys with test defaults for easy testing
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{ .Values.agentJobName | default "agent-job-dev-test" }}"
+  labels:
+    app: aideator-agent
+    run-id: "{{ .Values.runId | default "test-run" }}"
+    variation-id: "{{ .Values.variationId | default "0" }}"
+spec:
+  ttlSecondsAfterFinished: {{ .Values.agents.jobTTL }}
+  template:
+    metadata:
+      labels:
+        app: aideator-agent
+        run-id: "{{ .Values.runId | default "unknown" }}"
+        variation-id: "{{ .Values.variationId | default "0" }}"
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: agent
+          image: "{{ .Values.agentImage.repository }}:{{ .Values.agentImage.tag }}"
+          imagePullPolicy: {{ .Values.agentImage.pullPolicy }}
+          env:
+            # OpenRouter removed - using LiteLLM with direct OpenAI SDK
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.openai.name }}
+                  key: {{ .Values.secrets.openai.key }}
+                  optional: {{ .Values.secrets.openai.optional | default false }}
+            - name: REPO_URL
+              value: "{{ .Values.repoUrl | default "https://github.com/octocat/Hello-World" }}"
+            - name: PROMPT
+              value: "{{ .Values.prompt | default "Analyze this repository and describe what it does" }}"
+            - name: VARIATION_ID
+              value: "{{ .Values.variationId | default "0" }}"
+            - name: RUN_ID
+              value: "{{ .Values.runId | default "test-run" }}"
+            - name: LOG_LEVEL
+              value: "INFO"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "Starting agent variation {{ .Values.variationId | default "0" }} for run {{ .Values.runId | default "test-run" }}"
+              echo "Repository: {{ .Values.repoUrl | default "https://github.com/octocat/Hello-World" }}"
+              echo "Prompt: {{ .Values.prompt | default "Analyze this repository and describe what it does" }}"
+              python -u /app/agent/main.py
+          resources:
+            {{- toYaml .Values.agents.resources | nindent 12 }}
+      backoffLimit: 0

@@ -13,7 +13,7 @@ from app.core.database import get_session
 from app.main import app
 from app.models.run import Run
 from app.models.user import APIKey, User
-from app.services.dagger_service import DaggerService
+from app.services.kubernetes_service import KubernetesService
 from app.services.sse_manager import SSEManager
 
 
@@ -82,8 +82,8 @@ async def client(db_session: AsyncSession, test_settings: Settings) -> AsyncGene
     app.dependency_overrides[get_settings] = override_get_settings
     app.dependency_overrides[get_session] = override_get_session
     
-    # Mock Dagger service
-    app.state.dagger = MockDaggerService()
+    # Mock Kubernetes service
+    app.state.kubernetes = MockKubernetesService()
     
     async with AsyncClient(app=app, base_url="http://test") as ac:
         yield ac
@@ -92,9 +92,9 @@ async def client(db_session: AsyncSession, test_settings: Settings) -> AsyncGene
 
 
 @pytest.fixture
-def mock_dagger_service():
-    """Mock Dagger service for testing."""
-    return MockDaggerService()
+def mock_kubernetes_service():
+    """Mock Kubernetes service for testing."""
+    return MockKubernetesService()
 
 
 @pytest.fixture
@@ -104,8 +104,8 @@ def sse_manager():
 
 
 # Mock implementations
-class MockDaggerService:
-    """Mock Dagger service for testing."""
+class MockKubernetesService:
+    """Mock Kubernetes service for testing."""
     
     def __init__(self):
         self._connected = True
@@ -120,22 +120,15 @@ class MockDaggerService:
     def is_connected(self) -> bool:
         return self._connected
     
-    async def create_agent_container(self, *args, **kwargs):
-        """Mock container creation."""
-        return MockContainer()
+    async def create_agent_job(self, *args, **kwargs):
+        """Mock job creation."""
+        return f"agent-{kwargs.get('run_id', 'test')}-{kwargs.get('variation_id', 0)}"
     
-    async def execute_container(self, container, command):
-        """Mock container execution."""
+    async def stream_job_logs(self, job_name, run_id, variation_id=None):
+        """Mock job log streaming."""
         for i in range(5):
             yield f"[Agent] Mock output line {i}"
             await asyncio.sleep(0.1)
-
-
-class MockContainer:
-    """Mock Dagger container."""
-    
-    def with_exec(self, command):
-        return self
 
 
 # Factory fixtures

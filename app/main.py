@@ -16,7 +16,7 @@ from app.core.database import create_db_and_tables
 from app.core.logging import setup_logging
 from app.middleware.logging import LoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
-from app.services.dagger_service import DaggerService
+# Using Kubernetes service for container orchestration
 from app.utils.openapi import custom_openapi
 
 settings = get_settings()
@@ -25,7 +25,7 @@ logger = setup_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Manage app lifecycle including Dagger engine and database."""
+    """Manage app lifecycle - database initialization only."""
     # Startup
     logger.info(f"Starting {settings.project_name} v{settings.version}")
 
@@ -33,26 +33,13 @@ async def lifespan(app: FastAPI):
     await create_db_and_tables()
     logger.info("Database initialized")
 
-    # Initialize Dagger service
-    app.state.dagger = DaggerService()
-    try:
-        await app.state.dagger.connect()
-        logger.info("Connected to Dagger engine")
-    except Exception as e:
-        logger.error(f"Failed to connect to Dagger engine: {e}")
-        # Continue without Dagger in development
-        if settings.debug:
-            app.state.dagger = None
-        else:
-            raise
-
+    # Kubernetes connections are handled via kubectl
+    # No persistent connection needed at the server level
+    
     yield
 
     # Shutdown
     logger.info("Shutting down application")
-    if app.state.dagger:
-        await app.state.dagger.disconnect()
-        logger.info("Disconnected from Dagger engine")
 
 
 def create_application() -> FastAPI:
@@ -70,12 +57,12 @@ def create_application() -> FastAPI:
             {"url": "https://api.aideator.com", "description": "Production"},
         ],
         description="""
-        AIdeator is a Dagger-powered LLM orchestration platform that runs multiple AI agents in isolated containers, 
+        AIdeator is a Kubernetes-native LLM orchestration platform that runs multiple AI agents in isolated containers, 
         streaming their thought processes in real-time.
         
         ## Features
         
-        * **Container Isolation** - Each agent runs in its own Dagger container
+        * **Container Isolation** - Each agent runs in its own Kubernetes Job
         * **Real-time Streaming** - Server-Sent Events for live agent output
         * **Parallel Execution** - Run N variations concurrently
         * **Result Persistence** - Save and retrieve winning variations
@@ -143,7 +130,7 @@ def create_application() -> FastAPI:
         return {
             "status": "healthy",
             "version": settings.version,
-            "dagger": app.state.dagger is not None,
+            "orchestration": "kubernetes",  # Using Kubernetes for orchestration
         }
 
     return app
