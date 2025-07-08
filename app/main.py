@@ -16,7 +16,7 @@ from app.core.database import create_db_and_tables
 from app.core.logging import setup_logging
 from app.middleware.logging import LoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
-# Dagger service removed - now handled via Dagger modules
+# Using Kubernetes service for container orchestration
 from app.utils.openapi import custom_openapi
 
 settings = get_settings()
@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
     await create_db_and_tables()
     logger.info("Database initialized")
 
-    # Dagger connections are now handled on-demand via the Dagger module
+    # Kubernetes connections are handled via kubectl
     # No persistent connection needed at the server level
     
     yield
@@ -57,12 +57,12 @@ def create_application() -> FastAPI:
             {"url": "https://api.aideator.com", "description": "Production"},
         ],
         description="""
-        AIdeator is a Dagger-powered LLM orchestration platform that runs multiple AI agents in isolated containers, 
+        AIdeator is a Kubernetes-native LLM orchestration platform that runs multiple AI agents in isolated containers, 
         streaming their thought processes in real-time.
         
         ## Features
         
-        * **Container Isolation** - Each agent runs in its own Dagger container
+        * **Container Isolation** - Each agent runs in its own Kubernetes Job
         * **Real-time Streaming** - Server-Sent Events for live agent output
         * **Parallel Execution** - Run N variations concurrently
         * **Result Persistence** - Save and retrieve winning variations
@@ -130,7 +130,7 @@ def create_application() -> FastAPI:
         return {
             "status": "healthy",
             "version": settings.version,
-            "dagger_module": "aideator",  # Dagger module name
+            "orchestration": "kubernetes",  # Using Kubernetes for orchestration
         }
 
     return app

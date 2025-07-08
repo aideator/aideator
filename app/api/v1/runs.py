@@ -42,7 +42,7 @@ async def create_run(
     """
     Create a new agent run that will spawn N containerized LLM agents.
     
-    The run is processed asynchronously in the background using Dagger containers.
+    The run is processed asynchronously in the background using Kubernetes Jobs.
     Connect to the returned stream_url to receive real-time agent outputs.
     """
     # Generate run ID

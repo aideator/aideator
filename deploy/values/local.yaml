@@ -33,14 +33,17 @@ agents:
       cpu: "250m"
   jobTTL: 1800  # 30 minutes for development
 
-# Use in-memory SQLite for development
+# Use SQLite with persistent volume
 database:
   type: sqlite
-  url: "sqlite+aiosqlite:///./data/aideator.db"
+  url: "sqlite+aiosqlite:////app/data/aideator.db"
 
-# Disable persistence for local development
+# Enable persistence for SQLite database
 persistence:
-  enabled: false
+  enabled: true
+  accessMode: ReadWriteOnce
+  size: 1Gi
+  storageClass: ""  # Use default storage class
 
 # Resources for local development
 resources:
@@ -68,4 +71,4 @@ env:
   - name: LOG_LEVEL
     value: "DEBUG"
   - name: DATABASE_URL
-    value: "sqlite+aiosqlite:///./data/aideator.db"
+    value: "sqlite+aiosqlite:////app/data/aideator.db"

@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Application settings with validation and Dagger support."""
+    """Application settings with validation and Kubernetes support."""
 
     # API Configuration
     api_v1_prefix: str = "/api/v1"
@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     anthropic_api_key: str
-    anthropic_api_key_env_var: str = "ANTHROPIC_API_KEY"  # Environment variable name for Dagger
+    anthropic_api_key_env_var: str = "ANTHROPIC_API_KEY"  # Environment variable name for containers
     api_key_header: str = "X-API-Key"
     allowed_origins: list[str] = ["*"]
     allowed_hosts: list[str] = ["*"]
@@ -37,12 +37,10 @@ class Settings(BaseSettings):
     database_pool_size: int = 5
     database_pool_recycle: int = 3600
 
-    # Dagger Configuration
-    dagger_log_output: bool = True
-    dagger_engine_timeout: int = 600  # 10 minutes
-    dagger_cache_volume: str = "aideator-cache"
-    dagger_workdir: str = "/workspace"
-    dagger_engine_port: int = 8080
+    # Kubernetes Configuration
+    kubernetes_namespace: str = "aideator"
+    kubernetes_job_ttl: int = 3600  # 1 hour
+    kubernetes_workdir: str = "/workspace"
 
     # Agent Configuration
     max_variations: int = Field(default=5, ge=1, le=10)
@@ -132,8 +130,8 @@ class Settings(BaseSettings):
             )
         return self
 
-    def get_dagger_secrets(self) -> dict[str, str]:
-        """Get secrets to mount in Dagger containers."""
+    def get_kubernetes_secrets(self) -> dict[str, str]:
+        """Get secrets to mount in Kubernetes containers."""
         return {
             "anthropic-api-key": self.anthropic_api_key,
         }
@@ -149,8 +147,8 @@ class Settings(BaseSettings):
         return self.database_url
 
 
-class DaggerEnvironment:
-    """Manages environment variables for Dagger containers."""
+class KubernetesEnvironment:
+    """Manages environment variables for Kubernetes containers."""
 
     @staticmethod
     def get_agent_env(variation_id: int) -> dict[str, str]:
@@ -167,7 +165,7 @@ class DaggerEnvironment:
         settings = get_settings()
         return {
             "PYTHON_VERSION": "3.11",
-            "WORKDIR": settings.dagger_workdir,
+            "WORKDIR": settings.kubernetes_workdir,
         }
 
 
