@@ -90,7 +90,15 @@ k8s_resource(
     resource_deps=['create-secrets']
 )
 
-# Phase 7: Frontend (optional - runs outside container for hot reload)
+# Phase 7: Frontend setup - ensure packages are installed
+local_resource(
+    name='frontend-setup',
+    cmd='cd frontend && npm install',
+    deps=['frontend/package.json', 'frontend/package-lock.json'],
+    labels=['frontend']
+)
+
+# Phase 8: Frontend (optional - runs outside container for hot reload)
 local_resource(
     name='frontend',
     cmd='cd frontend && npm run dev',
@@ -98,6 +106,7 @@ local_resource(
     deps=['frontend/'],
     labels=['frontend'],
     allow_parallel=True,
+    resource_deps=['frontend-setup'],  # Ensure npm install runs first
     readiness_probe=probe(
         http_get=http_get_action(port=3000, path='/'),
         period_secs=5,
