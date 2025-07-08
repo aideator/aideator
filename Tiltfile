@@ -90,52 +90,37 @@ k8s_resource(
     resource_deps=['create-secrets']
 )
 
-# Phase 7: Check if configured port is available
-frontend_port = os.getenv('FRONTEND_PORT', '3000')
-local_resource(
-    name='port-check',
-    cmd=f'''
-    PORT={frontend_port}
-    if lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null 2>&1; then
-        echo "❌ ERROR: Port $PORT is already in use!"
-        echo ""
-        echo "Process using port $PORT:"
-        lsof -Pi :$PORT -sTCP:LISTEN || true
-        echo ""
-        echo "Another process is using port $PORT. Please either:"
-        echo "1. Stop the other process using port $PORT"
-        echo "2. Use a different port by setting FRONTEND_PORT environment variable:"
-        echo "   export FRONTEND_PORT=3001"
-        echo "   tilt up"
-        echo ""
-        exit 1
-    else
-        echo "✅ Port $PORT is available"
-    fi
-    ''',
-    labels=['frontend']
-)
+# Phase 7: Find an available port for frontend
+# Check if user specified a port, otherwise find an available one
+user_specified_port = os.getenv('FRONTEND_PORT', '')
+if user_specified_port:
+    frontend_port = user_specified_port
+    print("🔍 Using user-specified frontend port: " + frontend_port)
+else:
+    # Find an available port starting from 3000
+    port_check_result = local('bash -c \'for port in {3000..3010}; do if ! lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then echo $port; break; fi; done\'', quiet=True)
+    frontend_port = str(port_check_result).strip()
+    if not frontend_port:
+        fail("❌ No available ports found between 3000-3010")
+    elif frontend_port != '3000':
+        print("⚠️  Port 3000 is in use, using port " + frontend_port + " instead")
 
-# Phase 8: Frontend setup - ensure packages are installed
-local_resource(
-    name='frontend-setup',
-    cmd='cd frontend && npm install',
-    deps=['frontend/package.json', 'frontend/package-lock.json'],
-    labels=['frontend'],
-    resource_deps=['port-check']  # Check port before installing
-)
+# Phase 8: Frontend (optional - runs outside container for hot reload)
+# Use a script that checks if install is needed before running
+frontend_cmd = '''
+cd frontend && \
+if [ ! -d node_modules ] || [ package.json -nt node_modules ]; then \
+    echo "📦 Installing dependencies..." && npm install; \
+fi && \
+PORT=''' + frontend_port + ''' npm run dev
+'''
 
-# Phase 9: Frontend (optional - runs outside container for hot reload)
-# Check if user has set a custom port
-frontend_port = os.getenv('FRONTEND_PORT', '3000')
 local_resource(
     name='frontend',
-    cmd='cd frontend && npm run dev',
-    serve_cmd='cd frontend && PORT=' + frontend_port + ' npm run dev',  # Use configurable port
-    deps=['frontend/'],
+    serve_cmd=frontend_cmd,
+    deps=['frontend/package.json'],  # Only restart when package.json changes
     labels=['frontend'],
     allow_parallel=True,
-    resource_deps=['frontend-setup'],  # Ensure npm install runs first
     readiness_probe=probe(
         http_get=http_get_action(port=int(frontend_port), path='/'),
         period_secs=5,
@@ -144,29 +129,9 @@ local_resource(
     links=['http://localhost:' + frontend_port]  # Add explicit link in Tilt UI
 )
 
-# Add a post-startup validation
-local_resource(
-    name='frontend-validate',
-    cmd=f'''
-    echo "Waiting for frontend to start..."
-    sleep 5
-    if curl -s http://localhost:{frontend_port} | grep -q "AIdeator"; then
-        echo "✅ Frontend is running correctly on port {frontend_port}"
-    else
-        echo "⚠️  WARNING: Port {frontend_port} is responding but doesn't appear to be AIdeator!"
-        echo "Another application may be running on this port."
-        echo "Tilt UI link may navigate to the wrong application."
-    fi
-    ''',
-    resource_deps=['frontend'],
-    labels=['frontend'],
-    auto_init=False,  # Only run after frontend starts
-    trigger_mode=TRIGGER_MODE_MANUAL
-)
-
 print("🚀 AIdeator development environment ready!")
-print(f"🔗 Frontend: http://localhost:{frontend_port}")
+print("🔗 Frontend: http://localhost:" + frontend_port)
 print("🔗 FastAPI: http://localhost:8000")
 print("📊 Docs: http://localhost:8000/docs")
 if frontend_port != '3000':
-    print(f"ℹ️  Using custom frontend port: {frontend_port}")
+    print("ℹ️  Using custom frontend port: " + frontend_port)
