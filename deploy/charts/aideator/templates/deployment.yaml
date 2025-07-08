@@ -61,6 +61,12 @@ spec:
                   name: {{ .Values.secrets.openai.name }}
                   key: {{ .Values.secrets.openai.key }}
                   optional: {{ .Values.secrets.openai.optional | default true }}
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.anthropic.name }}
+                  key: {{ .Values.secrets.anthropic.key }}
+                  optional: {{ .Values.secrets.anthropic.optional | default true }}
             - name: SECRET_KEY
               valueFrom:
                 secretKeyRef:

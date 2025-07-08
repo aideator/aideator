@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useAgentStream } from '@/hooks/useAgentStream';
+import { useRepositoryList } from '@/hooks/useRepositoryList';
 import { StreamGrid } from '@/components/agents/StreamGrid';
 import { createRun } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -11,17 +12,33 @@ import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { BrainCircuit, Play, Square, Settings, Zap, GitBranch, Users, Sparkles, AlertCircle } from 'lucide-react';
+import { BrainCircuit, Play, Square, Settings, Zap, GitBranch, Users, Sparkles, AlertCircle, Plus } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 export default function StreamPage() {
+  // Repository list
+  const { repositories, addRepository, isValidGitHubUrl } = useRepositoryList();
+  
   // Form state
-  const [githubUrl, setGithubUrl] = useState('https://github.com/octocat/Hello-World');
+  const [githubUrl, setGithubUrl] = useState(repositories[0] || 'https://github.com/octocat/Hello-World');
   const [prompt, setPrompt] = useState('Analyze this repository and suggest improvements.');
   const [variations, setVariations] = useState(3);
   const [isStarting, setIsStarting] = useState(false);
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  
+  // Dialog state
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [newRepoUrl, setNewRepoUrl] = useState('');
+  const [dialogError, setDialogError] = useState<string | null>(null);
 
   // Streaming state
   const {
@@ -94,6 +111,40 @@ export default function StreamPage() {
     }
   };
 
+  const handleAddRepository = () => {
+    setDialogError(null);
+    
+    if (!newRepoUrl.trim()) {
+      setDialogError('Please enter a repository URL');
+      return;
+    }
+    
+    if (!isValidGitHubUrl(newRepoUrl)) {
+      setDialogError('Please enter a valid GitHub URL');
+      return;
+    }
+    
+    const success = addRepository(newRepoUrl);
+    if (!success) {
+      setDialogError('This repository is already in your list');
+      return;
+    }
+    
+    // Success - select the new repo and close dialog
+    setGithubUrl(newRepoUrl);
+    setNewRepoUrl('');
+    setIsDialogOpen(false);
+    setDialogError(null);
+  };
+
+  const handleSelectChange = (value: string) => {
+    if (value === 'add-new') {
+      setIsDialogOpen(true);
+    } else {
+      setGithubUrl(value);
+    }
+  };
+
   const hasActiveStreams = streams.size > 0;
 
   return (
@@ -158,15 +209,28 @@ export default function StreamPage() {
                     GitHub Repository URL
                   </div>
                 </label>
-                <input
-                  id="github-url"
-                  type="url"
-                  placeholder="https://github.com/username/repository"
+                <Select
                   value={githubUrl}
-                  onChange={(e) => setGithubUrl(e.target.value)}
+                  onValueChange={handleSelectChange}
                   disabled={isStreaming}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
-                />
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {repositories.map((repo) => (
+                      <SelectItem key={repo} value={repo}>
+                        {repo}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="add-new">
+                      <div className="flex items-center gap-2">
+                        <Plus className="h-4 w-4" />
+                        Add New Repository...
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Variations */}
@@ -274,6 +338,50 @@ export default function StreamPage() {
           onSelectAgent={handleSelectAgent}
           maxVariations={variations}
         />
+        
+        {/* Add Repository Dialog */}
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Add New Repository</DialogTitle>
+              <DialogDescription>
+                Enter a GitHub repository URL to add it to your list.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="new-repo">Repository URL</Label>
+                <Input
+                  id="new-repo"
+                  type="url"
+                  placeholder="https://github.com/username/repository"
+                  value={newRepoUrl}
+                  onChange={(e) => setNewRepoUrl(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddRepository()}
+                />
+                {dialogError && (
+                  <p className="text-sm text-red-600">{dialogError}</p>
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsDialogOpen(false);
+                  setNewRepoUrl('');
+                  setDialogError(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="button" onClick={handleAddRepository}>
+                Add Repository
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
