@@ -37,6 +37,12 @@ metadata:
 local_resource(
     name="create-secrets",
     cmd="""
+    # Load environment variables from .env file if it exists
+    if [ -f .env ]; then
+        echo "Loading environment variables from .env file..."
+        export $(grep -v '^#' .env | xargs)
+    fi
+    
     # Check if secrets exist, create if not
     if ! kubectl get secret aideator-secret -n aideator 2>/dev/null; then
         echo "Creating aideator-secret..."

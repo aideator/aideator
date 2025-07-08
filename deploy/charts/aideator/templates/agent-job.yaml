@@ -55,4 +55,4 @@ spec:
               python -u /app/agent/main.py
           resources:
             {{- toYaml .Values.agents.resources | nindent 12 }}
-      backoffLimit: 0
+  backoffLimit: 0
