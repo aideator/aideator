@@ -56,13 +56,13 @@ export function useAgentStream(): AgentStreamHook {
     setIsStreaming(true);
     currentRunIdRef.current = runId;
 
+    const streamUrl = `http://localhost:8000/api/v1/runs/${runId}/stream`;
+    console.log('Starting SSE stream to:', streamUrl);
+
     try {
-      const eventSource = new EventSource(
-        `http://localhost:8000/api/v1/runs/${runId}/stream`,
-        {
-          withCredentials: false
-        }
-      );
+      const eventSource = new EventSource(streamUrl, {
+        withCredentials: false
+      });
 
       eventSource.onopen = () => {
         console.log('SSE connection opened for run:', runId);
@@ -70,21 +70,74 @@ export function useAgentStream(): AgentStreamHook {
         setError(null);
       };
 
-      eventSource.onmessage = (event) => {
+      // The backend sends named events, not default messages
+      // Handle agent output events
+      eventSource.addEventListener('agent_output', (event) => {
         try {
           const data: StreamMessage = JSON.parse(event.data);
+          console.log('Received agent output:', data);
+          
+          // Check if content is a JSON string (log entry) or plain text
+          let displayContent = data.content;
+          try {
+            const logEntry = JSON.parse(data.content);
+            // If it's a log entry, extract the message or use the whole object
+            displayContent = logEntry.message || logEntry.result || JSON.stringify(logEntry, null, 2);
+          } catch {
+            // It's plain text, use as-is
+          }
           
           setStreams(prevStreams => {
             const newStreams = new Map(prevStreams);
             const existing = newStreams.get(data.variation_id) || [];
-            newStreams.set(data.variation_id, [...existing, data.content]);
+            newStreams.set(data.variation_id, [...existing, displayContent]);
             return newStreams;
           });
         } catch (parseError) {
-          console.error('Failed to parse SSE message:', parseError, 'Raw data:', event.data);
-          // Don't set error for individual message parsing failures
+          console.error('Failed to parse agent_output event:', parseError, 'Raw data:', event.data);
         }
-      };
+      });
+
+      // Handle agent error events
+      eventSource.addEventListener('agent_error', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.error(`Agent ${data.variation_id} error:`, data.error);
+          
+          // Add error to stream as a special message
+          setStreams(prevStreams => {
+            const newStreams = new Map(prevStreams);
+            const existing = newStreams.get(data.variation_id) || [];
+            newStreams.set(data.variation_id, [...existing, `ERROR: ${data.error}`]);
+            return newStreams;
+          });
+        } catch (parseError) {
+          console.error('Failed to parse agent_error event:', parseError);
+        }
+      });
+
+      // Handle agent complete events
+      eventSource.addEventListener('agent_complete', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log(`Agent ${data.variation_id} completed`);
+          // Could add completion state tracking here
+        } catch (parseError) {
+          console.error('Failed to parse agent_complete event:', parseError);
+        }
+      });
+
+      // Handle run complete event
+      eventSource.addEventListener('run_complete', (event) => {
+        console.log('Run completed, stopping stream');
+        stopStream();
+      });
+
+      // Handle heartbeat events
+      eventSource.addEventListener('heartbeat', (event) => {
+        console.log('Heartbeat received:', event.data);
+        // Heartbeat keeps connection alive, no action needed
+      });
 
       eventSource.onerror = (event) => {
         console.error('SSE connection error:', event);
@@ -102,22 +155,6 @@ export function useAgentStream(): AgentStreamHook {
           }, 3000);
         }
       };
-
-      // Handle specific event types if the backend sends them
-      eventSource.addEventListener('agent-complete', (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log(`Agent ${data.variation_id} completed`);
-          // Could add completion state tracking here
-        } catch (parseError) {
-          console.error('Failed to parse agent-complete event:', parseError);
-        }
-      });
-
-      eventSource.addEventListener('run-complete', (event) => {
-        console.log('Run completed, stopping stream');
-        stopStream();
-      });
 
       eventSourceRef.current = eventSource;
 
