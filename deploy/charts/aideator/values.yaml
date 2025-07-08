@@ -68,6 +68,10 @@ secrets:
     name: openai-secret
     key: api-key
     optional: false
+  anthropic:
+    name: anthropic-secret
+    key: api-key
+    optional: false
 
 # Resources for FastAPI
 resources:

@@ -29,6 +29,12 @@ class AideatorAgent:
         
         if not os.environ["OPENAI_API_KEY"]:
             raise ValueError("OPENAI_API_KEY environment variable is required")
+        
+        # Set Anthropic API key for Claude Code CLI
+        os.environ["ANTHROPIC_API_KEY"] = os.getenv("ANTHROPIC_API_KEY", "")
+        
+        if not os.environ["ANTHROPIC_API_KEY"]:
+            raise ValueError("ANTHROPIC_API_KEY environment variable is required")
         self.repo_url = os.getenv("REPO_URL")
         self.prompt = os.getenv("PROMPT")
         self.variation_id = int(os.getenv("VARIATION_ID", "0"))
