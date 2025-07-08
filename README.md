@@ -1,24 +1,32 @@
-# AIdeator
+# AIdeator 🚀
 
-A Dagger-powered LLM orchestration platform that runs multiple AI agents in isolated containers, streaming their thought processes in real-time.
+**Multi-Agent AI Orchestration Platform**
 
-## Features
+A Kubernetes-native LLM orchestration platform that runs multiple AI agents in parallel, streaming their thought processes in real-time. Compare different AI approaches side-by-side and select the best solution.
 
-- **Container Isolation**: Each agent runs in its own Dagger container
-- **Real-time Streaming**: Server-Sent Events (SSE) for live agent output
-- **Parallel Execution**: Run N variations of agents concurrently
-- **GitHub Integration**: Clone and analyze any public repository
-- **OpenAPI Documentation**: Auto-generated API docs with Swagger UI
-- **Async Architecture**: Built on FastAPI with SQLModel and async patterns
+![Architecture](https://img.shields.io/badge/Architecture-Kubernetes%20Native-blue)
+![Frontend](https://img.shields.io/badge/Frontend-Next.js%2014-black)
+![Backend](https://img.shields.io/badge/Backend-FastAPI-green)
+![Streaming](https://img.shields.io/badge/Streaming-Server%20Sent%20Events-orange)
 
-## Prerequisites
+## ✨ Features
 
-- Python 3.11+
-- Docker (for Dagger)
-- [uv](https://github.com/astral-sh/uv) package manager
-- [Dagger CLI](https://docs.dagger.io/install) v0.18.12+
+- **🔄 Multi-Agent Orchestration**: Run 1-5 AI agents simultaneously in isolated Kubernetes Jobs
+- **📡 Real-time Streaming**: Watch agent thought processes live via Server-Sent Events
+- **🔍 Side-by-Side Comparison**: Compare outputs from multiple agents in responsive grid layout
+- **🎨 Modern UI**: Clean, accessible interface built with Next.js and custom design system
+- **☁️ Cloud-Native**: Kubernetes-native architecture with Helm charts and Tilt development
+- **🔧 Developer-Friendly**: Hot reload, comprehensive logging, and GitOps-ready deployment
 
-## Quick Start
+## 🚀 Quick Start
+
+### Prerequisites
+
+- **Docker** and **Docker Compose**
+- **Node.js 18+** and **npm**
+- **kubectl** and **Helm** (for Kubernetes)
+- **Tilt** (for local development)
+- **Anthropic API Key** (Claude)
 
 ### 1. Clone and Setup
 
@@ -26,456 +34,374 @@ A Dagger-powered LLM orchestration platform that runs multiple AI agents in isol
 git clone https://github.com/yourusername/aideator.git
 cd aideator
 
-# Install dependencies with uv
-uv pip install -e .
-
-# Copy environment variables
+# Copy environment files
 cp .env.example .env
 
-# Edit .env and add your ANTHROPIC_API_KEY
-# Set DEBUG=true for development
+# Add your Anthropic API key to .env
+echo "OPENAI_API_KEY=your-anthropic-key-here" >> .env
 ```
 
-### 2. Run Locally
+### 2. Start Development Environment
 
 ```bash
-# Start the FastAPI server with hot reload
-uv run uvicorn app.main:app --reload
+# Start the full stack with Tilt (recommended)
+tilt up
 
-# Server runs at http://localhost:8000
-# API docs at http://localhost:8000/docs
+# This will:
+# 1. Start/verify k3d Kubernetes cluster
+# 2. Build and deploy FastAPI backend
+# 3. Set up port forwarding
+# 4. Watch for file changes
+
+# Services will be available at:
+# - Tilt UI: http://localhost:10350
+# - FastAPI Backend: http://localhost:8000
+# - API Documentation: http://localhost:8000/docs
 ```
 
-### 3. Test the Agent Functions
+### 3. Start Frontend
 
 ```bash
-# List available Dagger functions
-dagger functions
+# In a separate terminal
+cd frontend
+npm install
+npm run dev
 
-# Test a single agent directly
-dagger call run-agent \
-  --repo-url "https://github.com/octocat/Hello-World" \
-  --prompt "Analyze this repository" \
-  --anthropic-api-key env:ANTHROPIC_API_KEY
-
-# Run development server in container (optional)
-dagger call dev --source=. up --ports 8001:8000
-
-# Run tests
-dagger call test --source=.
-
-# Run linting
-dagger call lint --source=.
+# Frontend available at:
+# - Next.js App: http://localhost:3000
 ```
 
-## Project Structure
+### 4. Test the Application
+
+1. **Open http://localhost:3000** - Homepage with feature overview
+2. **Click "Start Multi-Agent Generation"** - Go to streaming interface
+3. **Configure Task**:
+   - Repository URL: `https://github.com/octocat/Hello-World`
+   - Prompt: `Analyze this repository and suggest improvements`
+   - Agents: `3`
+4. **Click "Start Generation"** - Watch agents work in real-time!
+
+## 🏗️ Architecture
+
+### System Overview
 
 ```
-aideator/
-├── app/                           # FastAPI application (runs on host)
-│   ├── api/                      # API endpoints
-│   ├── core/                     # Core configuration and database
-│   ├── models/                   # SQLModel database models
-│   ├── schemas/                  # Pydantic validation schemas
-│   ├── services/                 # Business logic and services
-│   │   ├── agent_orchestrator_v2.py  # Agent orchestration
-│   │   ├── dagger_module_service.py  # Dagger CLI wrapper
-│   │   └── sse_manager.py           # SSE streaming
-│   └── main.py                   # Application entry point
-├── src/                          # Main Dagger module
-│   └── main.py                   # Dagger functions (dev, test, lint, run-agent)
-├── dagger_module/                # Agent-specific Dagger assets
-│   └── src/aideator/
-│       ├── main.py              # Agent orchestration functions
-│       └── agent.py             # AI agent script
-├── tests/                        # Test suite
-├── pyproject.toml               # Project dependencies and config
-└── dagger.json                  # Dagger module configuration
+┌─────────────────┐    HTTP/SSE     ┌─────────────────┐    kubectl logs    ┌─────────────────┐
+│   Next.js       │ ───────────────▶│   FastAPI       │ ──────────────────▶│  Kubernetes     │
+│   Frontend      │                 │   Backend       │                    │  Agent Jobs     │
+│   (Port 3000)   │                 │   (Port 8000)   │                    │                 │
+└─────────────────┘                 └─────────────────┘                    └─────────────────┘
 ```
 
-## Development
+### Tech Stack
 
-### API Endpoints
+**Frontend**
+- **Next.js 14** with App Router and TypeScript
+- **Tailwind CSS** with custom design system
+- **Server-Sent Events** for real-time streaming
+- **Responsive Design** (mobile to 5-column desktop)
 
-Key endpoints available at http://localhost:8000/docs (or http://localhost:8001/docs when using Dagger):
+**Backend**
+- **FastAPI** with async/await patterns
+- **SQLite + SQLModel** for data persistence
+- **Kubernetes Jobs** for agent isolation
+- **kubectl** native log streaming
 
-- `POST /api/v1/runs` - Create a new agent run
-- `GET /api/v1/runs` - List all runs
-- `GET /api/v1/runs/{run_id}/stream` - Stream run output via SSE
-- `GET /api/v1/health` - Health check endpoint
-- `POST /api/v1/auth/register` - Register new user
-- `POST /api/v1/auth/login` - Login and get JWT token
+**Infrastructure**
+- **Kubernetes** (k3d for local development)
+- **Helm Charts** for declarative deployment
+- **Tilt** for local development workflow
+- **Local Registry** (localhost:5005) for fast iteration
 
-### Running Tests
+### Key Components
+
+```
+frontend/                  # Next.js application
+├── app/                    # Next.js pages
+│   ├── page.tsx           # Homepage
+│   └── stream/page.tsx    # Multi-agent interface
+├── components/
+│   ├── agents/            # Agent-specific components
+│   │   ├── StreamCard.tsx # Individual agent display
+│   │   └── StreamGrid.tsx # Multi-agent layout
+│   └── ui/                # Design system components
+├── hooks/
+│   └── useAgentStream.ts  # SSE streaming hook
+└── lib/
+    └── api.ts             # FastAPI client
+
+app/                       # FastAPI backend
+├── api/v1/               # API endpoints
+├── services/             # Business logic
+│   ├── kubernetes_service.py    # Job orchestration
+│   ├── agent_orchestrator.py   # Multi-agent management
+│   └── sse_manager.py          # Real-time streaming
+└── main.py               # Application entry
+
+deploy/
+├── charts/aideator/      # Helm chart
+└── values/               # Environment configs
+```
+
+## 🛠️ Development
+
+### Local Development Workflow
 
 ```bash
-# Run all tests
-uv run pytest
+# Start everything with Tilt (backend + k8s)
+tilt up
 
-# Run with coverage
-uv run pytest --cov=app --cov-report=html
+# Start frontend in separate terminal
+cd frontend && npm run dev
 
-# Run specific test file
-uv run pytest tests/test_api.py -v
+# Make changes and see live updates:
+# - Frontend: Hot reload automatically
+# - Backend: Tilt rebuilds in ~10 seconds
+# - Agents: Touch agent/main.py to trigger rebuild
+```
+
+### Testing
+
+```bash
+# Backend tests
+pytest tests/
+
+# Frontend tests (coming soon)
+cd frontend
+npm test
+
+# End-to-end tests with Playwright
+npm run test:e2e
+
+# Manual API testing
+curl http://localhost:8000/api/v1/health
 ```
 
 ### Code Quality
 
 ```bash
-# Format code
-uv run ruff format .
+# Backend linting and formatting
+ruff check .
+ruff format .
+mypy app/
 
-# Lint code
-uv run ruff check .
-
-# Type checking
-uv run mypy app/
-
-# Security scanning
-uv run bandit -r app/
-uv run semgrep --config=auto app/
+# Frontend linting
+cd frontend
+npm run lint
+npm run type-check
 ```
 
-### Database
-
-The application uses SQLite with SQLModel (async via aiosqlite). Database is created automatically on startup.
+### Kubernetes Operations
 
 ```bash
-# Database location
-./aideator.db
+# Check running pods
+kubectl get pods -n aideator
 
-# To reset the database, simply delete the file
-rm aideator.db
+# Stream logs from specific agent
+kubectl logs -f job/agent-run123-0 -n aideator
+
+# Debug failed jobs
+kubectl describe job agent-run123-0 -n aideator
+
+# Clean up completed jobs
+kubectl delete jobs --field-selector status.successful=1 -n aideator
 ```
 
-### Environment Variables
+## 📡 API Usage
 
-Key configuration in `.env`:
+### Create Multi-Agent Run
 
 ```bash
-# Enable debug mode and API docs
-DEBUG=true
-
-# API configuration
-ANTHROPIC_API_KEY=sk-ant-api03-...
-SECRET_KEY=your-secret-key-here
-
-# Dagger settings
-AGENT_CONTAINER_IMAGE=python:3.11-slim
-MAX_VARIATIONS=5
-AGENT_TIMEOUT=300
-
-# Database
-DATABASE_URL=sqlite+aiosqlite:///./aideator.db
-```
-
-## Architecture
-
-### Overview
-
-AIdeator uses a refactored architecture that cleanly separates the FastAPI server (running on the host) from the Dagger-based agent orchestration (running in containers). This provides better separation of concerns and allows the web server to run independently of Dagger availability.
-
-### Key Components
-
-1. **FastAPI Server (Host)**
-   - Runs directly on the host machine with `uvicorn`
-   - No Dagger connection required at startup
-   - Handles HTTP requests, database operations, and SSE streaming
-   - Communicates with Dagger module via CLI when needed
-
-2. **Dagger Module (Containers)**
-   - All agent orchestration happens via the `aideator` Dagger module
-   - Provides functions for running single or parallel agents
-   - Handles container creation, dependency installation, and execution
-   - Agent script located at `dagger_module/src/aideator/agent.py`
-
-3. **Service Layer**
-   - `DaggerModuleService` uses subprocess to call Dagger CLI commands
-   - `AgentOrchestratorV2` manages parallel agent execution
-   - Streams output from Dagger module back to SSE clients
-   - Falls back gracefully if Dagger is not available
-
-### Architecture Flow
-
-```
-User Request → FastAPI Server (Host)
-                    ↓
-            AgentOrchestratorV2
-                    ↓
-            DaggerModuleService
-                    ↓
-            Dagger CLI (subprocess)
-                    ↓
-            Dagger Module Functions
-                    ↓
-            Agent Containers (N variations)
-```
-
-### System Architecture
-
-```mermaid
-graph TB
-    subgraph "Client Layer"
-        UI[Web UI/CLI Client]
-    end
-    
-    subgraph "API Layer"
-        FastAPI[FastAPI Server]
-        Auth[JWT/API Key Auth]
-        SSE[SSE Streaming]
-    end
-    
-    subgraph "Service Layer"
-        AO[Agent Orchestrator]
-        DS[Dagger Service]
-        SSM[SSE Manager]
-    end
-    
-    subgraph "Container Layer"
-        DC[Dagger Client]
-        subgraph "Isolated Containers"
-            A1[Agent 1<br/>Container]
-            A2[Agent 2<br/>Container]
-            A3[Agent N<br/>Container]
-        end
-    end
-    
-    subgraph "External Services"
-        Claude[Claude API]
-        GitHub[GitHub Repos]
-    end
-    
-    subgraph "Data Layer"
-        SQLite[(SQLite DB)]
-        Cache[Container Cache]
-    end
-    
-    UI -->|HTTP/WSS| FastAPI
-    FastAPI --> Auth
-    Auth --> AO
-    AO --> DS
-    AO --> SSM
-    DS --> DC
-    DC --> A1
-    DC --> A2
-    DC --> A3
-    A1 --> Claude
-    A2 --> Claude
-    A3 --> Claude
-    A1 --> GitHub
-    A2 --> GitHub
-    A3 --> GitHub
-    SSM --> SSE
-    SSE -->|Real-time Events| UI
-    AO --> SQLite
-    DC --> Cache
-    
-    style FastAPI fill:#e1f5f0
-    style AO fill:#e8f5e9
-    style DS fill:#e8f5e9
-    style DC fill:#fff3e0
-    style A1 fill:#e3f2fd
-    style A2 fill:#e3f2fd
-    style A3 fill:#e3f2fd
-    style Claude fill:#f3e5f5
-    style GitHub fill:#f3e5f5
-```
-
-### Request Flow
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant FastAPI
-    participant Auth
-    participant Orchestrator
-    participant Dagger
-    participant Container
-    participant Claude
-    participant SSE
-    
-    Client->>FastAPI: POST /api/v1/runs
-    FastAPI->>Auth: Validate JWT/API Key
-    Auth-->>FastAPI: Authorized
-    FastAPI->>Orchestrator: Create Run
-    Orchestrator->>Dagger: Build Containers
-    
-    loop For Each Variation
-        Dagger->>Container: Spawn Agent
-        Container->>Container: Clone Repo
-        Container->>Claude: Generate Code
-        Claude-->>Container: Response
-        Container->>SSE: Stream Output
-        SSE-->>Client: Real-time Events
-    end
-    
-    Orchestrator->>FastAPI: Run Created
-    FastAPI-->>Client: 202 Accepted + Stream URL
-```
-
-### Core Components
-
-1. **FastAPI Application**: Async web framework with automatic OpenAPI generation
-2. **Dagger Service**: Container orchestration for isolated agent execution
-3. **Agent Orchestrator**: Manages parallel agent execution and result aggregation
-4. **SSE Streaming**: Real-time output streaming using Server-Sent Events
-5. **SQLModel**: Async ORM for database operations
-
-### Security
-
-- JWT-based authentication
-- API key authentication via `X-API-Key` header
-- Rate limiting middleware
-- Input validation with Pydantic
-- SQL injection protection via SQLModel
-
-### Monitoring
-
-- Structured logging with `structlog`
-- Prometheus metrics at `/api/v1/metrics`
-- Request ID tracking for debugging
-- Performance timing on all requests
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-### Development Guidelines
-
-- Write tests for new features
-- Maintain type hints throughout
-- Follow existing code patterns
-- Update API documentation
-- Run the full test suite before submitting
-
-## Manual Testing Guide
-
-### Step 1: Verify Server Health
-
-```bash
-# Check that server is running independently
-curl http://localhost:8000/health
-
-# Expected response:
-{
-  "status": "healthy",
-  "version": "1.0.0",
-  "dagger_module": "aideator"
-}
-```
-
-### Step 2: Create an Agent Run
-
-```bash
-# Create a run with 2 agent variations
 curl -X POST http://localhost:8000/api/v1/runs \
   -H "Content-Type: application/json" \
   -d '{
     "github_url": "https://github.com/octocat/Hello-World",
     "prompt": "Analyze this repository and suggest improvements",
-    "variations": 2,
-    "agent_config": {
-      "model": "claude-3-opus-20240229",
-      "temperature": 0.7,
-      "max_tokens": 1000
-    }
+    "variations": 3
   }'
 
-# Response includes:
+# Response:
 {
-  "run_id": "run_abc123...",
-  "stream_url": "/api/v1/runs/run_abc123.../stream",
-  "status": "accepted",
-  "estimated_duration_seconds": 80
+  "run_id": "run-abc123",
+  "stream_url": "/api/v1/runs/run-abc123/stream",
+  "status": "accepted"
 }
 ```
 
-### Step 3: Stream Real-time Output
+### Stream Real-Time Output
 
 ```bash
-# Stream agent outputs using the stream_url from above
-curl -N http://localhost:8000/api/v1/runs/run_abc123.../stream
+# Stream agent outputs (use timeout to avoid hanging)
+timeout 30 curl -N http://localhost:8000/api/v1/runs/run-abc123/stream
 
-# You'll see Server-Sent Events:
-event: agent_output
-data: {"type": "agent_output", "variation_id": 0, "content": "[Agent 0] Starting analysis..."}
-
-event: agent_output
-data: {"type": "agent_output", "variation_id": 1, "content": "[Agent 1] Starting analysis..."}
-
-event: run_complete
-data: {"type": "run_complete", "status": "completed"}
+# Server-Sent Events output:
+data: {"variation_id": 0, "content": "Analyzing repository structure...", "timestamp": "..."}
+data: {"variation_id": 1, "content": "Starting code review...", "timestamp": "..."}
 ```
 
-### Step 4: Check Results
+### Select Winner
 
 ```bash
-# List all runs
-curl http://localhost:8000/api/v1/runs | jq
-
-# Get specific run details
-curl http://localhost:8000/api/v1/runs/run_abc123 | jq
-
-# Get run outputs
-curl http://localhost:8000/api/v1/runs/run_abc123/outputs | jq
-```
-
-### Testing Parallel Execution
-
-```bash
-# Create multiple runs simultaneously
-# Terminal 1:
-curl -X POST http://localhost:8000/api/v1/runs \
+curl -X POST http://localhost:8000/api/v1/runs/run-abc123/select \
   -H "Content-Type: application/json" \
-  -d '{"github_url": "https://github.com/fastapi/fastapi", "prompt": "Analyze routing", "variations": 2}'
-
-# Terminal 2 (at the same time):
-curl -X POST http://localhost:8000/api/v1/runs \
-  -H "Content-Type: application/json" \
-  -d '{"github_url": "https://github.com/tiangolo/sqlmodel", "prompt": "Analyze ORM", "variations": 2}'
+  -d '{"variation_id": 1}'
 ```
 
-### Architecture Verification
+## 🎨 Design System
 
-Test that the server runs independently of Dagger:
+AIdeator uses a custom design system optimized for multi-agent interfaces:
 
+### Colors
+- **AI Primary** (`#4f46e5`): Main actions and branding
+- **Agent Colors**: Red, Amber, Emerald, Blue, Purple (for 5 agents)
+- **Neutral Palette**: White, Paper, Fog, Shadow, Charcoal
+
+### Components
+- **Agent Stream Cards**: Color-coded with status indicators
+- **Responsive Grid**: 1-5 columns based on screen size
+- **Real-time Animations**: Pulse indicators and shimmer loading
+
+### Typography
+- **Display** (48px): Hero titles
+- **H1-H3**: Page and section headers
+- **Body**: 16px default with Large (18px) and Small (14px) variants
+
+## 🚀 Deployment
+
+### Development (Local)
 ```bash
-# 1. Stop Dagger engine
-docker stop dagger-engine-v0.18.12
-
-# 2. Server health should still work
-curl http://localhost:8000/health
-
-# 3. Creating runs will fail gracefully
-# 4. Restart Dagger
-docker start dagger-engine-v0.18.12
+# Already covered above with Tilt
+tilt up
 ```
 
-## Troubleshooting
+### Staging
+```bash
+# Deploy to staging cluster
+helm upgrade --install aideator ./deploy/charts/aideator \
+  -n aideator-staging \
+  -f deploy/values/staging.yaml
+```
+
+### Production
+```bash
+# Deploy to production cluster
+helm upgrade --install aideator ./deploy/charts/aideator \
+  -n aideator-prod \
+  -f deploy/values/production.yaml \
+  --atomic \
+  --wait
+```
+
+## 🐛 Troubleshooting
 
 ### Common Issues
 
-1. **Dagger SSH Socket Error**: Unset SSH_AUTH_SOCK before running Dagger commands
-   ```bash
-   export SSH_AUTH_SOCK=""
-   ```
+**Frontend not connecting to backend:**
+```bash
+# Verify backend is running
+curl http://localhost:8000/api/v1/health
 
-2. **Module Import Errors**: Ensure you're using `uv` to manage dependencies
-   ```bash
-   uv pip install -e .
-   ```
+# Check Tilt status
+tilt get uiresource
+```
 
-3. **Database Locked**: Stop all running instances before starting a new one
+**Kubernetes Jobs failing:**
+```bash
+# Check job status
+kubectl get jobs -n aideator
 
-4. **Port Already in Use**: Kill the process using port 8000
-   ```bash
-   lsof -ti:8000 | xargs kill -9
-   ```
+# Debug specific job
+kubectl describe job agent-run123-0 -n aideator
+kubectl logs job/agent-run123-0 -n aideator
+```
 
-## License
+**Streaming not working:**
+```bash
+# Test SSE endpoint directly
+curl -N http://localhost:8000/api/v1/runs/test-run/stream
 
-MIT License - see LICENSE file for details
+# Check for CORS issues in browser console
+```
+
+**Tilt build failures:**
+```bash
+# Clean rebuild
+tilt down
+docker system prune -f
+tilt up
+```
+
+### Required Secrets
+
+Before deployment, create required Kubernetes secrets:
+
+```bash
+# OpenAI API key (required for agents)
+kubectl create secret generic openai-secret \
+  --from-literal=api-key="$OPENAI_API_KEY" \
+  -n aideator
+
+# Application secret key
+kubectl create secret generic aideator-secret \
+  --from-literal=secret-key="$(openssl rand -hex 32)" \
+  -n aideator
+```
+
+## 📊 Monitoring
+
+- **Tilt UI**: http://localhost:10350 (development)
+- **API Docs**: http://localhost:8000/docs
+- **Health Check**: http://localhost:8000/api/v1/health
+- **Kubernetes Dashboard**: Access via kubectl proxy
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Make changes and test locally with Tilt
+4. Run linting and tests
+5. Commit changes (`git commit -m 'Add amazing feature'`)
+6. Push to branch (`git push origin feature/amazing-feature`)
+7. Open Pull Request
+
+### Development Guidelines
+
+- **Backend**: Follow FastAPI patterns, use async/await, comprehensive type hints
+- **Frontend**: Use TypeScript, follow component patterns, responsive design
+- **Testing**: Write tests for new features, test with real Kubernetes
+- **Documentation**: Update README and API docs for changes
+
+## 📋 Project Status
+
+**Current Version**: 3.0 - Full-Stack Implementation
+
+**Completed Features** ✅
+- [x] Kubernetes-native backend with FastAPI
+- [x] Next.js frontend with custom design system
+- [x] Real-time streaming via Server-Sent Events
+- [x] Multi-agent orchestration (1-5 agents)
+- [x] Responsive UI with agent comparison
+- [x] Tilt development environment
+- [x] Helm chart deployment
+
+**Next Steps** 🚧
+- [ ] End-to-end Playwright testing
+- [ ] Performance optimization
+- [ ] Mobile UX enhancements
+- [ ] Monitoring and observability
+- [ ] Production hardening
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- Built with [FastAPI](https://fastapi.tiangolo.com/)
+- Frontend powered by [Next.js](https://nextjs.org/)
+- Kubernetes development with [Tilt](https://tilt.dev/)
+- UI components inspired by [shadcn/ui](https://ui.shadcn.com/)
+
+---
+
+**Made with ❤️ for developers who want to harness the power of multi-agent AI**

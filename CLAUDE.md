@@ -2,14 +2,16 @@
 
 ## Project Overview
 
-AIdeator is a **Kubernetes-native** LLM orchestration platform that runs multiple AI agents in isolated containers, streaming their thought processes in real-time. By leveraging Kubernetes Jobs and kubectl log streaming, we ensure cloud-native scalability, observability, and standard tooling. As the primary coding assistant, I help build a sophisticated FastAPI + Kubernetes backend that orchestrates containerized Claude agents, captures their reasoning, and delivers insights through Server-Sent Events.
+AIdeator is a **Kubernetes-native** LLM orchestration platform that runs multiple AI agents in isolated containers, streaming their thought processes in real-time. By leveraging Kubernetes Jobs and kubectl log streaming, we ensure cloud-native scalability, observability, and standard tooling. As the primary coding assistant, I help build a sophisticated FastAPI + Kubernetes backend and Next.js 15 frontend that orchestrates containerized Claude agents, captures their reasoning, and delivers insights through Server-Sent Events.
 
 ## 🎯 My Role & Capabilities
 
-I am the **primary development assistant** for AIdeator backend development. I provide:
+I am the **primary development assistant** for AIdeator full-stack development. I provide:
 
 - **Production-Ready Code**: No mock data, proper async patterns, comprehensive error handling
 - **FastAPI Expertise**: Async route handlers, SSE streaming, proper dependency injection
+- **Next.js 15 Frontend**: Modern React 19 with TypeScript 5, Tailwind CSS v4, responsive design, real-time streaming
+- **Design System**: Cohesive UI components with AIdeator branding using Tailwind CSS v4 and accessibility
 - **Kubernetes Integration**: Job orchestration, kubectl log streaming, Helm charts
 - **Real-time Streaming**: Server-Sent Events powered by native Kubernetes logs
 - **Cloud-Native Patterns**: Tilt development, local registries, declarative deployments
@@ -20,12 +22,15 @@ I am the **primary development assistant** for AIdeator backend development. I p
 ### Core Components
 
 - **FastAPI Backend** - Async web framework running as a Kubernetes deployment
+- **Next.js 15.2.4 Frontend** - Modern React 19.0.0 frontend with TypeScript 5 and real-time streaming
+- **Tailwind CSS v4.1.11** - Utility-first CSS framework with @tailwindcss/postcss v4
 - **Kubernetes Jobs** - Isolated agent execution with automatic cleanup (TTL)
 - **kubectl Logs** - Native log streaming from agent containers
 - **Server-Sent Events (SSE)** - Real-time streaming of agent thought processes
 - **SQLite + SQLModel** - Async database with Pydantic integration
 - **Anthropic Claude API** - LLM agent for code generation tasks
 - **Helm Charts** - Declarative deployment and configuration management
+- **AIdeator Design System** - Cohesive UI components and styling patterns using Tailwind CSS v4
 
 ### Kubernetes-Native Architecture
 
@@ -242,6 +247,397 @@ docker run --rm -v $(pwd):/app aideator-api:dev pytest
 - **Local Registry**: Use localhost:5005 to avoid remote pushes
 - **Helm Values**: Environment-specific configurations
 - **GitOps Ready**: Declarative configurations for all environments
+
+## 🎨 AIdeator Design System
+
+### Design Philosophy
+
+AIdeator follows a **broad appeal** design philosophy that balances technical capability with user-friendly accessibility:
+
+- **Broad Appeal**: Clean, modern, accessible to non-technical users
+- **Multi-Agent Focus**: Visual hierarchy for up to 5 simultaneous agent streams
+- **Trust & Intelligence**: Professional yet approachable AI aesthetic
+- **Scalable Layout**: Responsive grid that works on various screen sizes
+- **Real-time Feedback**: Subtle animations and visual cues for active streaming
+- **Tailwind CSS v4**: Leverages the latest Tailwind CSS features with PostCSS v4 for optimal performance
+
+### Color Palette (Tailwind CSS v4)
+
+Colors are defined as HSL values in `app/globals.css` using CSS custom properties:
+
+```css
+/* Primary Brand Colors */
+--ai-primary: 239 79% 59%;          /* Deep indigo - trustworthy, intelligent */
+--ai-secondary: 258 90% 67%;        /* Purple - creativity, AI magic */
+--ai-accent: 188 100% 50%;          /* Cyan - innovation, streaming */
+
+/* Agent Stream Colors (distinct but harmonious) */
+--agent-1: 0 84% 60%;               /* Red - attention-grabbing */
+--agent-2: 39 96% 51%;              /* Amber - warm, optimistic */
+--agent-3: 160 84% 39%;             /* Emerald - growth, success */
+--agent-4: 221 83% 53%;             /* Blue - trust, reliability */
+--agent-5: 258 90% 67%;             /* Purple - creativity */
+
+/* Neutral Palette */
+--neutral-white: 0 0% 100%;         /* Card backgrounds */
+--neutral-paper: 210 40% 98%;       /* Subtle backgrounds */
+--neutral-fog: 214 32% 91%;         /* Subtle borders */
+--neutral-shadow: 215 16% 47%;      /* Secondary text */
+--neutral-charcoal: 222 84% 16%;    /* Primary text */
+
+/* Semantic Colors */
+--semantic-success: 160 84% 39%;
+--semantic-warning: 39 96% 51%;
+--semantic-error: 0 84% 60%;
+--semantic-info: 221 83% 53%;
+```
+
+These colors are configured in `tailwind.config.ts` and can be used with Tailwind classes like `bg-ai-primary`, `text-agent-1`, etc.
+
+### Typography System (Tailwind CSS v4)
+
+Typography sizes are defined as CSS custom properties and integrated with Tailwind:
+
+```css
+/* Display & Headers */
+--text-display: 3rem;               /* 48px - Hero titles */
+--text-h1: 2.25rem;                /* 36px - Page titles */
+--text-h2: 1.5rem;                 /* 24px - Section titles */
+--text-h3: 1.25rem;                /* 20px - Card titles */
+
+/* Body Text */
+--text-body-lg: 1.125rem;          /* 18px - Important content */
+--text-body: 1rem;                 /* 16px - Default body */
+--text-body-sm: 0.875rem;          /* 14px - Secondary content */
+
+/* Labels & Captions */
+--text-label: 0.875rem;            /* 14px - Form labels */
+--text-caption: 0.75rem;           /* 12px - Metadata */
+```
+
+Use with Tailwind classes: `text-display`, `text-h1`, `text-body-lg`, etc.
+
+### Component Patterns
+
+#### Quick Color Reference
+
+```tsx
+// Primary Actions
+className="bg-ai-primary text-white"
+
+// Secondary Actions  
+className="border-2 border-ai-secondary text-ai-secondary"
+
+// Agent Stream Indicators
+className="bg-agent-1 text-white"  // Use agent-1 through agent-5
+
+// Backgrounds
+className="bg-neutral-white"        // Main background
+className="bg-neutral-paper"        // Card backgrounds
+className="bg-neutral-fog"          // Subtle backgrounds
+```
+
+#### Agent Stream Card Pattern
+
+```tsx
+<div className="bg-neutral-paper rounded-lg p-lg shadow-md border-l-4 border-agent-1">
+  <div className="flex items-center justify-between mb-md">
+    <div className="flex items-center gap-sm">
+      <div className="w-3 h-3 bg-agent-1 rounded-full animate-pulse"></div>
+      <span className="text-body-sm font-medium text-neutral-shadow">
+        Agent 1
+      </span>
+    </div>
+    <button className="bg-agent-1 text-white px-md py-xs rounded-md text-body-sm font-medium hover:opacity-90">
+      Select This
+    </button>
+  </div>
+  <div className="bg-neutral-white rounded-md p-md max-h-96 overflow-y-auto">
+    {/* Streaming content */}
+  </div>
+</div>
+```
+
+#### Primary Button Pattern
+
+```tsx
+<button className="bg-ai-primary text-white px-lg py-md rounded-md font-semibold hover:bg-ai-primary/90 transition-colors">
+  Start Generation
+</button>
+```
+
+#### Secondary Button Pattern
+
+```tsx
+<button className="border-2 border-ai-secondary text-ai-secondary px-lg py-md rounded-md font-semibold hover:bg-ai-secondary/10 transition-colors">
+  Configure
+</button>
+```
+
+#### Input Field Pattern
+
+```tsx
+<input 
+  className="w-full bg-neutral-white border border-neutral-fog rounded-md px-md py-md text-body placeholder:text-neutral-shadow focus:border-ai-primary focus:ring-2 focus:ring-ai-primary/20 transition-colors"
+  placeholder="Enter your prompt..."
+/>
+```
+
+### Layout Patterns
+
+#### Multi-Agent Stream Layout
+
+```tsx
+// Responsive Grid for 5 Agent Streams
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-lg">
+  {agents.map((agent, index) => (
+    <AgentStreamCard key={index} agent={agent} color={`agent-${index + 1}`} />
+  ))}
+</div>
+```
+
+#### Screen Container Pattern
+
+```tsx
+<div className="min-h-screen bg-neutral-white">
+  <div className="container mx-auto px-lg py-xl">
+    {/* Content */}
+  </div>
+</div>
+```
+
+### Animation System (Tailwind CSS v4)
+
+AIdeator uses `tailwindcss-animate` plugin for smooth animations:
+
+```tsx
+// Built-in Tailwind animations
+className="transition-all duration-200 ease-in-out"  // Smooth transitions
+className="animate-pulse"                            // Pulse animation
+className="animate-spin"                             // Loading spinner
+
+// Custom animations can be added to tailwind.config.ts:
+// - Stream pulse for active agent indicators
+// - Shimmer effect for loading states
+// - Accordion animations for collapsible content
+
+// Example usage:
+<div className="w-3 h-3 bg-agent-1 rounded-full animate-pulse" />
+<div className="animate-accordion-down" />
+```
+
+The `tailwindcss-animate` plugin provides additional animation utilities that work seamlessly with Tailwind CSS v4.
+
+### 🚨 Tailwind CSS v4 Gotchas & Important Differences
+
+#### Critical v4 Changes (Breaking from v3)
+
+1. **CSS Import Syntax**
+   ```css
+   /* ❌ OLD v3 syntax - DOES NOT WORK in v4 */
+   @tailwind base;
+   @tailwind components;
+   @tailwind utilities;
+   
+   /* ✅ NEW v4 syntax - REQUIRED */
+   @import "tailwindcss";
+   ```
+
+2. **PostCSS Configuration**
+   ```js
+   // postcss.config.mjs
+   export default {
+     plugins: {
+       // ❌ OLD v3 - WRONG for v4
+       // tailwindcss: {},
+       
+       // ✅ NEW v4 - REQUIRED
+       "@tailwindcss/postcss": {}
+     }
+   }
+   ```
+
+3. **Dynamic Classes & CSS Purging**
+   ```tsx
+   // ❌ AVOID - Dynamic classes may be purged
+   className={`border-${color}`}  // color = "border" → "border-border" gets purged!
+   
+   // ✅ USE - Complete class names
+   className={color === 'primary' ? 'border-ai-primary' : 'border-neutral-fog'}
+   
+   // ✅ OR - Add to safelist in tailwind.config.ts
+   safelist: ['border-border', 'text-border', 'bg-border']
+   ```
+
+4. **Custom Utility Classes**
+   ```css
+   /* ❌ v4 is stricter - custom utilities like these may not work */
+   .border-border { border-color: hsl(var(--border)); }
+   
+   /* ✅ Use standard Tailwind utilities or configure properly */
+   className="border-neutral-fog"  // Use defined color
+   ```
+
+#### Common Debugging Steps for v4
+
+1. **When colors don't appear:**
+   - Check if using Tailwind v4 syntax (`@import "tailwindcss"`)
+   - Verify PostCSS uses `@tailwindcss/postcss` not `tailwindcss`
+   - Look for dynamic class construction (avoid interpolation)
+   - Check if custom classes are in safelist
+   - Clear Next.js cache: `rm -rf .next`
+
+2. **Version verification:**
+   ```bash
+   # Check installed version
+   npm list tailwindcss @tailwindcss/postcss
+   
+   # Should show:
+   # tailwindcss@4.x.x
+   # @tailwindcss/postcss@4.x.x
+   ```
+
+3. **Migration checklist from v3 to v4:**
+   - [ ] Update `@import` syntax in CSS files
+   - [ ] Update PostCSS config to use `@tailwindcss/postcss`
+   - [ ] Review all dynamic class constructions
+   - [ ] Add necessary classes to safelist
+   - [ ] Test with simple static classes first
+   - [ ] Clear build caches after config changes
+
+#### Best Practices for v4
+
+1. **Prefer standard Tailwind utilities:**
+   ```tsx
+   // ✅ Good - standard utilities
+   className="border-gray-200 text-gray-600 bg-white"
+   
+   // ⚠️ Risky - custom utilities may need safelist
+   className="border-border text-muted bg-card"
+   ```
+
+2. **Use complete class names:**
+   ```tsx
+   // ✅ Good - complete classes
+   const variants = {
+     primary: "bg-ai-primary text-white",
+     secondary: "bg-ai-secondary text-white",
+     ghost: "bg-transparent hover:bg-neutral-fog"
+   }
+   
+   // ❌ Bad - dynamic construction
+   const color = "primary";
+   className={`bg-ai-${color}`}  // May be purged!
+   ```
+
+3. **Test incrementally:**
+   - Start with basic HTML + Tailwind classes
+   - Add complexity gradually
+   - Use browser DevTools to verify classes are applied
+   - Check computed styles match expectations
+
+### Frontend Architecture
+
+#### Next.js 15 + Tailwind CSS v4 Structure
+
+```
+frontend/
+├── app/                     # Next.js 15 App Router
+│   ├── page.tsx            # Homepage with feature showcase
+│   ├── stream/page.tsx     # Multi-agent streaming interface
+│   └── globals.css         # Tailwind CSS v4 + design system variables
+├── components/
+│   ├── ui/                  # shadcn/ui components with Tailwind CSS v4
+│   │   ├── button.tsx       # Button component using CVA
+│   │   ├── card.tsx         # Card component
+│   │   ├── label.tsx        # Form label (Radix UI)
+│   │   ├── select.tsx       # Select component (Radix UI)
+│   │   └── tabs.tsx         # Tabs component (Radix UI)
+│   ├── agents/              # Agent-specific components
+│   │   ├── StreamCard.tsx   # Individual agent stream display
+│   │   ├── StreamGrid.tsx   # Multi-agent grid layout
+│   │   └── SelectButton.tsx # Agent selection component
+│   └── layout/              # Layout components
+│       ├── Header.tsx       # Main navigation
+│       └── Container.tsx    # Screen container
+├── hooks/
+│   ├── useAgentStream.ts    # SSE streaming hook
+│   └── useAPI.ts           # FastAPI integration
+├── lib/
+│   ├── api.ts              # API client
+│   ├── utils.ts            # Utility functions (clsx + tailwind-merge)
+│   └── types.ts            # TypeScript 5 types
+├── tailwind.config.ts      # Tailwind CSS v4 configuration
+├── postcss.config.js       # PostCSS with @tailwindcss/postcss v4
+└── tests/e2e/              # Playwright end-to-end tests
+    ├── homepage.spec.ts    # Homepage functionality tests
+    ├── streaming.spec.ts   # Streaming interface tests
+    └── smoke-test.spec.ts  # Basic functionality verification
+```
+
+#### Custom Streaming Hook
+
+```typescript
+// hooks/useAgentStream.ts
+import { useState, useEffect } from 'react';
+
+interface AgentStreamHook {
+  streams: Map<number, string[]>;
+  isStreaming: boolean;
+  error: string | null;
+  startStream: (runId: string) => void;
+  stopStream: () => void;
+}
+
+export function useAgentStream(): AgentStreamHook {
+  const [streams, setStreams] = useState<Map<number, string[]>>(new Map());
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const startStream = (runId: string) => {
+    const eventSource = new EventSource(`http://localhost:8000/api/v1/runs/${runId}/stream`);
+    
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      setStreams(prev => {
+        const newStreams = new Map(prev);
+        const existing = newStreams.get(data.variation_id) || [];
+        newStreams.set(data.variation_id, [...existing, data.content]);
+        return newStreams;
+      });
+    };
+
+    eventSource.onerror = (error) => {
+      setError('Streaming connection failed');
+      setIsStreaming(false);
+    };
+
+    setIsStreaming(true);
+  };
+
+  return { streams, isStreaming, error, startStream, stopStream };
+}
+```
+
+### Design System Guidelines (Tailwind CSS v4)
+
+#### Do's ✅
+- Use the agent color system (agent-1 through agent-5) for stream differentiation
+- Leverage Tailwind CSS v4's built-in utilities and custom properties
+- Use the `cn()` utility from `lib/utils` for conditional classes
+- Implement smooth transitions with `tailwindcss-animate` plugin
+- Design for responsive layouts using Tailwind's breakpoint system
+- Maintain consistent spacing using custom spacing scale (xs, sm, md, lg, xl)
+- Use semantic colors for status indicators
+- Utilize Radix UI components for complex interactions (Select, Tabs, etc.)
+
+#### Don'ts ❌
+- Don't use colors outside the defined palette (configure in tailwind.config.ts)
+- Don't create jarring animations that interfere with reading
+- Don't ignore accessibility requirements (contrast, touch targets)
+- Don't hardcode spacing or colors (use Tailwind classes or CSS variables)
+- Don't neglect mobile experience for the stream interface
+- Don't mix old Tailwind v3 syntax with v4 features
 
 ## 🔧 Implementation Patterns
 
@@ -720,6 +1116,10 @@ helm upgrade --install aideator ./deploy/charts/aideator \
 ### Core Stack
 
 - **FastAPI** - Modern async web framework with automatic OpenAPI
+- **Next.js 15.2.4** - React 19 framework with App Router and Turbopack
+- **React 19.0.0** - Latest React with improved performance
+- **TypeScript 5** - Type-safe JavaScript with latest features
+- **Tailwind CSS v4.1.11** - Utility-first CSS with PostCSS v4
 - **Kubernetes** - Container orchestration and job management
 - **kubectl** - Native log streaming and resource management
 - **Helm** - Package manager for Kubernetes applications
@@ -727,6 +1127,14 @@ helm upgrade --install aideator ./deploy/charts/aideator \
 - **k3d** - Lightweight local Kubernetes clusters
 - **SQLite + SQLModel** - Lightweight database with async ORM
 - **Pydantic** - Data validation and serialization
+
+### Frontend Libraries
+
+- **Radix UI** - Unstyled, accessible component primitives
+- **class-variance-authority** - Type-safe component variants
+- **tailwind-merge** - Intelligent Tailwind class merging
+- **lucide-react** - Beautiful, consistent icon library
+- **tailwindcss-animate** - Animation utilities for Tailwind
 
 ### Kubernetes Components
 
