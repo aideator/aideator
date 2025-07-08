@@ -90,25 +90,27 @@ k8s_resource(
     resource_deps=['create-secrets']
 )
 
-# Phase 7: Check if port 3000 is available
+# Phase 7: Check if configured port is available
+frontend_port = os.getenv('FRONTEND_PORT', '3000')
 local_resource(
     name='port-check',
-    cmd='''
-    if lsof -Pi :3000 -sTCP:LISTEN -t >/dev/null 2>&1; then
-        echo "❌ ERROR: Port 3000 is already in use!"
+    cmd=f'''
+    PORT={frontend_port}
+    if lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null 2>&1; then
+        echo "❌ ERROR: Port $PORT is already in use!"
         echo ""
-        echo "Process using port 3000:"
-        lsof -Pi :3000 -sTCP:LISTEN || true
+        echo "Process using port $PORT:"
+        lsof -Pi :$PORT -sTCP:LISTEN || true
         echo ""
-        echo "Another process is using port 3000. Please either:"
-        echo "1. Stop the other process using port 3000"
-        echo "2. Configure Next.js to use a different port:"
-        echo "   - Create frontend/.env.local with: PORT=3001"
-        echo "   - Update the readiness_probe port in Tiltfile to match"
+        echo "Another process is using port $PORT. Please either:"
+        echo "1. Stop the other process using port $PORT"
+        echo "2. Use a different port by setting FRONTEND_PORT environment variable:"
+        echo "   export FRONTEND_PORT=3001"
+        echo "   tilt up"
         echo ""
         exit 1
     else
-        echo "✅ Port 3000 is available"
+        echo "✅ Port $PORT is available"
     fi
     ''',
     labels=['frontend']
@@ -124,32 +126,34 @@ local_resource(
 )
 
 # Phase 9: Frontend (optional - runs outside container for hot reload)
+# Check if user has set a custom port
+frontend_port = os.getenv('FRONTEND_PORT', '3000')
 local_resource(
     name='frontend',
     cmd='cd frontend && npm run dev',
-    serve_cmd='cd frontend && PORT=3000 npm run dev',  # Explicitly set port
+    serve_cmd='cd frontend && PORT=' + frontend_port + ' npm run dev',  # Use configurable port
     deps=['frontend/'],
     labels=['frontend'],
     allow_parallel=True,
     resource_deps=['frontend-setup'],  # Ensure npm install runs first
     readiness_probe=probe(
-        http_get=http_get_action(port=3000, path='/'),
+        http_get=http_get_action(port=int(frontend_port), path='/'),
         period_secs=5,
         failure_threshold=3
     ),
-    links=['http://localhost:3000']  # Add explicit link in Tilt UI
+    links=['http://localhost:' + frontend_port]  # Add explicit link in Tilt UI
 )
 
 # Add a post-startup validation
 local_resource(
     name='frontend-validate',
-    cmd='''
+    cmd=f'''
     echo "Waiting for frontend to start..."
     sleep 5
-    if curl -s http://localhost:3000 | grep -q "AIdeator"; then
-        echo "✅ Frontend is running correctly on port 3000"
+    if curl -s http://localhost:{frontend_port} | grep -q "AIdeator"; then
+        echo "✅ Frontend is running correctly on port {frontend_port}"
     else
-        echo "⚠️  WARNING: Port 3000 is responding but doesn't appear to be AIdeator!"
+        echo "⚠️  WARNING: Port {frontend_port} is responding but doesn't appear to be AIdeator!"
         echo "Another application may be running on this port."
         echo "Tilt UI link may navigate to the wrong application."
     fi
@@ -161,6 +165,8 @@ local_resource(
 )
 
 print("🚀 AIdeator development environment ready!")
-print("🔗 Frontend: http://localhost:3000")
+print(f"🔗 Frontend: http://localhost:{frontend_port}")
 print("🔗 FastAPI: http://localhost:8000")
 print("📊 Docs: http://localhost:8000/docs")
+if frontend_port != '3000':
+    print(f"ℹ️  Using custom frontend port: {frontend_port}")
