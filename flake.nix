@@ -51,6 +51,9 @@
           default = pkgs.mkShell {
             buildInputs = with pkgs; [
 
+              # Version control
+              git
+
               # Python development tools
               uv
 
