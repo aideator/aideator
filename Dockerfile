@@ -58,11 +58,9 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 # Agent stage
 FROM base AS agent
 
-# Install additional dependencies for agent
-RUN pip install --no-cache-dir \
-    litellm \
-    gitpython \
-    tenacity
+# Copy agent requirements and install dependencies
+COPY agent/requirements.txt ./agent-requirements.txt
+RUN pip install --no-cache-dir -r agent-requirements.txt
 
 # Copy agent code
 COPY agent/ ./agent/
