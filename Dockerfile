@@ -18,7 +18,7 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Install Claude Code and Gemini CLI globally
-RUN npm install -g @anthropic-ai/claude-code @google/gemini-cli
+RUN npm install -g @anthropic-ai/claude-code @google/gemini-cli @openai/codex
 
 # Install kubectl for Kubernetes operations
 RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
