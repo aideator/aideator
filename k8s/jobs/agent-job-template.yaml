@@ -53,6 +53,10 @@ spec:
               value: "INFO"
             - name: PYTHONUNBUFFERED
               value: "1"
+            # SECURITY TRADEOFF: Hardcoded Redis URL for development
+            # Production should use service discovery or secrets
+            - name: REDIS_URL
+              value: "redis://aideator-redis:6379/0"
           command: ["python", "-u", "/app/agent/main.py"]
           resources:
             requests:

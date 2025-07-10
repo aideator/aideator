@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diff Viewer</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+        }
+        #container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #569cd6;
+            margin-bottom: 30px;
+        }
+        .file-card {
+            background-color: #252526;
+            border: 1px solid #3e3e42;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        .file-card:hover {
+            border-color: #569cd6;
+            box-shadow: 0 4px 12px rgba(86, 156, 214, 0.2);
+        }
+        .file-header {
+            padding: 15px 20px;
+            background-color: #2d2d30;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .file-name {
+            font-weight: 600;
+            color: #dcdcaa;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .file-type {
+            font-size: 12px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            background-color: #3e3e42;
+            color: #9cdcfe;
+        }
+        .expand-icon {
+            transition: transform 0.3s ease;
+            color: #569cd6;
+        }
+        .expanded .expand-icon {
+            transform: rotate(90deg);
+        }
+        .file-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        .expanded .file-content {
+            max-height: 1000px;
+        }
+        .diff-section, .changes-section {
+            padding: 20px;
+            border-top: 1px solid #3e3e42;
+        }
+        .section-title {
+            color: #569cd6;
+            font-weight: 600;
+            margin-bottom: 10px;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .diff-content {
+            background-color: #1e1e1e;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            overflow-x: auto;
+        }
+        .diff-line {
+            margin: 2px 0;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+        .diff-add {
+            background-color: rgba(50, 205, 50, 0.1);
+            color: #87d96c;
+        }
+        .diff-remove {
+            background-color: rgba(255, 69, 58, 0.1);
+            color: #f85149;
+        }
+        .diff-context {
+            color: #8b949e;
+        }
+        .changes-content {
+            line-height: 1.8;
+            color: #e1e4e8;
+        }
+        .changes-content ul {
+            margin: 10px 0;
+            padding-left: 25px;
+        }
+        .changes-content li {
+            margin: 8px 0;
+            color: #a8dadc;
+        }
+        .binary-notice {
+            background-color: #3e3e42;
+            padding: 15px;
+            border-radius: 6px;
+            color: #9cdcfe;
+            font-style: italic;
+        }
+        canvas {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <h1>📄 Diff Analysis Viewer</h1>
+        <div id="fileList"></div>
+    </div>
+    <canvas id="hiddenCanvas"></canvas>
+
+    <script>
+        // Parse the XML data
+        const xmlString = `<diff_analysis>
+            <file>
+                <name>__pycache__/test_hello.cpython-311-pytest-7.4.3.pyc</name>
+                <diff>index 2c9f1c0..d41c6b0 100644
+Binary files a/__pycache__/test_hello.cpython-311-pytest-7.4.3.pyc and b/__pycache__/test_hello.cpython-311-pytest-7.4.3.pyc differ</diff>
+                <changes>Binary file updated - This is a compiled Python test bytecode file that was automatically regenerated, likely when the test suite was run after hello.py was modified. No manual changes were made to this file.</changes>
+            </file>
+            <file>
+                <name>hello.py</name>
+                <diff>@@ -3,8 +3,8 @@ import time
+
+def greet(name="World"):
+-    """Generate a greeting message."""
+-    return f"Hello, {name}!"
++    """Generate an exciting greeting message."""
++    return f"🎉 Woohoo! Hello, awesome {name}! Let's rock this day! 🚀"</diff>
+                <changes>- Modified the docstring of the greet() function from "Generate a greeting message." to "Generate an exciting greeting message."
+- Changed the greeting message format from a simple "Hello, {name}!" to an enthusiastic "🎉 Woohoo! Hello, awesome {name}! Let's rock this day! 🚀" with emojis and more energetic language
+- The function signature remains unchanged, still accepting an optional name parameter with "World" as the default</changes>
+            </file>
+        </diff_analysis>`;
+
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+        const files = xmlDoc.getElementsByTagName("file");
+
+        const fileListContainer = document.getElementById("fileList");
+
+        // Process each file
+        Array.from(files).forEach((file, index) => {
+            const fileName = file.getElementsByTagName("name")[0].textContent;
+            const diff = file.getElementsByTagName("diff")[0].textContent;
+            const changes = file.getElementsByTagName("changes")[0].textContent;
+            
+            const isBinary = diff.includes("Binary files");
+            const fileType = fileName.endsWith('.pyc') ? 'Binary' : 'Source';
+            
+            // Create file card
+            const fileCard = document.createElement("div");
+            fileCard.className = "file-card";
+            fileCard.id = `file-${index}`;
+            
+            // Create file header
+            const fileHeader = document.createElement("div");
+            fileHeader.className = "file-header";
+            fileHeader.innerHTML = `
+                <div class="file-name">
+                    <span>${fileName}</span>
+                    <span class="file-type">${fileType}</span>
+                </div>
+                <span class="expand-icon">▶</span>
+            `;
+            
+            // Create file content
+            const fileContent = document.createElement("div");
+            fileContent.className = "file-content";
+            
+            // Add diff section
+            const diffSection = document.createElement("div");
+            diffSection.className = "diff-section";
+            
+            if (isBinary) {
+                diffSection.innerHTML = `
+                    <div class="section-title">Diff</div>
+                    <div class="binary-notice">${diff}</div>
+                `;
+            } else {
+                const formattedDiff = formatDiff(diff);
+                diffSection.innerHTML = `
+                    <div class="section-title">Diff</div>
+                    <div class="diff-content">${formattedDiff}</div>
+                `;
+            }
+            
+            // Add changes section
+            const changesSection = document.createElement("div");
+            changesSection.className = "changes-section";
+            
+            const formattedChanges = formatChanges(changes);
+            changesSection.innerHTML = `
+                <div class="section-title">Summary of Changes</div>
+                <div class="changes-content">${formattedChanges}</div>
+            `;
+            
+            fileContent.appendChild(diffSection);
+            fileContent.appendChild(changesSection);
+            
+            fileCard.appendChild(fileHeader);
+            fileCard.appendChild(fileContent);
+            
+            // Add click handler
+            fileHeader.addEventListener("click", () => {
+                fileCard.classList.toggle("expanded");
+                logCanvasClick(fileName, fileCard.classList.contains("expanded"));
+            });
+            
+            fileListContainer.appendChild(fileCard);
+        });
+        
+        function formatDiff(diff) {
+            const lines = diff.split('\n');
+            return lines.map(line => {
+                let className = 'diff-context';
+                if (line.startsWith('+')) {
+                    className = 'diff-add';
+                } else if (line.startsWith('-')) {
+                    className = 'diff-remove';
+                } else if (line.startsWith('@@')) {
+                    className = 'diff-context';
+                }
+                return `<div class="diff-line ${className}">${escapeHtml(line)}</div>`;
+            }).join('');
+        }
+        
+        function formatChanges(changes) {
+            const items = changes.split('\n').filter(item => item.trim().startsWith('-'));
+            if (items.length > 0) {
+                const formattedItems = items.map(item => 
+                    `<li>${escapeHtml(item.substring(1).trim())}</li>`
+                ).join('');
+                return `<ul>${formattedItems}</ul>`;
+            }
+            return `<p>${escapeHtml(changes)}</p>`;
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Log clicks to hidden canvas for tracking
+        function logCanvasClick(fileName, isExpanded) {
+            const canvas = document.getElementById('hiddenCanvas');
+            const ctx = canvas.getContext('2d');
+            ctx.fillText(`Clicked: ${fileName} - ${isExpanded ? 'Expanded' : 'Collapsed'}`, 10, 10);
+            console.log(`File "${fileName}" was ${isExpanded ? 'expanded' : 'collapsed'}`);
+        }
+        
+        // Auto-expand the first file
+        document.querySelector('.file-card')?.classList.add('expanded');
+    </script>
+</body>
+</html>

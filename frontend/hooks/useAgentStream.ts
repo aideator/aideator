@@ -118,8 +118,18 @@ export function useAgentStream(): AgentStreamHook {
     setIsStreaming(true);
     currentRunIdRef.current = runId;
 
-    const streamUrl = `http://localhost:8000/api/v1/runs/${runId}/stream`;
-    console.log('Starting SSE stream to:', streamUrl);
+    // Check which streaming backend to use - prefer localStorage over env var
+    const storedBackend = typeof window !== 'undefined' ? localStorage.getItem('streamingBackend') : null;
+    const streamingBackend = storedBackend || process.env.NEXT_PUBLIC_STREAMING_BACKEND || 'redis';
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+    
+    // Use Redis endpoint if configured, otherwise use kubectl endpoint
+    const streamPath = streamingBackend === 'redis' 
+      ? `/api/v1/runs/${runId}/stream/redis`
+      : `/api/v1/runs/${runId}/stream`;
+    
+    const streamUrl = `${apiBase}${streamPath}`;
+    console.log(`Starting SSE stream (${streamingBackend}) to:`, streamUrl);
 
     try {
       const eventSource = new EventSource(streamUrl, {
@@ -130,6 +140,10 @@ export function useAgentStream(): AgentStreamHook {
         console.log('SSE connection opened for run:', runId);
         setConnectionState('connected');
         setError(null);
+        // Reset retry count on successful connection
+        if (eventSourceRef.current) {
+          (eventSourceRef as any).retryCount = 0;
+        }
       };
 
       // The backend sends named events, not default messages
@@ -223,14 +237,34 @@ export function useAgentStream(): AgentStreamHook {
         setConnectionState('error');
         setIsStreaming(false);
         
-        // Auto-reconnect after a delay if the run is still active
+        // Enhanced reconnection logic for Redis
+        const storedBackend = typeof window !== 'undefined' ? localStorage.getItem('streamingBackend') : null;
+        const streamingBackend = storedBackend || process.env.NEXT_PUBLIC_STREAMING_BACKEND || 'redis';
+        const isRedis = streamingBackend === 'redis';
+        
+        // Auto-reconnect with exponential backoff
         if (currentRunIdRef.current === runId) {
-          setTimeout(() => {
-            if (currentRunIdRef.current === runId) {
-              console.log('Attempting to reconnect SSE for run:', runId);
-              startStream(runId);
-            }
-          }, 3000);
+          const reconnectDelay = isRedis ? 1000 : 3000; // Faster reconnect for Redis
+          const maxRetries = isRedis ? 10 : 3; // More retries for Redis
+          
+          // Track retry count (stored on the ref to persist across renders)
+          if (!eventSourceRef.current) return;
+          const retryCount = (eventSourceRef as any).retryCount || 0;
+          
+          if (retryCount < maxRetries) {
+            const delay = Math.min(reconnectDelay * Math.pow(2, retryCount), 30000);
+            console.log(`Attempting to reconnect SSE (${streamingBackend}) for run: ${runId} in ${delay}ms (retry ${retryCount + 1}/${maxRetries})`);
+            
+            setTimeout(() => {
+              if (currentRunIdRef.current === runId) {
+                (eventSourceRef as any).retryCount = retryCount + 1;
+                startStream(runId);
+              }
+            }, delay);
+          } else {
+            console.error(`Max reconnection attempts (${maxRetries}) reached for ${streamingBackend} streaming`);
+            setError(`Unable to maintain connection after ${maxRetries} attempts`);
+          }
         }
       };
 
@@ -249,8 +283,10 @@ export function useAgentStream(): AgentStreamHook {
       throw new Error('No active run to select from');
     }
 
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/runs/${currentRunIdRef.current}/select`, {
+      const response = await fetch(`${apiBase}/api/v1/runs/${currentRunIdRef.current}/select`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

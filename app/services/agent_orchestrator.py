@@ -16,6 +16,7 @@ from app.models.run import Run, RunStatus
 from app.schemas.runs import AgentConfig
 from app.services.kubernetes_service import KubernetesService
 from app.services.sse_manager import sse_manager, SSEManager
+from app.services.redis_service import redis_service
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -223,12 +224,30 @@ class AgentOrchestrator:
                     if 'timestamp' in log_entry and 'level' in log_entry:
                         # This is a structured log, skip it
                         logger.debug(f"Agent log: {log_entry.get('message', log_entry)}")
+                        # Publish to Redis logs channel if available
+                        if settings.redis_url:
+                            try:
+                                await redis_service.publish_agent_log(run_id, str(variation_id), log_entry)
+                            except Exception as e:
+                                logger.warning(f"Failed to publish log to Redis: {e}")
                         continue
                     # If it's JSON but not a log, send it
                     await self.sse.send_agent_output(run_id, variation_id, json.dumps(log_entry))
+                    # Also publish to Redis if available
+                    if settings.redis_url:
+                        try:
+                            await redis_service.publish_agent_output(run_id, str(variation_id), json.dumps(log_entry))
+                        except Exception as e:
+                            logger.warning(f"Failed to publish output to Redis: {e}")
                 except json.JSONDecodeError:
                     # This is plain text content (markdown), send it
                     await self.sse.send_agent_output(run_id, variation_id, log_line)
+                    # Also publish to Redis if available
+                    if settings.redis_url:
+                        try:
+                            await redis_service.publish_agent_output(run_id, str(variation_id), log_line)
+                        except Exception as e:
+                            logger.warning(f"Failed to publish output to Redis: {e}")
             
             # Send job completion event
             await self._send_status_event(
@@ -239,6 +258,17 @@ class AgentOrchestrator:
             
             # Send SSE completion event to frontend
             await self.sse.send_agent_complete(run_id, variation_id)
+            
+            # Publish status to Redis if available
+            if settings.redis_url:
+                try:
+                    await redis_service.publish_status(
+                        run_id, 
+                        "variation_completed",
+                        {"variation_id": variation_id, "job_name": job_name}
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to publish status to Redis: {e}")
             
         except Exception as e:
             logger.error(f"Error streaming job logs for {job_name}: {e}")

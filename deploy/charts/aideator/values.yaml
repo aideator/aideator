@@ -113,3 +113,16 @@ rbac:
     - apiGroups: ["batch"]
       resources: ["jobs"]
       verbs: ["create", "get", "list", "watch", "delete"]
+
+# Redis configuration
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: "changeme"  # Override in production
+  master:
+    persistence:
+      enabled: true
+      size: 8Gi
+  replica:
+    replicaCount: 0  # Disable replicas for development

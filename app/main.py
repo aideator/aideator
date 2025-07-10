@@ -16,6 +16,7 @@ from app.core.database import create_db_and_tables
 from app.core.logging import setup_logging
 from app.middleware.logging import LoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
+from app.services.redis_service import redis_service
 # Using Kubernetes service for container orchestration
 from app.utils.openapi import custom_openapi
 
@@ -25,7 +26,7 @@ logger = setup_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Manage app lifecycle - database initialization only."""
+    """Manage app lifecycle - database and Redis initialization."""
     # Startup
     logger.info(f"Starting {settings.project_name} v{settings.version}")
 
@@ -33,12 +34,22 @@ async def lifespan(app: FastAPI):
     await create_db_and_tables()
     logger.info("Database initialized")
 
-    # Kubernetes connections are handled via kubectl
-    # No persistent connection needed at the server level
+    # Initialize Redis if URL is configured
+    if settings.redis_url:
+        try:
+            await redis_service.connect()
+            logger.info("Redis connected successfully")
+        except Exception as e:
+            logger.warning(f"Redis connection failed (non-critical): {e}")
+            # Continue without Redis - kubectl logs will still work
     
     yield
 
     # Shutdown
+    if settings.redis_url:
+        await redis_service.disconnect()
+        logger.info("Redis disconnected")
+    
     logger.info("Shutting down application")
 
 
@@ -127,10 +138,15 @@ def create_application() -> FastAPI:
     @app.get("/health", tags=["System"])
     async def health_check() -> dict[str, Any]:
         """Health check endpoint."""
+        redis_status = "not_configured"
+        if settings.redis_url:
+            redis_status = "healthy" if await redis_service.health_check() else "unhealthy"
+            
         return {
             "status": "healthy",
             "version": settings.version,
             "orchestration": "kubernetes",  # Using Kubernetes for orchestration
+            "redis": redis_status,
         }
 
     return app
