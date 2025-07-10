@@ -64,7 +64,10 @@ function StreamPageContent() {
   const agentMode = useAgentMode();
   
   // Form state
-  const [prompt, setPrompt] = useState("Analyze this repository and suggest improvements.");
+  const defaultPrompt = agentMode.isCodeMode 
+    ? "Analyze this repository and suggest improvements."
+    : "Write a creative story about a robot who discovers emotions for the first time.";
+  const [prompt, setPrompt] = useState(defaultPrompt);
   const [selectedRepository, setSelectedRepository] = useState<string>('');
   const [isComparing, setIsComparing] = useState(false);
   const [isConfigExpanded, setIsConfigExpanded] = useState(true);
@@ -94,6 +97,14 @@ function StreamPageContent() {
       autoLoginDev();
     }
   }, [isAuthenticated, autoLoginDev]);
+  
+  // Update prompt when agent mode changes
+  useEffect(() => {
+    const newDefaultPrompt = agentMode.isCodeMode 
+      ? "Analyze this repository and suggest improvements."
+      : "Write a creative story about a robot who discovers emotions for the first time.";
+    setPrompt(newDefaultPrompt);
+  }, [agentMode.isCodeMode]);
   
   const handleStartComparison = async () => {
     if (!prompt.trim()) {
@@ -613,7 +624,7 @@ function StreamPageContent() {
                       id="prompt"
                       placeholder={agentMode.isCodeMode 
                         ? "Enter your code analysis prompt (e.g., 'Add error handling to all API endpoints')..." 
-                        : "Enter your prompt to compare across multiple models..."
+                        : "Enter your prompt to compare across multiple models (e.g., 'Explain quantum computing in simple terms')..."
                       }
                       value={prompt}
                       onChange={(e) => setPrompt(e.target.value)}

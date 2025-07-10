@@ -51,16 +51,7 @@ class AgentOrchestrator:
         # Log that we're starting - this will help debug if the task is running
         logger.info(f"🚀 ORCHESTRATOR STARTING: run_id={run_id}, variations={variations}")
         
-        # Wait for SSE connections to be established
-        await self._wait_for_sse_connections(run_id, max_wait_seconds=10)
-        
-        # Update run status
-        if db_session:
-            await self._update_run_status(
-                db_session, run_id, RunStatus.RUNNING
-            )
-        
-        # Store run metadata
+        # Store run metadata BEFORE waiting for SSE connections
         self.active_runs[run_id] = {
             "repo_url": repo_url,
             "prompt": prompt,
@@ -70,6 +61,15 @@ class AgentOrchestrator:
             "start_time": datetime.utcnow().isoformat(),
             "jobs": []
         }
+        
+        # Wait for SSE connections to be established
+        await self._wait_for_sse_connections(run_id, max_wait_seconds=10)
+        
+        # Update run status
+        if db_session:
+            await self._update_run_status(
+                db_session, run_id, RunStatus.RUNNING
+            )
         
         try:
             if use_batch_job:
@@ -376,7 +376,10 @@ class AgentOrchestrator:
         for i in range(max_wait_seconds * 10):  # Check every 100ms
             if run_id in self.sse._connections and self.sse._connections[run_id]:
                 logger.info(f"SSE connection established for run {run_id} after {i/10:.1f}s")
-                await self.sse.send_agent_output(run_id, 0, f"🔗 Connected! Starting agent variations...")
+                # Send connected message to all variations
+                variations = self.active_runs.get(run_id, {}).get("variations", 1)
+                for variation_id in range(variations):
+                    await self.sse.send_agent_output(run_id, variation_id, f"🔗 Connected! Starting agent variations...")
                 return
             
             await asyncio.sleep(0.1)  # 100ms check interval

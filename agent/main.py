@@ -119,12 +119,17 @@ class AIdeatorAgent:
         agent_mode = os.getenv("AGENT_MODE", "litellm")
         self.log(f"🎯 Agent mode: {agent_mode}", "INFO", agent_mode=agent_mode)
         
-        # Log CLI tool versions
-        claude_version = self._get_cli_version("claude")
-        self.log(f"🤖 Claude CLI version: {claude_version}", "INFO", claude_version=claude_version)
+        # Check if this is a code mode that requires repository
+        is_code_mode = agent_mode in ["claude-cli", "gemini-cli", "openai-codex"]
         
-        gemini_version = self._get_cli_version("gemini")
-        self.log(f"💎 Gemini CLI version: {gemini_version}", "INFO", gemini_version=gemini_version)
+        if is_code_mode:
+            # Log CLI tool versions for code modes
+            if agent_mode == "claude-cli":
+                claude_version = self._get_cli_version("claude")
+                self.log(f"🤖 Claude CLI version: {claude_version}", "INFO", claude_version=claude_version)
+            elif agent_mode == "gemini-cli":
+                gemini_version = self._get_cli_version("gemini")
+                self.log(f"💎 Gemini CLI version: {gemini_version}", "INFO", gemini_version=gemini_version)
         
         # Log LiteLLM Gateway configuration
         self.log("🔧 Using LiteLLM Gateway", "INFO", 
@@ -136,14 +141,20 @@ class AIdeatorAgent:
         self.log(f"Debug logs location: {self.log_file}", "INFO")
         
         try:
-            # Clone repository
-            await self._clone_repository()
-            
-            # Analyze codebase
-            codebase_summary = await self._analyze_codebase()
-            
-            # Generate response with LLM
-            response = await self._generate_llm_response(codebase_summary)
+            if is_code_mode:
+                # Code mode: Clone repository and analyze codebase
+                self.log("📁 Code mode detected - cloning repository", "INFO")
+                await self._clone_repository()
+                
+                # Analyze codebase
+                codebase_summary = await self._analyze_codebase()
+                
+                # Generate response with LLM
+                response = await self._generate_llm_response(codebase_summary)
+            else:
+                # Chat mode: Skip repository cloning, just pass prompt directly
+                self.log("💬 Chat mode detected - skipping repository clone", "INFO")
+                response = await self._generate_llm_response(None)
             
             # Output final response
             self.log("✅ Generation complete", "INFO", 
@@ -452,7 +463,7 @@ class AIdeatorAgent:
             self.log_error(f"Gemini CLI execution failed", e)
             raise RuntimeError(f"Failed to generate Gemini CLI response: {e}")
     
-    async def _generate_litellm_response(self, codebase_summary: str) -> str:
+    async def _generate_litellm_response(self, codebase_summary: Optional[str]) -> str:
         """Generate response using LiteLLM (original implementation)."""
         self.log("Generating LLM response", "INFO", 
                 step="llm_start", 
@@ -460,8 +471,10 @@ class AIdeatorAgent:
                 temperature=self.config['temperature'])
         
         try:
-            # Prepare the full prompt
-            full_prompt = f"""
+            # Prepare the full prompt based on mode
+            if codebase_summary is not None:
+                # Code mode: Include codebase analysis
+                full_prompt = f"""
 You are an expert software engineer analyzing a codebase. Here's the codebase analysis:
 
 {codebase_summary}
@@ -476,6 +489,9 @@ Please provide a comprehensive analysis and recommendations. Focus on:
 
 Be thorough but concise in your response.
 """
+            else:
+                # Chat mode: Direct prompt without codebase context
+                full_prompt = self.prompt
             
             # Make API call via LiteLLM Gateway with streaming
             self.log("Starting LLM streaming", "INFO", step="streaming_start")
