@@ -129,7 +129,7 @@ If you encounter "image not found" errors:
 
 ## Architecture
 
-See [architecture.md](./architecture.md) for detailed technical documentation.
+See [architecture.md](_docs/architecture.md) for detailed technical documentation.
 
 ## Key Features
 
