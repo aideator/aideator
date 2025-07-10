@@ -84,18 +84,31 @@ export function useAPIIntegration() {
     try {
       setState(prev => ({ ...prev, lastError: null }));
 
-      // Transform model IDs to model variants for the API
-      // For now, we'll use a simple mapping. In production, this should be enhanced
-      // to properly fetch user credentials for each provider
-      const modelVariants = request.modelIds.map((modelId, index) => {
-        // Extract provider from model ID (e.g., "gpt-4" -> "openai")
-        let provider = 'openai'; // default
-        if (modelId.includes('claude')) provider = 'anthropic';
-        else if (modelId.includes('gemini')) provider = 'gemini';
-        else if (modelId.includes('mixtral') || modelId.includes('mistral')) provider = 'mistral';
+      // Map frontend model IDs to backend model definition IDs
+      const modelIdToDefinitionId = (modelId: string): string => {
+        // Based on the backend error showing available models: gpt-4, gpt-4-turbo, gpt-4o, gpt-4o-mini, gpt-3.5-turbo
+        // These are the actual model names the backend uses, not the definition IDs
+        const modelMapping: Record<string, string> = {
+          'gpt-4': 'gpt-4',
+          'gpt-3.5-turbo': 'gpt-3.5-turbo', 
+          'gpt-4-turbo': 'gpt-4-turbo',
+          'gpt-4o': 'gpt-4o',
+          'gpt-4o-mini': 'gpt-4o-mini',
+          'claude-3-opus': 'claude-3-opus',
+          'claude-3-sonnet': 'claude-3-sonnet', 
+          'claude-3-haiku': 'claude-3-haiku',
+          'claude-3-5-sonnet': 'claude-3-5-sonnet',
+          'claude-3-5-haiku': 'claude-3-5-haiku',
+          'gemini-pro': 'gemini-pro',
+        };
         
+        return modelMapping[modelId] || modelId; // Fallback to original ID if not mapped
+      };
+
+      // Transform model IDs to model variants for the API
+      const modelVariants = request.modelIds.map((modelId, index) => {
         return {
-          model_definition_id: modelId,
+          model_definition_id: modelIdToDefinitionId(modelId),
           provider_credential_id: null, // Let backend use default credentials if available
           model_parameters: {
             temperature: request.temperature || 0.7,
