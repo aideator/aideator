@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { ModelInfo } from '@/types/models';
 import { getModels, ModelDefinition } from '@/lib/api-client';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface ModelSelectionState {
   selectedModels: string[];
@@ -144,6 +145,7 @@ function convertToModelInfo(model: ModelDefinition): ModelInfo {
 }
 
 export function useModelSelection() {
+  const auth = useAuth();
   const [state, setState] = useState<ModelSelectionState>({
     selectedModels: [],
     availableModels: DEFAULT_MODELS, // Start with defaults, will be replaced by API data
@@ -154,8 +156,24 @@ export function useModelSelection() {
     error: null,
   });
 
-  // Fetch models from API on mount
+  // Fetch models from API after auth completes
   useEffect(() => {
+    // Don't make API calls if auth is still loading or user is not authenticated
+    if (auth.isLoading || !auth.isAuthenticated) {
+      // Set default models immediately if not authenticated
+      if (!auth.isLoading && !auth.isAuthenticated) {
+        setState(prev => ({ ...prev, isLoading: false, error: null }));
+        // Initialize with default recommended models for unauthenticated users
+        const defaultSelectedModels = DEFAULT_MODELS.filter(m => m.isRecommended).slice(0, 3).map(m => m.id);
+        setState(prev => ({ 
+          ...prev, 
+          selectedModels: defaultSelectedModels,
+          availableModels: DEFAULT_MODELS
+        }));
+      }
+      return;
+    }
+
     async function fetchModels() {
       try {
         setState(prev => ({ ...prev, isLoading: true, error: null }));
@@ -225,7 +243,7 @@ export function useModelSelection() {
     }
     
     fetchModels();
-  }, []);
+  }, [auth.isLoading, auth.isAuthenticated]);
 
   // Save to localStorage whenever selection changes
   useEffect(() => {

@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { ModelInfo } from '@/types/models';
 import { getModels, ModelDefinition } from '@/lib/api-client';
 import { ModelInstance } from '@/components/models/ModelInstanceSelector';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface ModelInstancesState {
   selectedInstances: ModelInstance[];
@@ -110,6 +111,7 @@ function convertToModelInfo(model: ModelDefinition): ModelInfo {
 }
 
 export function useModelInstances() {
+  const auth = useAuth();
   const [state, setState] = useState<ModelInstancesState>({
     selectedInstances: [],
     availableModels: DEFAULT_MODELS, // Start with defaults, will be replaced by API data
@@ -118,8 +120,27 @@ export function useModelInstances() {
     error: null,
   });
 
-  // Fetch models from API on mount
+  // Fetch models from API after auth completes
   useEffect(() => {
+    // Don't make API calls if auth is still loading or user is not authenticated
+    if (auth.isLoading || !auth.isAuthenticated) {
+      // Set default models immediately if not authenticated
+      if (!auth.isLoading && !auth.isAuthenticated) {
+        setState(prev => ({ ...prev, isLoading: false, error: null }));
+        // Initialize with default models for unauthenticated users
+        const defaultInstances = DEFAULT_MODELS.slice(0, 2).map((model, index) => ({
+          id: `default-${index}`,
+          modelId: model.id,
+          modelInfo: model,
+          isEnabled: true,
+          customName: '',
+          order: index
+        }));
+        setState(prev => ({ ...prev, instances: defaultInstances }));
+      }
+      return;
+    }
+
     async function fetchModels() {
       try {
         setState(prev => ({ ...prev, isLoading: true, error: null }));
@@ -181,7 +202,7 @@ export function useModelInstances() {
     }
     
     fetchModels();
-  }, []);
+  }, [auth.isLoading, auth.isAuthenticated]);
 
   // Save to localStorage whenever instances change
   useEffect(() => {

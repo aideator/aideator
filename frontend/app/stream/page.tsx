@@ -51,17 +51,29 @@ interface ModelResponse {
 }
 
 function StreamPageContent() {
+  // Auth context
+  const { user, apiKey, isAuthenticated, autoLoginDev, isLoading } = useAuth();
+  
   // Session state
   const { state, actions } = useSession();
-  
-  // Auth context
-  const { user, apiKey, isAuthenticated, autoLoginDev } = useAuth();
   
   // State management hooks
   const modelInstances = useModelInstances();
   const preferenceStore = usePreferenceStore();
   const apiIntegration = useAPIIntegration();
   const agentMode = useAgentMode();
+  
+  // Don't render anything while auth is loading
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-ai-primary mx-auto mb-4"></div>
+          <p className="text-neutral-shadow">Authenticating...</p>
+        </div>
+      </div>
+    );
+  }
   
   // Form state
   const defaultPrompt = agentMode.isCodeMode 
@@ -474,7 +486,7 @@ function StreamPageContent() {
           }
         }}
       >
-        <div className="h-full w-full flex flex-col overflow-hidden max-w-none">
+        <div className="h-full w-full flex flex-col overflow-y-auto max-w-none p-4 pb-8">
 
         {/* Conversation Container - Scrollable */}
         
@@ -900,9 +912,6 @@ function StreamPageContent() {
         
         {/* Force full width expansion */}
         <div className="w-full h-0 invisible" style={{minWidth: 'calc(100vw - 320px)'}}></div>
-        
-        {/* Spacer to fill remaining height */}
-        <div className="flex-1 min-h-0"></div>
         </div>
       </AdaptiveLayout>
     </div>

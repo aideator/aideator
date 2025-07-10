@@ -475,7 +475,13 @@ export function useAPIIntegration() {
     });
 
     eventSource.onerror = (error) => {
-      console.error('Streaming error:', error);
+      console.error('Streaming error:', {
+        type: error.type,
+        target: error.target?.readyState,
+        url: error.target?.url,
+        readyState: eventSource.readyState,
+        timestamp: new Date().toISOString()
+      });
       
       setState(prev => {
         const newRetries = prev.connectionRetries + 1;

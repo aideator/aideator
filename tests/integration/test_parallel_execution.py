@@ -23,7 +23,9 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.services.kubernetes_service import KubernetesService
 from app.services.agent_orchestrator import AgentOrchestrator
-from app.core.config import settings
+from app.core.config import get_settings
+
+settings = get_settings()
 
 
 class TestParallelExecution:

@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
 import { Session } from '@/components/sessions/SessionSidebar';
 import * as api from '@/lib/api-client';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Session Turn interface for conversation history
 export interface SessionTurn {
@@ -276,12 +277,20 @@ const sessionAPI = {
 // Session provider component
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(sessionReducer, initialState);
+  const auth = useAuth();
 
   // Load from localStorage on mount
   useEffect(() => {
     loadFromStorage();
-    // Also load fresh sessions from backend to validate localStorage data
-    // We need to ensure loadSessions is defined before calling it
+  }, []);
+
+  // Load fresh sessions from backend ONLY after auth completes
+  useEffect(() => {
+    // Don't make API calls if auth is still loading or user is not authenticated
+    if (auth.isLoading || !auth.isAuthenticated) {
+      return;
+    }
+
     const loadSessionsOnMount = async () => {
       try {
         const sessions = await sessionAPI.getSessions();
@@ -307,7 +316,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
     
     loadSessionsOnMount();
-  }, []);
+  }, [auth.isLoading, auth.isAuthenticated]);
 
   // Save to localStorage whenever sessions or active session changes
   useEffect(() => {

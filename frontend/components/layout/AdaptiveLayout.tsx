@@ -298,7 +298,7 @@ export function AdaptiveLayout({
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-hidden bg-neutral-white min-w-0 w-full max-w-none">
+        <div className="flex-1 flex flex-col bg-neutral-white min-w-0 w-full max-w-none">
           {children}
         </div>
       </div>

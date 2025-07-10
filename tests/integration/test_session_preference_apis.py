@@ -23,8 +23,10 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from app.main import app
-from app.core.config import settings
-from app.db.database import get_db
+from app.core.config import get_settings
+
+settings = get_settings()
+from app.core.database import get_session
 from app.models.user import User
 from app.models.session import Session
 from app.models.preference import Preference
