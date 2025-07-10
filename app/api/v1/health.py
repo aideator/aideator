@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +11,7 @@ router = APIRouter()
 
 
 @router.get("/health", summary="Health check")
-async def health_check() -> Dict[str, Any]:
+async def health_check() -> dict[str, Any]:
     """Check application health status."""
     return {
         "status": "healthy",
@@ -23,7 +23,7 @@ async def health_check() -> Dict[str, Any]:
 @router.get("/health/detailed", summary="Detailed health check")
 async def detailed_health_check(
     db: AsyncSession = Depends(get_session),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Detailed health check including dependencies."""
     health_status = {
         "status": "healthy",

@@ -1,20 +1,24 @@
 from datetime import datetime
-from typing import List, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func, desc
-from sqlmodel import Session as SQLSession
 
 from app.core.database import get_session
 from app.core.dependencies import CurrentUser
-from app.models.user import User
-from app.models.session import Session, Turn, Preference
+from app.models.session import Preference, Session, Turn
 from app.schemas.session import (
-    SessionCreate, SessionUpdate, SessionResponse, SessionListResponse,
-    TurnCreate, TurnResponse, PreferenceCreate, PreferenceResponse,
-    SessionAnalytics, ModelPerformanceMetrics, SessionExport
+    PreferenceCreate,
+    PreferenceResponse,
+    SessionAnalytics,
+    SessionCreate,
+    SessionExport,
+    SessionListResponse,
+    SessionResponse,
+    SessionUpdate,
+    TurnCreate,
+    TurnResponse,
 )
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -31,22 +35,22 @@ async def get_sessions(
 ):
     """Get user's sessions with pagination."""
     query = select(Session).where(Session.user_id == current_user.id)
-    
+
     if active_only:
         query = query.where(Session.is_active == True)
     elif archived_only:
         query = query.where(Session.is_archived == True)
-    
+
     # Get total count
     count_query = select(func.count()).select_from(query.subquery())
     total_result = await db.execute(count_query)
     total = total_result.scalar()
-    
+
     # Get sessions with pagination
     query = query.order_by(desc(Session.last_activity_at)).offset(skip).limit(limit)
     result = await db.execute(query)
     sessions = result.scalars().all()
-    
+
     return SessionListResponse(
         sessions=sessions,
         total=total,
@@ -69,11 +73,11 @@ async def create_session(
         description=session_data.description,
         models_used=session_data.models_used
     )
-    
+
     db.add(session)
     await db.commit()
     await db.refresh(session)
-    
+
     return session
 
 
@@ -89,10 +93,10 @@ async def get_session(
     )
     result = await db.execute(query)
     session = result.scalar_one_or_none()
-    
+
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     return session
 
 
@@ -109,19 +113,19 @@ async def update_session(
     )
     result = await db.execute(query)
     session = result.scalar_one_or_none()
-    
+
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     # Update fields
     update_data = session_update.dict(exclude_unset=True)
     for field, value in update_data.items():
         setattr(session, field, value)
-    
+
     session.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(session)
-    
+
     return session
 
 
@@ -137,17 +141,17 @@ async def delete_session(
     )
     result = await db.execute(query)
     session = result.scalar_one_or_none()
-    
+
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     await db.delete(session)
     await db.commit()
-    
+
     return {"message": "Session deleted successfully"}
 
 
-@router.get("/{session_id}/turns", response_model=List[TurnResponse])
+@router.get("/{session_id}/turns", response_model=list[TurnResponse])
 async def get_session_turns(
     session_id: str,
     current_user: CurrentUser,
@@ -160,15 +164,15 @@ async def get_session_turns(
     )
     session_result = await db.execute(session_query)
     session = session_result.scalar_one_or_none()
-    
+
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     # Get turns
     turns_query = select(Turn).where(Turn.session_id == session_id).order_by(Turn.turn_number)
     turns_result = await db.execute(turns_query)
     turns = turns_result.scalars().all()
-    
+
     return turns
 
 
@@ -186,15 +190,15 @@ async def create_turn(
     )
     session_result = await db.execute(session_query)
     session = session_result.scalar_one_or_none()
-    
+
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     # Get next turn number
     turn_count_query = select(func.count(Turn.id)).where(Turn.session_id == session_id)
     turn_count_result = await db.execute(turn_count_query)
     turn_number = turn_count_result.scalar() + 1
-    
+
     # Create turn
     turn = Turn(
         id=str(uuid4()),
@@ -204,17 +208,17 @@ async def create_turn(
         context=turn_data.context,
         models_requested=turn_data.models_requested
     )
-    
+
     db.add(turn)
-    
+
     # Update session
     session.total_turns += 1
     session.last_activity_at = datetime.utcnow()
     session.updated_at = datetime.utcnow()
-    
+
     await db.commit()
     await db.refresh(turn)
-    
+
     return turn
 
 
@@ -232,20 +236,20 @@ async def get_turn(
     )
     session_result = await db.execute(session_query)
     session = session_result.scalar_one_or_none()
-    
+
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     # Get turn
     turn_query = select(Turn).where(
         and_(Turn.id == turn_id, Turn.session_id == session_id)
     )
     turn_result = await db.execute(turn_query)
     turn = turn_result.scalar_one_or_none()
-    
+
     if not turn:
         raise HTTPException(status_code=404, detail="Turn not found")
-    
+
     return turn
 
 
@@ -264,20 +268,20 @@ async def create_preference(
     )
     session_result = await db.execute(session_query)
     session = session_result.scalar_one_or_none()
-    
+
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     # Verify turn exists
     turn_query = select(Turn).where(
         and_(Turn.id == turn_id, Turn.session_id == session_id)
     )
     turn_result = await db.execute(turn_query)
     turn = turn_result.scalar_one_or_none()
-    
+
     if not turn:
         raise HTTPException(status_code=404, detail="Turn not found")
-    
+
     # Create preference
     preference = Preference(
         id=str(uuid4()),
@@ -292,20 +296,20 @@ async def create_preference(
         confidence_score=preference_data.confidence_score,
         preference_type=preference_data.preference_type
     )
-    
+
     db.add(preference)
-    
+
     # Update session activity
     session.last_activity_at = datetime.utcnow()
     session.updated_at = datetime.utcnow()
-    
+
     await db.commit()
     await db.refresh(preference)
-    
+
     return preference
 
 
-@router.get("/{session_id}/preferences", response_model=List[PreferenceResponse])
+@router.get("/{session_id}/preferences", response_model=list[PreferenceResponse])
 async def get_session_preferences(
     session_id: str,
     current_user: CurrentUser,
@@ -318,17 +322,17 @@ async def get_session_preferences(
     )
     session_result = await db.execute(session_query)
     session = session_result.scalar_one_or_none()
-    
+
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     # Get preferences
     preferences_query = select(Preference).where(
         Preference.session_id == session_id
     ).order_by(Preference.created_at)
     preferences_result = await db.execute(preferences_query)
     preferences = preferences_result.scalars().all()
-    
+
     return preferences
 
 
@@ -345,35 +349,35 @@ async def get_session_analytics(
     )
     session_result = await db.execute(session_query)
     session = session_result.scalar_one_or_none()
-    
+
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     # Get session analytics
     turns_query = select(Turn).where(Turn.session_id == session_id)
     turns_result = await db.execute(turns_query)
     turns = turns_result.scalars().all()
-    
+
     preferences_query = select(Preference).where(Preference.session_id == session_id)
     preferences_result = await db.execute(preferences_query)
     preferences = preferences_result.scalars().all()
-    
+
     # Calculate analytics
     total_cost = sum(turn.total_cost for turn in turns)
     models_used = session.models_used
-    
+
     # Model preference stats
     model_wins = {}
     for pref in preferences:
         model_wins[pref.preferred_model] = model_wins.get(pref.preferred_model, 0) + 1
-    
+
     model_preference_stats = {}
     for model in models_used:
         model_preference_stats[model] = {
             "wins": model_wins.get(model, 0),
             "win_rate": model_wins.get(model, 0) / len(preferences) if preferences else 0
         }
-    
+
     return SessionAnalytics(
         total_sessions=1,
         active_sessions=1 if session.is_active else 0,
@@ -401,20 +405,20 @@ async def export_session(
     )
     session_result = await db.execute(session_query)
     session = session_result.scalar_one_or_none()
-    
+
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     # Get turns
     turns_query = select(Turn).where(Turn.session_id == session_id).order_by(Turn.turn_number)
     turns_result = await db.execute(turns_query)
     turns = turns_result.scalars().all()
-    
+
     # Get preferences
     preferences_query = select(Preference).where(Preference.session_id == session_id)
     preferences_result = await db.execute(preferences_query)
     preferences = preferences_result.scalars().all()
-    
+
     return SessionExport(
         session=session,
         turns=turns,

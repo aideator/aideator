@@ -1,4 +1,3 @@
-from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer
@@ -33,51 +32,51 @@ def get_orchestrator() -> AgentOrchestrator:
 async def get_current_user_from_api_key(
     request: Request,
     db: AsyncSession = Depends(get_session),
-) -> Optional[User]:
+) -> User | None:
     """Get current user from API key if provided."""
     # Check for API key in header
     api_key = request.headers.get(settings.api_key_header)
     if not api_key:
         return None
-    
+
     # Validate API key format
     if not api_key.startswith("aid_sk_"):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API key format",
         )
-    
+
     # Find API key in database
     result = await db.execute(
         select(APIKey).where(APIKey.is_active == True)
     )
     api_keys = result.scalars().all()
-    
+
     # Check each key (we can't query by hash)
     valid_key = None
     for key in api_keys:
         if pwd_context.verify(api_key, key.key_hash):
             valid_key = key
             break
-    
+
     if not valid_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API key",
         )
-    
+
     # Check expiration
     if valid_key.expires_at and valid_key.expires_at < datetime.utcnow():
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="API key expired",
         )
-    
+
     # Update last used
     valid_key.last_used_at = datetime.utcnow()
     valid_key.total_requests += 1
     await db.commit()
-    
+
     # Get user
     user = await db.get(User, valid_key.user_id)
     if not user or not user.is_active:
@@ -85,12 +84,12 @@ async def get_current_user_from_api_key(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
         )
-    
+
     return user
 
 
 async def require_user(
-    current_user: Optional[User] = Depends(get_current_user_from_api_key),
+    current_user: User | None = Depends(get_current_user_from_api_key),
 ) -> User:
     """Require authenticated user."""
     if not current_user:

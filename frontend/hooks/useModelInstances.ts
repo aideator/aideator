@@ -14,75 +14,7 @@ export interface ModelInstancesState {
   error: string | null;
 }
 
-// Default available models - expanded for testing
-const DEFAULT_MODELS: ModelInfo[] = [
-  {
-    id: 'gpt-4',
-    name: 'GPT-4',
-    provider: 'OpenAI',
-    description: 'Most capable GPT model for complex tasks',
-    pricing: { input: 0.03, output: 0.06, currency: 'USD' },
-    maxTokens: 8192,
-    averageResponseTime: 3.2,
-    capabilities: ['Reasoning', 'Code', 'Creative Writing', 'Analysis'],
-    isRecommended: true,
-  },
-  {
-    id: 'gpt-3.5-turbo',
-    name: 'GPT-3.5 Turbo',
-    provider: 'OpenAI',
-    description: 'Fast and efficient for most tasks',
-    pricing: { input: 0.0005, output: 0.0015, currency: 'USD' },
-    maxTokens: 4096,
-    averageResponseTime: 1.2,
-    capabilities: ['General', 'Code', 'Creative Writing'],
-    isRecommended: false,
-  },
-  {
-    id: 'claude-3-opus-20240229',
-    name: 'Claude 3 Opus',
-    provider: 'Anthropic',
-    description: 'Most powerful Claude model for complex reasoning',
-    pricing: { input: 0.015, output: 0.075, currency: 'USD' },
-    maxTokens: 4096,
-    averageResponseTime: 2.8,
-    capabilities: ['Reasoning', 'Analysis', 'Creative Writing', 'Code'],
-    isRecommended: true,
-  },
-  {
-    id: 'claude-3-sonnet-20240229',
-    name: 'Claude 3 Sonnet',
-    provider: 'Anthropic',
-    description: 'Balanced Claude model for general use',
-    pricing: { input: 0.003, output: 0.015, currency: 'USD' },
-    maxTokens: 4096,
-    averageResponseTime: 2.1,
-    capabilities: ['General', 'Analysis', 'Creative Writing'],
-    isRecommended: true,
-  },
-  {
-    id: 'claude-3-haiku-20240307',
-    name: 'Claude 3 Haiku',
-    provider: 'Anthropic',
-    description: 'Fastest Claude model for simple tasks',
-    pricing: { input: 0.00025, output: 0.00125, currency: 'USD' },
-    maxTokens: 4096,
-    averageResponseTime: 0.8,
-    capabilities: ['General', 'Fast Response'],
-    isNew: true,
-  },
-  {
-    id: 'gemini-pro',
-    name: 'Gemini Pro',
-    provider: 'Google',
-    description: 'Google\'s most capable model for complex tasks',
-    pricing: { input: 0.0005, output: 0.0015, currency: 'USD' },
-    maxTokens: 32768,
-    averageResponseTime: 2.5,
-    capabilities: ['Reasoning', 'Code', 'Multimodal', 'Analysis'],
-    isRecommended: true,
-  },
-];
+// No default models - we should always fetch from API
 
 // Storage key for persistence
 const STORAGE_KEY = 'aideator_model_instances';
@@ -114,7 +46,7 @@ export function useModelInstances() {
   const auth = useAuth();
   const [state, setState] = useState<ModelInstancesState>({
     selectedInstances: [],
-    availableModels: DEFAULT_MODELS, // Start with defaults, will be replaced by API data
+    availableModels: [], // Empty - must fetch from API
     maxInstances: 10,
     isLoading: true,
     error: null,
@@ -122,22 +54,19 @@ export function useModelInstances() {
 
   // Fetch models from API after auth completes
   useEffect(() => {
-    // Don't make API calls if auth is still loading or user is not authenticated
-    if (auth.isLoading || !auth.isAuthenticated) {
-      // Set default models immediately if not authenticated
-      if (!auth.isLoading && !auth.isAuthenticated) {
-        setState(prev => ({ ...prev, isLoading: false, error: null }));
-        // Initialize with default models for unauthenticated users
-        const defaultInstances = DEFAULT_MODELS.slice(0, 2).map((model, index) => ({
-          id: `default-${index}`,
-          modelId: model.id,
-          modelInfo: model,
-          isEnabled: true,
-          customName: '',
-          order: index
-        }));
-        setState(prev => ({ ...prev, instances: defaultInstances }));
-      }
+    // Don't make API calls if auth is still loading
+    if (auth.isLoading) {
+      return;
+    }
+
+    // If not authenticated, show error
+    if (!auth.isAuthenticated) {
+      setState(prev => ({ 
+        ...prev, 
+        isLoading: false, 
+        error: 'Authentication required to load models',
+        availableModels: []
+      }));
       return;
     }
 
@@ -145,19 +74,12 @@ export function useModelInstances() {
       try {
         setState(prev => ({ ...prev, isLoading: true, error: null }));
         
-        // Try to fetch models from API
-        let modelInfos: ModelInfo[] = [];
-        try {
-          console.log('Fetching models from API...');
-          const models = await getModels();
-          console.log('API returned models:', models);
-          modelInfos = models.map(convertToModelInfo);
-          console.log('Converted to ModelInfo:', modelInfos);
-        } catch (error) {
-          // If API fails (e.g., not authenticated), use default models
-          console.warn('Failed to fetch models from API, using defaults:', error);
-          modelInfos = DEFAULT_MODELS;
-        }
+        // Fetch models from API - no fallback
+        console.log('Fetching models from API...');
+        const models = await getModels();
+        console.log('API returned models:', models);
+        const modelInfos = models.map(convertToModelInfo);
+        console.log('Converted to ModelInfo:', modelInfos);
         
         // Load saved instances from localStorage
         let savedInstances: ModelInstance[] = [];
@@ -189,14 +111,15 @@ export function useModelInstances() {
           error: null,
         }));
       } catch (error) {
-        console.error('Failed to initialize models:', error);
-        // Even if everything fails, use defaults
+        console.error('Failed to fetch models from API:', error);
+        // Surface the actual error to the user
+        const errorMessage = error instanceof Error ? error.message : 'Failed to load models from API';
         setState(prev => ({
           ...prev,
-          availableModels: DEFAULT_MODELS,
+          availableModels: [],
           selectedInstances: [],
           isLoading: false,
-          error: null, // Don't show error for auth issues
+          error: errorMessage,
         }));
       }
     }

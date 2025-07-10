@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
@@ -7,7 +7,7 @@ from fastapi.openapi.utils import get_openapi
 def custom_openapi(app: FastAPI) -> callable:
     """Create custom OpenAPI schema."""
 
-    def openapi() -> Dict[str, Any]:
+    def openapi() -> dict[str, Any]:
         if app.openapi_schema:
             return app.openapi_schema
 

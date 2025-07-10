@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 from app.core.config import get_settings
 from app.models.run import RunStatus
@@ -30,11 +30,11 @@ class AgentConfig(BaseModel):
         le=8192,
         description="Maximum tokens to generate",
     )
-    system_prompt: Optional[str] = Field(
+    system_prompt: str | None = Field(
         None,
         description="Optional system prompt to prepend",
     )
-    stop_sequences: Optional[List[str]] = Field(
+    stop_sequences: list[str] | None = Field(
         None,
         description="Stop sequences for generation",
     )
@@ -65,9 +65,9 @@ class CreateRunRequest(BaseModel):
         description="Prompt for the LLM agents",
         examples=["Add comprehensive error handling to all API endpoints"],
     )
-    
+
     # Model selection system
-    model_variants: List[ModelVariantCreate] = Field(
+    model_variants: list[ModelVariantCreate] = Field(
         ...,
         description="List of model variants to run in parallel",
         min_length=1,
@@ -77,18 +77,18 @@ class CreateRunRequest(BaseModel):
         default=False,
         description="Use Claude Code CLI instead of basic Claude API",
     )
-    agent_mode: Optional[str] = Field(
+    agent_mode: str | None = Field(
         default="litellm",
         description="Agent execution mode: 'litellm', 'claude-cli', 'gemini-cli', or 'openai-codex'",
         examples=["litellm", "claude-cli", "gemini-cli", "openai-codex"],
     )
-    
+
     # Session and turn management
-    session_id: Optional[str] = Field(
+    session_id: str | None = Field(
         None,
         description="Session ID for multi-turn conversations. If not provided, a new session will be created.",
     )
-    turn_id: Optional[str] = Field(
+    turn_id: str | None = Field(
         None,
         description="Turn ID for this specific turn. If not provided, a new turn will be created.",
     )
@@ -118,13 +118,13 @@ class CreateRunRequest(BaseModel):
 
     @field_validator("agent_mode")
     @classmethod
-    def validate_agent_mode(cls, v: Optional[str]) -> str:
+    def validate_agent_mode(cls, v: str | None) -> str:
         """Validate agent mode."""
         valid_modes = ["litellm", "claude-cli", "gemini-cli", "openai-codex"]
         if v not in valid_modes + [None]:
             raise ValueError(f"Agent mode must be one of: {', '.join(valid_modes)}")
         return v or "litellm"
-    
+
 
     model_config = {
         "protected_namespaces": (),  # Allow model_ prefixed fields
@@ -185,17 +185,17 @@ class RunDetails(BaseModel):
     id: str = Field(..., description="Unique identifier")
     github_url: str = Field(..., description="Repository URL")
     prompt: str = Field(..., description="Agent prompt")
-    model_variants: List[ModelVariantResponse] = Field(..., description="Model variants in this run")
+    model_variants: list[ModelVariantResponse] = Field(..., description="Model variants in this run")
     status: RunStatus = Field(..., description="Current status")
-    winning_variation_id: Optional[int] = Field(
+    winning_variation_id: int | None = Field(
         None, description="ID of selected variation"
     )
     created_at: datetime = Field(..., description="Creation timestamp")
-    started_at: Optional[datetime] = Field(None, description="Start timestamp")
-    completed_at: Optional[datetime] = Field(None, description="Completion timestamp")
-    results: Dict[str, Any] = Field(default_factory=dict, description="Run results")
-    total_tokens_used: Optional[int] = Field(None, description="Total tokens consumed")
-    total_cost_usd: Optional[float] = Field(None, description="Total cost in USD")
+    started_at: datetime | None = Field(None, description="Start timestamp")
+    completed_at: datetime | None = Field(None, description="Completion timestamp")
+    results: dict[str, Any] = Field(default_factory=dict, description="Run results")
+    total_tokens_used: int | None = Field(None, description="Total tokens consumed")
+    total_cost_usd: float | None = Field(None, description="Total cost in USD")
 
     model_config = {
         "from_attributes": True,
@@ -239,7 +239,7 @@ class RunListItem(BaseModel):
     model_count: int = Field(..., description="Number of model variants")
     status: RunStatus
     created_at: datetime
-    completed_at: Optional[datetime] = None
+    completed_at: datetime | None = None
 
     model_config = {
         "from_attributes": True,

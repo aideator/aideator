@@ -1,10 +1,11 @@
 import asyncio
 import json
 from collections import defaultdict
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, AsyncIterator, Dict, Optional, Set
+from typing import Any
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -28,9 +29,9 @@ class SSEEvent:
     """Server-Sent Event data structure."""
 
     event_type: EventType
-    data: Dict[str, Any]
-    id: Optional[str] = None
-    retry: Optional[int] = None
+    data: dict[str, Any]
+    id: str | None = None
+    retry: int | None = None
 
     def format(self) -> str:
         """Format event for SSE protocol."""
@@ -54,13 +55,13 @@ class SSEManager:
     """Manages Server-Sent Events connections and broadcasting."""
 
     def __init__(self):
-        self._connections: Dict[str, Set[asyncio.Queue]] = defaultdict(set)
+        self._connections: dict[str, set[asyncio.Queue]] = defaultdict(set)
         self._event_counter = 0
         self._lock = asyncio.Lock()
 
     async def connect(self, run_id: str) -> AsyncIterator[str]:
         """Connect a client to receive events for a run."""
-        queue: asyncio.Queue[Optional[SSEEvent]] = asyncio.Queue(maxsize=200)  # Increased for faster streaming
+        queue: asyncio.Queue[SSEEvent | None] = asyncio.Queue(maxsize=200)  # Increased for faster streaming
 
         async with self._lock:
             self._connections[run_id].add(queue)
@@ -101,7 +102,7 @@ class SSEManager:
 
                     yield event.format()
 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # Connection might be stale
                     logger.warning("sse_connection_timeout", run_id=run_id)
                     break
@@ -125,7 +126,7 @@ class SSEManager:
         if not connections:
             logger.debug("no_sse_connections", run_id=run_id)
             return
-            
+
         logger.info(f"🔥 BROADCASTING {event.event_type.value} to {len(connections)} connections for run {run_id}")
 
         # Send to all connected clients

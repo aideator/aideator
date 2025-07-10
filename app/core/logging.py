@@ -1,6 +1,5 @@
 import logging
 import sys
-from typing import Any
 
 import structlog
 from structlog.processors import CallsiteParameter

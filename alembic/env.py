@@ -1,17 +1,18 @@
 """Alembic environment configuration for AIdeator."""
 
 import asyncio
-import os
-from logging.config import fileConfig
 
-from alembic import context
+# Add the parent directory to the path so we can import our app
+import sys
+from logging.config import fileConfig
+from pathlib import Path
+
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-# Add the parent directory to the path so we can import our app
-import sys
-from pathlib import Path
+from alembic import context
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.core.config import get_settings
@@ -29,6 +30,7 @@ if config.config_file_name is not None:
 # Import your model's MetaData object here
 # for 'autogenerate' support
 from sqlmodel import SQLModel
+
 target_metadata = SQLModel.metadata
 
 # other values from the config, defined by the needs of env.py,
@@ -77,7 +79,7 @@ async def run_async_migrations() -> None:
     """Run async migrations."""
     configuration = config.get_section(config.config_ini_section)
     configuration["sqlalchemy.url"] = get_database_url()
-    
+
     connectable = async_engine_from_config(
         configuration,
         prefix="sqlalchemy.",

@@ -1,7 +1,6 @@
 from datetime import datetime
-from typing import Optional
 
-from sqlalchemy import Column, JSON
+from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel
 
 
@@ -19,8 +18,8 @@ class User(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Profile
-    full_name: Optional[str] = Field(default=None)
-    company: Optional[str] = Field(default=None)
+    full_name: str | None = Field(default=None)
+    company: str | None = Field(default=None)
 
     # Usage limits
     max_runs_per_day: int = Field(default=100)
@@ -50,8 +49,8 @@ class APIKey(SQLModel, table=True):
     name: str
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    last_used_at: Optional[datetime] = Field(default=None)
-    expires_at: Optional[datetime] = Field(default=None)
+    last_used_at: datetime | None = Field(default=None)
+    expires_at: datetime | None = Field(default=None)
 
     # Permissions
     scopes: list[str] = Field(default_factory=list, sa_column=Column(JSON))

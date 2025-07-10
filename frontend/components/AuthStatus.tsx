@@ -1,10 +1,11 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Loader2, User, Key, LogOut, LogIn, ChevronDown, Copy, Check } from 'lucide-react'
+import { Loader2, User, Key, LogOut, LogIn, ChevronDown, Copy, Check, Settings } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,6 +52,7 @@ export const AuthStatus: React.FC = () => {
         <Button 
           variant="ghost" 
           className="flex items-center gap-2 px-3 py-2 h-auto rounded-lg bg-neutral-white shadow-lg border border-neutral-fog hover:bg-neutral-paper transition-colors"
+          data-testid="auth-status"
         >
           <div className="flex items-center gap-2">
             {isAuthenticated ? (
@@ -129,6 +131,13 @@ export const AuthStatus: React.FC = () => {
             </div>
             
             <DropdownMenuSeparator />
+            
+            <DropdownMenuItem asChild>
+              <Link href="/settings" className="flex items-center">
+                <Settings className="h-4 w-4 mr-2" />
+                Settings
+              </Link>
+            </DropdownMenuItem>
             
             <DropdownMenuItem onClick={logout} className="text-semantic-error">
               <LogOut className="h-4 w-4 mr-2" />

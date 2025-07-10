@@ -1,8 +1,8 @@
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
-from sqlalchemy import JSON, Column, Enum as SQLEnum
+from sqlalchemy import JSON, Column
+from sqlalchemy import Enum as SQLEnum
 from sqlmodel import Field, SQLModel
 
 
@@ -29,31 +29,31 @@ class Run(SQLModel, table=True):
         default=RunStatus.PENDING,
         sa_column=Column(SQLEnum(RunStatus), nullable=False, index=True),
     )
-    winning_variation_id: Optional[int] = Field(default=None)
-    
+    winning_variation_id: int | None = Field(default=None)
+
     # Metadata
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
-    started_at: Optional[datetime] = Field(default=None)
-    completed_at: Optional[datetime] = Field(default=None)
-    
+    started_at: datetime | None = Field(default=None)
+    completed_at: datetime | None = Field(default=None)
+
     # Configuration
     agent_config: dict = Field(default_factory=dict, sa_column=Column(JSON))
-    
+
     # User information
-    user_id: Optional[str] = Field(default=None, index=True)
-    api_key_id: Optional[str] = Field(default=None, index=True)
-    
+    user_id: str | None = Field(default=None, index=True)
+    api_key_id: str | None = Field(default=None, index=True)
+
     # Results
     results: dict = Field(default_factory=dict, sa_column=Column(JSON))
-    error_message: Optional[str] = Field(default=None)
-    
+    error_message: str | None = Field(default=None)
+
     # Statistics
-    total_tokens_used: Optional[int] = Field(default=None)
-    total_cost_usd: Optional[float] = Field(default=None)
-    
+    total_tokens_used: int | None = Field(default=None)
+    total_cost_usd: float | None = Field(default=None)
+
     class Config:
         """Pydantic config."""
-        
+
         json_schema_extra = {
             "example": {
                 "id": "run_123abc",
@@ -77,10 +77,10 @@ class AgentOutput(SQLModel, table=True):
     content: str
     timestamp: datetime = Field(default_factory=datetime.utcnow, index=True)
     output_type: str = Field(default="stdout")  # stdout, stderr, system
-    
+
     class Config:
         """Pydantic config."""
-        
+
         json_schema_extra = {
             "example": {
                 "id": 1,

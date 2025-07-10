@@ -20,11 +20,8 @@ Endpoints Covered:
 """
 
 import asyncio
-import json
-import pytest
-from typing import Dict, List, Any
-from datetime import datetime, timedelta
 
+import pytest
 from httpx import AsyncClient
 
 
@@ -40,7 +37,7 @@ class TestSessionManagement:
             "full_name": "Session Test User"
         }
         await client.post("/api/v1/auth/register", json=user_data)
-        
+
         login_response = await client.post("/api/v1/auth/login", json={
             "email": user_data["email"],
             "password": user_data["password"]
@@ -52,13 +49,13 @@ class TestSessionManagement:
         """Test creating a new session."""
         token = await self._setup_user_and_token(client)
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         session_data = {
             "title": "Test Session",
             "description": "A test session for code review",
             "models_used": ["gpt-4", "claude-3-sonnet"]
         }
-        
+
         response = await client.post("/api/v1/sessions/", json=session_data, headers=headers)
         assert response.status_code == 201
         session = response.json()
@@ -68,7 +65,7 @@ class TestSessionManagement:
         assert "id" in session
         assert session["is_active"] is True
         assert session["total_turns"] == 0
-        
+
         return session["id"], headers
 
     @pytest.mark.asyncio
@@ -76,11 +73,11 @@ class TestSessionManagement:
         """Test listing user sessions."""
         token = await self._setup_user_and_token(client)
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         # Create multiple sessions
         session_titles = ["Session 1", "Session 2", "Session 3"]
         created_sessions = []
-        
+
         for title in session_titles:
             session_data = {
                 "title": title,
@@ -89,20 +86,20 @@ class TestSessionManagement:
             }
             create_response = await client.post("/api/v1/sessions/", json=session_data, headers=headers)
             created_sessions.append(create_response.json())
-        
+
         # List sessions
         response = await client.get("/api/v1/sessions/", headers=headers)
         assert response.status_code == 200
         sessions_data = response.json()
-        
+
         # Should have pagination structure
         if isinstance(sessions_data, dict) and "sessions" in sessions_data:
             sessions = sessions_data["sessions"]
         else:
             sessions = sessions_data
-        
+
         assert len(sessions) >= 3
-        
+
         # Verify all created sessions are in the list
         session_titles_returned = [s["title"] for s in sessions]
         for title in session_titles:
@@ -113,7 +110,7 @@ class TestSessionManagement:
         """Test getting session details."""
         token = await self._setup_user_and_token(client)
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         # Create a session
         session_data = {
             "title": "Details Test Session",
@@ -122,7 +119,7 @@ class TestSessionManagement:
         }
         create_response = await client.post("/api/v1/sessions/", json=session_data, headers=headers)
         session_id = create_response.json()["id"]
-        
+
         # Get session details
         response = await client.get(f"/api/v1/sessions/{session_id}", headers=headers)
         assert response.status_code == 200
@@ -137,7 +134,7 @@ class TestSessionManagement:
         """Test updating session metadata."""
         token = await self._setup_user_and_token(client)
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         # Create a session
         session_data = {
             "title": "Original Title",
@@ -146,7 +143,7 @@ class TestSessionManagement:
         }
         create_response = await client.post("/api/v1/sessions/", json=session_data, headers=headers)
         session_id = create_response.json()["id"]
-        
+
         # Update the session
         update_data = {
             "title": "Updated Title",
@@ -165,7 +162,7 @@ class TestSessionManagement:
         """Test deleting a session."""
         token = await self._setup_user_and_token(client)
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         # Create a session
         session_data = {
             "title": "Session to Delete",
@@ -174,11 +171,11 @@ class TestSessionManagement:
         }
         create_response = await client.post("/api/v1/sessions/", json=session_data, headers=headers)
         session_id = create_response.json()["id"]
-        
+
         # Delete the session
         response = await client.delete(f"/api/v1/sessions/{session_id}", headers=headers)
         assert response.status_code == 204
-        
+
         # Verify session is deleted
         get_response = await client.get(f"/api/v1/sessions/{session_id}", headers=headers)
         assert get_response.status_code == 404
@@ -196,14 +193,14 @@ class TestTurnManagement:
             "full_name": "Turn Test User"
         }
         await client.post("/api/v1/auth/register", json=user_data)
-        
+
         login_response = await client.post("/api/v1/auth/login", json={
             "email": user_data["email"],
             "password": user_data["password"]
         })
         token = login_response.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         # Create a session
         session_data = {
             "title": "Turn Test Session",
@@ -212,21 +209,21 @@ class TestTurnManagement:
         }
         session_response = await client.post("/api/v1/sessions/", json=session_data, headers=headers)
         session_id = session_response.json()["id"]
-        
+
         return session_id, token, headers
 
     @pytest.mark.asyncio
     async def test_create_turn(self, client: AsyncClient):
         """Test creating a turn in a session."""
         session_id, token, headers = await self._setup_session(client)
-        
+
         turn_data = {
             "prompt": "Analyze this Python code for potential improvements",
             "context": "This is a FastAPI application with authentication",
             "models_requested": ["gpt-4", "claude-3-sonnet"]
         }
-        
-        response = await client.post(f"/api/v1/sessions/{session_id}/turns", 
+
+        response = await client.post(f"/api/v1/sessions/{session_id}/turns",
                                    json=turn_data, headers=headers)
         assert response.status_code == 201
         turn = response.json()
@@ -241,14 +238,14 @@ class TestTurnManagement:
     async def test_list_session_turns(self, client: AsyncClient):
         """Test listing turns in a session."""
         session_id, token, headers = await self._setup_session(client)
-        
+
         # Create multiple turns
         turn_prompts = [
             "First prompt: analyze code",
-            "Second prompt: suggest improvements", 
+            "Second prompt: suggest improvements",
             "Third prompt: implement changes"
         ]
-        
+
         created_turns = []
         for prompt in turn_prompts:
             turn_data = {
@@ -258,14 +255,14 @@ class TestTurnManagement:
             create_response = await client.post(f"/api/v1/sessions/{session_id}/turns",
                                               json=turn_data, headers=headers)
             created_turns.append(create_response.json())
-        
+
         # List turns
         response = await client.get(f"/api/v1/sessions/{session_id}/turns", headers=headers)
         assert response.status_code == 200
         turns = response.json()
-        
+
         assert len(turns) >= 3
-        
+
         # Verify turn ordering
         turn_numbers = [turn["turn_number"] for turn in turns]
         assert turn_numbers == sorted(turn_numbers)  # Should be in order
@@ -274,7 +271,7 @@ class TestTurnManagement:
     async def test_get_turn_details(self, client: AsyncClient):
         """Test getting turn details."""
         session_id, token, headers = await self._setup_session(client)
-        
+
         # Create a turn
         turn_data = {
             "prompt": "Detailed turn for testing",
@@ -284,7 +281,7 @@ class TestTurnManagement:
         create_response = await client.post(f"/api/v1/sessions/{session_id}/turns",
                                           json=turn_data, headers=headers)
         turn_id = create_response.json()["id"]
-        
+
         # Get turn details
         response = await client.get(f"/api/v1/sessions/{session_id}/turns/{turn_id}", headers=headers)
         assert response.status_code == 200
@@ -307,14 +304,14 @@ class TestPreferenceManagement:
             "full_name": "Preference Test User"
         }
         await client.post("/api/v1/auth/register", json=user_data)
-        
+
         login_response = await client.post("/api/v1/auth/login", json={
             "email": user_data["email"],
             "password": user_data["password"]
         })
         token = login_response.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         # Create session
         session_data = {
             "title": "Preference Test Session",
@@ -323,7 +320,7 @@ class TestPreferenceManagement:
         }
         session_response = await client.post("/api/v1/sessions/", json=session_data, headers=headers)
         session_id = session_response.json()["id"]
-        
+
         # Create turn
         turn_data = {
             "prompt": "Compare model responses",
@@ -332,14 +329,14 @@ class TestPreferenceManagement:
         turn_response = await client.post(f"/api/v1/sessions/{session_id}/turns",
                                         json=turn_data, headers=headers)
         turn_id = turn_response.json()["id"]
-        
+
         return session_id, turn_id, token, headers
 
     @pytest.mark.asyncio
     async def test_create_preference(self, client: AsyncClient):
         """Test recording a preference for a turn."""
         session_id, turn_id, token, headers = await self._setup_session_with_turn(client)
-        
+
         preference_data = {
             "preferred_model": "claude-3-sonnet",
             "preferred_response_id": "response_123",
@@ -352,7 +349,7 @@ class TestPreferenceManagement:
             "confidence_score": 4,
             "preference_type": "response"
         }
-        
+
         response = await client.post(f"/api/v1/sessions/{session_id}/turns/{turn_id}/preferences",
                                    json=preference_data, headers=headers)
         assert response.status_code == 201
@@ -366,7 +363,7 @@ class TestPreferenceManagement:
     async def test_get_session_preferences(self, client: AsyncClient):
         """Test getting all preferences for a session."""
         session_id, turn_id, token, headers = await self._setup_session_with_turn(client)
-        
+
         # Create multiple preferences
         preferences_data = [
             {
@@ -382,12 +379,12 @@ class TestPreferenceManagement:
                 "response_quality_scores": {"gpt-4": 3, "claude-3-sonnet": 5}
             }
         ]
-        
+
         # Create preferences
         for pref_data in preferences_data:
             await client.post(f"/api/v1/sessions/{session_id}/turns/{turn_id}/preferences",
                             json=pref_data, headers=headers)
-        
+
         # Get session preferences
         response = await client.get(f"/api/v1/sessions/{session_id}/preferences", headers=headers)
         assert response.status_code == 200
@@ -398,7 +395,7 @@ class TestPreferenceManagement:
     async def test_session_analytics(self, client: AsyncClient):
         """Test getting session analytics."""
         session_id, turn_id, token, headers = await self._setup_session_with_turn(client)
-        
+
         # Create some preferences for analytics
         preference_data = {
             "preferred_model": "claude-3-sonnet",
@@ -408,7 +405,7 @@ class TestPreferenceManagement:
         }
         await client.post(f"/api/v1/sessions/{session_id}/turns/{turn_id}/preferences",
                         json=preference_data, headers=headers)
-        
+
         # Get analytics
         response = await client.get(f"/api/v1/sessions/{session_id}/analytics", headers=headers)
         assert response.status_code == 200
@@ -420,10 +417,10 @@ class TestPreferenceManagement:
     async def test_session_export(self, client: AsyncClient):
         """Test exporting session data."""
         session_id, turn_id, token, headers = await self._setup_session_with_turn(client)
-        
+
         # Test different export formats
         formats = ["json", "markdown", "csv"]
-        
+
         for format_type in formats:
             response = await client.get(f"/api/v1/sessions/{session_id}/export?format={format_type}",
                                       headers=headers)
@@ -443,24 +440,24 @@ class TestPreferenceAnalytics:
             "full_name": "Analytics Test User"
         }
         await client.post("/api/v1/auth/register", json=user_data)
-        
+
         login_response = await client.post("/api/v1/auth/login", json={
             "email": user_data["email"],
             "password": user_data["password"]
         })
         token = login_response.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         # Create session and turn with preferences
         session_data = {"title": "Analytics Session", "models_used": ["gpt-4", "claude-3-sonnet"]}
         session_response = await client.post("/api/v1/sessions/", json=session_data, headers=headers)
         session_id = session_response.json()["id"]
-        
+
         turn_data = {"prompt": "Analytics test", "models_requested": ["gpt-4", "claude-3-sonnet"]}
         turn_response = await client.post(f"/api/v1/sessions/{session_id}/turns",
                                         json=turn_data, headers=headers)
         turn_id = turn_response.json()["id"]
-        
+
         # Create preference
         preference_data = {
             "preferred_model": "claude-3-sonnet",
@@ -470,31 +467,31 @@ class TestPreferenceAnalytics:
         }
         await client.post(f"/api/v1/sessions/{session_id}/turns/{turn_id}/preferences",
                         json=preference_data, headers=headers)
-        
+
         return token, headers
 
     @pytest.mark.asyncio
     async def test_get_preferences(self, client: AsyncClient):
         """Test getting user preferences with filtering."""
         token, headers = await self._setup_user_with_preferences(client)
-        
+
         response = await client.get("/api/v1/preferences/", headers=headers)
         assert response.status_code == 200
         preferences = response.json()
-        
+
         # Should have pagination structure or direct list
         if isinstance(preferences, dict) and "items" in preferences:
             items = preferences["items"]
         else:
             items = preferences
-        
+
         assert len(items) >= 1
 
     @pytest.mark.asyncio
     async def test_preference_stats(self, client: AsyncClient):
         """Test getting preference statistics."""
         token, headers = await self._setup_user_with_preferences(client)
-        
+
         # Test with time period filter
         response = await client.get("/api/v1/preferences/stats?days=30", headers=headers)
         assert response.status_code == 200
@@ -505,7 +502,7 @@ class TestPreferenceAnalytics:
     async def test_model_performance(self, client: AsyncClient):
         """Test getting model performance metrics."""
         token, headers = await self._setup_user_with_preferences(client)
-        
+
         response = await client.get("/api/v1/preferences/models/performance", headers=headers)
         assert response.status_code == 200
         performance = response.json()
@@ -515,7 +512,7 @@ class TestPreferenceAnalytics:
     async def test_preference_trends(self, client: AsyncClient):
         """Test getting preference trends."""
         token, headers = await self._setup_user_with_preferences(client)
-        
+
         response = await client.get("/api/v1/preferences/trends?days=7", headers=headers)
         assert response.status_code == 200
         trends = response.json()
@@ -525,23 +522,23 @@ class TestPreferenceAnalytics:
     async def test_delete_preference(self, client: AsyncClient):
         """Test deleting a specific preference."""
         token, headers = await self._setup_user_with_preferences(client)
-        
+
         # Get preferences first
         prefs_response = await client.get("/api/v1/preferences/", headers=headers)
         preferences = prefs_response.json()
-        
+
         if isinstance(preferences, dict) and "items" in preferences:
             items = preferences["items"]
         else:
             items = preferences
-        
+
         if items:
             preference_id = items[0]["id"]
             response = await client.delete(f"/api/v1/preferences/{preference_id}", headers=headers)
             assert response.status_code == 204
 
 
-@pytest.mark.e2e 
+@pytest.mark.e2e
 class TestSessionValidationAndSecurity:
     """Test session validation and security aspects."""
 
@@ -555,34 +552,34 @@ class TestSessionValidationAndSecurity:
             "full_name": "User One"
         }
         user2_data = {
-            "email": "user2@example.com", 
+            "email": "user2@example.com",
             "password": "User2Password123!",
             "full_name": "User Two"
         }
-        
+
         await client.post("/api/v1/auth/register", json=user1_data)
         await client.post("/api/v1/auth/register", json=user2_data)
-        
+
         # Login both users
         login1_response = await client.post("/api/v1/auth/login", json={
             "email": "user1@example.com",
             "password": "User1Password123!"
         })
         login2_response = await client.post("/api/v1/auth/login", json={
-            "email": "user2@example.com", 
+            "email": "user2@example.com",
             "password": "User2Password123!"
         })
-        
+
         token1 = login1_response.json()["access_token"]
         token2 = login2_response.json()["access_token"]
         headers1 = {"Authorization": f"Bearer {token1}"}
         headers2 = {"Authorization": f"Bearer {token2}"}
-        
+
         # User 1 creates a session
         session_data = {"title": "User 1 Session", "models_used": ["gpt-4"]}
         session_response = await client.post("/api/v1/sessions/", json=session_data, headers=headers1)
         session_id = session_response.json()["id"]
-        
+
         # User 2 tries to access User 1's session
         response = await client.get(f"/api/v1/sessions/{session_id}", headers=headers2)
         assert response.status_code == 404  # Should not find session belonging to other user
@@ -596,21 +593,21 @@ class TestSessionValidationAndSecurity:
             "full_name": "Validation User"
         }
         await client.post("/api/v1/auth/register", json=user_data)
-        
+
         login_response = await client.post("/api/v1/auth/login", json={
             "email": "validationuser@example.com",
             "password": "ValidationPassword123!"
         })
         token = login_response.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         # Test missing required fields
         invalid_session_data = {
             "description": "Missing title"
         }
         response = await client.post("/api/v1/sessions/", json=invalid_session_data, headers=headers)
         assert response.status_code == 422
-        
+
         # Test invalid data types
         invalid_type_data = {
             "title": 123,  # Should be string

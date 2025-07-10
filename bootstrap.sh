@@ -224,6 +224,7 @@ if ! kubectl get secret aideator-secret -n aideator &> /dev/null; then
     echo "🔧 Creating aideator-secret..."
     kubectl create secret generic aideator-secret \
         --from-literal=secret-key="$(openssl rand -hex 32)" \
+        --from-literal=encryption-key="$(openssl rand -base64 32)" \
         -n aideator
 else
     echo "✅ aideator-secret already exists"

@@ -1,48 +1,47 @@
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import and_, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func, desc
-from sqlmodel import Session as SQLSession
 
 from app.core.database import get_session
 from app.core.dependencies import CurrentUser
-from app.models.user import User
-from app.models.session import Session, Turn, Preference
+from app.models.session import Preference, Session, Turn
 from app.schemas.session import (
-    PreferenceCreate, PreferenceResponse, ModelPerformanceMetrics
+    ModelPerformanceMetrics,
+    PreferenceResponse,
 )
 
 router = APIRouter(prefix="/preferences", tags=["preferences"])
 
 
-@router.get("/", response_model=List[PreferenceResponse])
+@router.get("/", response_model=list[PreferenceResponse])
 async def get_user_preferences(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_session),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
-    model_filter: Optional[str] = Query(None),
-    preference_type: Optional[str] = Query(None),
+    model_filter: str | None = Query(None),
+    preference_type: str | None = Query(None),
 ):
     """Get user's preferences with filtering and pagination."""
     query = select(Preference).where(Preference.user_id == current_user.id)
-    
+
     if model_filter:
         query = query.where(Preference.preferred_model == model_filter)
-    
+
     if preference_type:
         query = query.where(Preference.preference_type == preference_type)
-    
+
     query = query.order_by(desc(Preference.created_at)).offset(skip).limit(limit)
     result = await db.execute(query)
     preferences = result.scalars().all()
-    
+
     return preferences
 
 
-@router.get("/stats", response_model=Dict[str, Any])
+@router.get("/stats", response_model=dict[str, Any])
 async def get_preference_stats(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_session),
@@ -51,7 +50,7 @@ async def get_preference_stats(
     """Get user's preference statistics."""
     # Get preferences from the last N days
     cutoff_date = datetime.utcnow() - timedelta(days=days)
-    
+
     query = select(Preference).where(
         and_(
             Preference.user_id == current_user.id,
@@ -60,7 +59,7 @@ async def get_preference_stats(
     )
     result = await db.execute(query)
     preferences = result.scalars().all()
-    
+
     if not preferences:
         return {
             "total_preferences": 0,
@@ -69,41 +68,41 @@ async def get_preference_stats(
             "preference_types": {},
             "quality_scores": {}
         }
-    
+
     # Calculate stats
     total_preferences = len(preferences)
     model_wins = {}
     confidence_scores = []
     preference_types = {}
     quality_scores = {}
-    
+
     for pref in preferences:
         # Model wins
         model_wins[pref.preferred_model] = model_wins.get(pref.preferred_model, 0) + 1
-        
+
         # Confidence scores
         if pref.confidence_score:
             confidence_scores.append(pref.confidence_score)
-        
+
         # Preference types
         preference_types[pref.preference_type] = preference_types.get(pref.preference_type, 0) + 1
-        
+
         # Quality scores
         for model, score in pref.response_quality_scores.items():
             if model not in quality_scores:
                 quality_scores[model] = []
             quality_scores[model].append(score)
-    
+
     # Calculate win rates
     model_win_rates = {}
     for model, wins in model_wins.items():
         model_win_rates[model] = wins / total_preferences
-    
+
     # Calculate average quality scores
     avg_quality_scores = {}
     for model, scores in quality_scores.items():
         avg_quality_scores[model] = sum(scores) / len(scores)
-    
+
     return {
         "total_preferences": total_preferences,
         "model_win_rates": model_win_rates,
@@ -114,7 +113,7 @@ async def get_preference_stats(
     }
 
 
-@router.get("/models/performance", response_model=List[ModelPerformanceMetrics])
+@router.get("/models/performance", response_model=list[ModelPerformanceMetrics])
 async def get_model_performance(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_session),
@@ -123,7 +122,7 @@ async def get_model_performance(
     """Get model performance metrics based on user preferences."""
     # Get preferences from the last N days
     cutoff_date = datetime.utcnow() - timedelta(days=days)
-    
+
     preferences_query = select(Preference).where(
         and_(
             Preference.user_id == current_user.id,
@@ -132,7 +131,7 @@ async def get_model_performance(
     )
     preferences_result = await db.execute(preferences_query)
     preferences = preferences_result.scalars().all()
-    
+
     # Get turns for response time analysis
     turns_query = select(Turn).join(Session).where(
         and_(
@@ -143,10 +142,10 @@ async def get_model_performance(
     )
     turns_result = await db.execute(turns_query)
     turns = turns_result.scalars().all()
-    
+
     # Analyze model performance
     model_stats = {}
-    
+
     # Process turns for request counts and response times
     for turn in turns:
         for model in turn.models_requested:
@@ -158,47 +157,47 @@ async def get_model_performance(
                     "wins": 0,
                     "quality_scores": []
                 }
-            
+
             model_stats[model]["requests"] += 1
             model_stats[model]["total_cost"] += turn.total_cost / len(turn.models_requested)
-            
+
             if turn.duration_seconds:
                 model_stats[model]["response_times"].append(turn.duration_seconds)
-    
+
     # Process preferences for win rates and quality scores
     for pref in preferences:
         # Count wins
         if pref.preferred_model in model_stats:
             model_stats[pref.preferred_model]["wins"] += 1
-        
+
         # Add quality scores
         for model, score in pref.response_quality_scores.items():
             if model in model_stats:
                 model_stats[model]["quality_scores"].append(score)
-    
+
     # Calculate metrics
     metrics = []
     total_requests = sum(stats["requests"] for stats in model_stats.values())
     total_preferences = len(preferences)
-    
+
     for model, stats in model_stats.items():
         if stats["requests"] > 0:
             avg_response_time = (
-                sum(stats["response_times"]) / len(stats["response_times"]) 
+                sum(stats["response_times"]) / len(stats["response_times"])
                 if stats["response_times"] else 0
             )
-            
+
             preference_win_rate = (
                 stats["wins"] / total_preferences if total_preferences > 0 else 0
             )
-            
+
             avg_quality_score = (
-                sum(stats["quality_scores"]) / len(stats["quality_scores"]) 
+                sum(stats["quality_scores"]) / len(stats["quality_scores"])
                 if stats["quality_scores"] else 0
             )
-            
+
             usage_percentage = stats["requests"] / total_requests if total_requests > 0 else 0
-            
+
             metrics.append(ModelPerformanceMetrics(
                 model_name=model,
                 total_requests=stats["requests"],
@@ -208,14 +207,14 @@ async def get_model_performance(
                 average_quality_score=avg_quality_score,
                 usage_percentage=usage_percentage
             ))
-    
+
     # Sort by win rate descending
     metrics.sort(key=lambda x: x.preference_win_rate, reverse=True)
-    
+
     return metrics
 
 
-@router.get("/trends", response_model=Dict[str, Any])
+@router.get("/trends", response_model=dict[str, Any])
 async def get_preference_trends(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_session),
@@ -224,17 +223,17 @@ async def get_preference_trends(
     """Get preference trends over time."""
     # Get preferences from the last N days
     cutoff_date = datetime.utcnow() - timedelta(days=days)
-    
+
     query = select(Preference).where(
         and_(
             Preference.user_id == current_user.id,
             Preference.created_at >= cutoff_date
         )
     ).order_by(Preference.created_at)
-    
+
     result = await db.execute(query)
     preferences = result.scalars().all()
-    
+
     if not preferences:
         return {
             "daily_preferences": [],
@@ -242,32 +241,32 @@ async def get_preference_trends(
             "confidence_trend": [],
             "quality_trend": {}
         }
-    
+
     # Group preferences by day
     daily_preferences = {}
     model_daily_wins = {}
     daily_confidence = {}
     daily_quality = {}
-    
+
     for pref in preferences:
         day_key = pref.created_at.date().isoformat()
-        
+
         # Count daily preferences
         daily_preferences[day_key] = daily_preferences.get(day_key, 0) + 1
-        
+
         # Track model wins by day
         if day_key not in model_daily_wins:
             model_daily_wins[day_key] = {}
         model_daily_wins[day_key][pref.preferred_model] = (
             model_daily_wins[day_key].get(pref.preferred_model, 0) + 1
         )
-        
+
         # Track confidence by day
         if pref.confidence_score:
             if day_key not in daily_confidence:
                 daily_confidence[day_key] = []
             daily_confidence[day_key].append(pref.confidence_score)
-        
+
         # Track quality scores by day
         if day_key not in daily_quality:
             daily_quality[day_key] = {}
@@ -275,13 +274,13 @@ async def get_preference_trends(
             if model not in daily_quality[day_key]:
                 daily_quality[day_key][model] = []
             daily_quality[day_key][model].append(score)
-    
+
     # Calculate trends
     daily_prefs_trend = [
         {"date": date, "count": count}
         for date, count in sorted(daily_preferences.items())
     ]
-    
+
     confidence_trend = [
         {
             "date": date,
@@ -289,7 +288,7 @@ async def get_preference_trends(
         }
         for date, scores in sorted(daily_confidence.items())
     ]
-    
+
     # Calculate daily average quality scores
     quality_trend = {}
     for date, models in daily_quality.items():
@@ -297,7 +296,7 @@ async def get_preference_trends(
             model: sum(scores) / len(scores)
             for model, scores in models.items()
         }
-    
+
     return {
         "daily_preferences": daily_prefs_trend,
         "model_trend": model_daily_wins,
@@ -319,13 +318,13 @@ async def delete_preference(
     )
     result = await db.execute(query)
     preference = result.scalar_one_or_none()
-    
+
     if not preference:
         raise HTTPException(status_code=404, detail="Preference not found")
-    
+
     await db.delete(preference)
     await db.commit()
-    
+
     return {"message": "Preference deleted successfully"}
 
 

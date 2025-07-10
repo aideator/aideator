@@ -70,7 +70,7 @@ class TestFullFlow:
         events = []
         async with client.stream("GET", stream_url, headers={"X-API-Key": api_key}) as stream:
             assert stream.status_code == 200
-            
+
             # Collect first 10 events or until complete
             async for line in stream.aiter_lines():
                 if line.startswith("data:"):
@@ -79,7 +79,7 @@ class TestFullFlow:
                         events.append(event_data)
                     except json.JSONDecodeError:
                         pass
-                
+
                 if len(events) >= 10:
                     break
 
@@ -125,7 +125,7 @@ class TestFullFlow:
         # Create multiple API keys
         key_names = ["Production", "Development", "Testing"]
         created_keys = []
-        
+
         for name in key_names:
             response = await client.post(
                 "/api/v1/auth/api-keys",
@@ -205,7 +205,7 @@ class TestFullFlow:
         # List runs
         list_response = await client.get("/api/v1/runs", headers=headers)
         runs = list_response.json()["items"]
-        
+
         # Verify all runs are present
         listed_ids = [r["id"] for r in runs]
         for run_id in run_ids:

@@ -17,15 +17,9 @@ Test Categories:
 """
 
 import asyncio
-import json
-import pytest
-from typing import Dict, List, Any, Optional
-from unittest.mock import AsyncMock, patch, MagicMock
-from datetime import datetime, timedelta
 
-import httpx
+import pytest
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @pytest.mark.e2e
@@ -77,7 +71,7 @@ class TestAuthenticationFlow:
             "full_name": "Test User",
             "company": "Test Company"
         }
-        
+
         response = await client.post("/api/v1/auth/register", json=registration_data)
         assert response.status_code == 201
         user_data = response.json()
@@ -117,7 +111,7 @@ class TestAuthenticationFlow:
             "full_name": "Login Test User"
         }
         await client.post("/api/v1/auth/register", json=registration_data)
-        
+
         # Test valid login
         login_data = {
             "email": "logintest@example.com",
@@ -151,14 +145,14 @@ class TestAuthenticationFlow:
             "full_name": "Current User"
         }
         await client.post("/api/v1/auth/register", json=registration_data)
-        
+
         login_data = {
             "email": "currentuser@example.com",
             "password": "CurrentPassword123!"
         }
         login_response = await client.post("/api/v1/auth/login", json=login_data)
         token = login_response.json()["access_token"]
-        
+
         # Test getting current user
         headers = {"Authorization": f"Bearer {token}"}
         response = await client.get("/api/v1/auth/me", headers=headers)
@@ -189,14 +183,14 @@ class TestAPIKeyManagement:
             "full_name": "API Key User"
         }
         await client.post("/api/v1/auth/register", json=user_data)
-        
+
         login_response = await client.post("/api/v1/auth/login", json={
             "email": "apikey@example.com",
             "password": "APIKeyPassword123!"
         })
         token = login_response.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         # Test API key creation
         api_key_data = {
             "name": "Test API Key",
@@ -221,14 +215,14 @@ class TestAPIKeyManagement:
             "full_name": "List Keys User"
         }
         await client.post("/api/v1/auth/register", json=user_data)
-        
+
         login_response = await client.post("/api/v1/auth/login", json={
             "email": "listkeys@example.com",
             "password": "ListKeysPassword123!"
         })
         token = login_response.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         # Create multiple API keys
         for i in range(3):
             api_key_data = {
@@ -236,7 +230,7 @@ class TestAPIKeyManagement:
                 "scopes": ["runs:create", "runs:read"]
             }
             await client.post("/api/v1/auth/api-keys", json=api_key_data, headers=headers)
-        
+
         # Test listing keys
         response = await client.get("/api/v1/auth/api-keys", headers=headers)
         assert response.status_code == 200
@@ -253,23 +247,23 @@ class TestAPIKeyManagement:
             "full_name": "Delete Key User"
         }
         await client.post("/api/v1/auth/register", json=user_data)
-        
+
         login_response = await client.post("/api/v1/auth/login", json={
             "email": "deletekey@example.com",
             "password": "DeleteKeyPassword123!"
         })
         token = login_response.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         # Create API key
         api_key_data = {"name": "Key to Delete", "scopes": ["runs:read"]}
         create_response = await client.post("/api/v1/auth/api-keys", json=api_key_data, headers=headers)
         key_id = create_response.json()["key_info"]["id"]
-        
+
         # Delete API key
         delete_response = await client.delete(f"/api/v1/auth/api-keys/{key_id}", headers=headers)
         assert delete_response.status_code == 204
-        
+
         # Verify key is deleted
         list_response = await client.get("/api/v1/auth/api-keys", headers=headers)
         remaining_keys = list_response.json()
@@ -288,15 +282,15 @@ class TestRunManagement:
             "full_name": "Run User"
         }
         await client.post("/api/v1/auth/register", json=user_data)
-        
+
         login_response = await client.post("/api/v1/auth/login", json={
             "email": user_data["email"],
             "password": user_data["password"]
         })
         token = login_response.json()["access_token"]
-        
+
         api_key_data = {"name": "Test Run Key", "scopes": ["runs:create", "runs:read"]}
-        key_response = await client.post("/api/v1/auth/api-keys", json=api_key_data, 
+        key_response = await client.post("/api/v1/auth/api-keys", json=api_key_data,
                                        headers={"Authorization": f"Bearer {token}"})
         return key_response.json()["api_key"]
 
@@ -305,7 +299,7 @@ class TestRunManagement:
         """Test creating a new run."""
         api_key = await self._setup_user_with_api_key(client)
         headers = {"X-API-Key": api_key}
-        
+
         run_data = {
             "github_url": "https://github.com/fastapi/fastapi",
             "prompt": "Analyze the main.py file and suggest improvements",
@@ -316,7 +310,7 @@ class TestRunManagement:
                 "max_tokens": 2000
             }
         }
-        
+
         response = await client.post("/api/v1/runs", json=run_data, headers=headers)
         assert response.status_code == 202
         run_response = response.json()
@@ -329,7 +323,7 @@ class TestRunManagement:
         """Test run creation validation."""
         api_key = await self._setup_user_with_api_key(client)
         headers = {"X-API-Key": api_key}
-        
+
         # Test invalid GitHub URL
         invalid_run_data = {
             "github_url": "not-a-url",
@@ -353,7 +347,7 @@ class TestRunManagement:
         """Test getting run details."""
         api_key = await self._setup_user_with_api_key(client)
         headers = {"X-API-Key": api_key}
-        
+
         # Create a run
         run_data = {
             "github_url": "https://github.com/test/repo",
@@ -362,7 +356,7 @@ class TestRunManagement:
         }
         create_response = await client.post("/api/v1/runs", json=run_data, headers=headers)
         run_id = create_response.json()["run_id"]
-        
+
         # Get run details
         response = await client.get(f"/api/v1/runs/{run_id}", headers=headers)
         assert response.status_code == 200
@@ -376,7 +370,7 @@ class TestRunManagement:
         """Test listing user's runs."""
         api_key = await self._setup_user_with_api_key(client)
         headers = {"X-API-Key": api_key}
-        
+
         # Create multiple runs
         run_ids = []
         for i in range(3):
@@ -387,7 +381,7 @@ class TestRunManagement:
             }
             create_response = await client.post("/api/v1/runs", json=run_data, headers=headers)
             run_ids.append(create_response.json()["run_id"])
-        
+
         # List runs
         response = await client.get("/api/v1/runs", headers=headers)
         assert response.status_code == 200
@@ -395,7 +389,7 @@ class TestRunManagement:
         assert "items" in runs_data
         assert "total" in runs_data
         assert len(runs_data["items"]) >= 3
-        
+
         # Verify all created runs are in the list
         listed_ids = [run["id"] for run in runs_data["items"]]
         for run_id in run_ids:
@@ -406,7 +400,7 @@ class TestRunManagement:
         """Test selecting a winning variation."""
         api_key = await self._setup_user_with_api_key(client)
         headers = {"X-API-Key": api_key}
-        
+
         # Create a run
         run_data = {
             "github_url": "https://github.com/test/repo",
@@ -415,13 +409,13 @@ class TestRunManagement:
         }
         create_response = await client.post("/api/v1/runs", json=run_data, headers=headers)
         run_id = create_response.json()["run_id"]
-        
+
         # Select winning variation
         selection_data = {
             "variation_id": 0,
             "feedback": "This variation provided better analysis"
         }
-        response = await client.post(f"/api/v1/runs/{run_id}/select", 
+        response = await client.post(f"/api/v1/runs/{run_id}/select",
                                    json=selection_data, headers=headers)
         assert response.status_code == 200
         selection_response = response.json()
@@ -432,7 +426,7 @@ class TestRunManagement:
         """Test canceling a run."""
         api_key = await self._setup_user_with_api_key(client)
         headers = {"X-API-Key": api_key}
-        
+
         # Create a run
         run_data = {
             "github_url": "https://github.com/test/repo",
@@ -441,7 +435,7 @@ class TestRunManagement:
         }
         create_response = await client.post("/api/v1/runs", json=run_data, headers=headers)
         run_id = create_response.json()["run_id"]
-        
+
         # Cancel the run
         response = await client.delete(f"/api/v1/runs/{run_id}", headers=headers)
         assert response.status_code == 200
@@ -463,30 +457,30 @@ class TestStreamingEndpoints:
             "full_name": "Stream User"
         }
         await client.post("/api/v1/auth/register", json=user_data)
-        
+
         login_response = await client.post("/api/v1/auth/login", json={
             "email": "streamuser@example.com",
             "password": "StreamPassword123!"
         })
         token = login_response.json()["access_token"]
-        
+
         api_key_data = {"name": "Stream Key", "scopes": ["runs:create", "runs:read"]}
-        key_response = await client.post("/api/v1/auth/api-keys", json=api_key_data, 
+        key_response = await client.post("/api/v1/auth/api-keys", json=api_key_data,
                                        headers={"Authorization": f"Bearer {token}"})
         api_key = key_response.json()["api_key"]
-        
+
         # Create a run
         run_data = {
             "github_url": "https://github.com/test/repo",
             "prompt": "Test streaming",
             "variations": 1
         }
-        create_response = await client.post("/api/v1/runs", json=run_data, 
+        create_response = await client.post("/api/v1/runs", json=run_data,
                                           headers={"X-API-Key": api_key})
         run_id = create_response.json()["run_id"]
-        
+
         # Test streaming endpoint access
-        stream_response = await client.get(f"/api/v1/runs/{run_id}/stream", 
+        stream_response = await client.get(f"/api/v1/runs/{run_id}/stream",
                                          headers={"X-API-Key": api_key})
         # Stream should be accessible (may not have content yet, but should connect)
         assert stream_response.status_code == 200
@@ -496,23 +490,23 @@ class TestStreamingEndpoints:
         """Test debug logs streaming endpoint."""
         # Setup user and run
         user_data = {
-            "email": "debuguser@example.com", 
+            "email": "debuguser@example.com",
             "password": "DebugPassword123!",
             "full_name": "Debug User"
         }
         await client.post("/api/v1/auth/register", json=user_data)
-        
+
         login_response = await client.post("/api/v1/auth/login", json={
             "email": "debuguser@example.com",
             "password": "DebugPassword123!"
         })
         token = login_response.json()["access_token"]
-        
+
         api_key_data = {"name": "Debug Key", "scopes": ["runs:create", "runs:read"]}
         key_response = await client.post("/api/v1/auth/api-keys", json=api_key_data,
                                        headers={"Authorization": f"Bearer {token}"})
         api_key = key_response.json()["api_key"]
-        
+
         run_data = {
             "github_url": "https://github.com/test/repo",
             "prompt": "Test debug logs",
@@ -521,7 +515,7 @@ class TestStreamingEndpoints:
         create_response = await client.post("/api/v1/runs", json=run_data,
                                           headers={"X-API-Key": api_key})
         run_id = create_response.json()["run_id"]
-        
+
         # Test debug logs endpoint
         response = await client.get(f"/api/v1/runs/{run_id}/debug-logs",
                                   headers={"X-API-Key": api_key})
@@ -541,7 +535,7 @@ class TestModelCatalog:
             "full_name": "Model User"
         }
         await client.post("/api/v1/auth/register", json=user_data)
-        
+
         login_response = await client.post("/api/v1/auth/login", json={
             "email": user_data["email"],
             "password": user_data["password"]
@@ -553,7 +547,7 @@ class TestModelCatalog:
         """Test getting the complete model catalog."""
         token = await self._get_auth_token(client)
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         response = await client.get("/api/v1/models/catalog", headers=headers)
         assert response.status_code == 200
         catalog = response.json()
@@ -566,7 +560,7 @@ class TestModelCatalog:
         """Test getting available models based on configured credentials."""
         token = await self._get_auth_token(client)
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         response = await client.get("/api/v1/models/available", headers=headers)
         assert response.status_code == 200
         data = response.json()
@@ -580,11 +574,11 @@ class TestModelCatalog:
         """Test getting models with various filters."""
         token = await self._get_auth_token(client)
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         # Test filtering by provider
         response = await client.get("/api/v1/models/models?provider=openai", headers=headers)
         assert response.status_code == 200
-        
+
         # Test filtering by capability
         response = await client.get("/api/v1/models/models?capability=chat", headers=headers)
         assert response.status_code == 200
@@ -594,11 +588,11 @@ class TestModelCatalog:
         """Test getting details for a specific model."""
         token = await self._get_auth_token(client)
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         # First get available models to find a valid model ID
         models_response = await client.get("/api/v1/models/models", headers=headers)
         models = models_response.json()
-        
+
         if models and len(models) > 0:
             model_id = models[0]["model_name"]
             response = await client.get(f"/api/v1/models/models/{model_id}", headers=headers)
@@ -611,7 +605,7 @@ class TestModelCatalog:
         """Test getting model recommendations."""
         token = await self._get_auth_token(client)
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         recommendation_request = {
             "task_type": "code_analysis",
             "requirements": {
@@ -620,8 +614,8 @@ class TestModelCatalog:
                 "response_format": "structured"
             }
         }
-        
-        response = await client.post("/api/v1/models/recommendations", 
+
+        response = await client.post("/api/v1/models/recommendations",
                                    json=recommendation_request, headers=headers)
         assert response.status_code == 200
         recommendations = response.json()
@@ -632,7 +626,7 @@ class TestModelCatalog:
         """Test getting provider information."""
         token = await self._get_auth_token(client)
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         response = await client.get("/api/v1/models/providers", headers=headers)
         assert response.status_code == 200
         providers = response.json()
@@ -646,7 +640,7 @@ class TestModelCatalog:
         """Test getting model capabilities."""
         token = await self._get_auth_token(client)
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         response = await client.get("/api/v1/models/capabilities", headers=headers)
         assert response.status_code == 200
         capabilities = response.json()
@@ -665,7 +659,7 @@ class TestCredentialsManagement:
             "full_name": "Credentials User"
         }
         await client.post("/api/v1/auth/register", json=user_data)
-        
+
         login_response = await client.post("/api/v1/auth/login", json={
             "email": user_data["email"],
             "password": user_data["password"]
@@ -677,14 +671,14 @@ class TestCredentialsManagement:
         """Test creating provider credentials."""
         token = await self._get_auth_token(client)
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         credential_data = {
             "provider": "openai",
             "api_key": "sk-test-key-for-testing",
             "name": "Test OpenAI Credential",
             "description": "API key for testing"
         }
-        
+
         response = await client.post("/api/v1/credentials/", json=credential_data, headers=headers)
         assert response.status_code == 201
         credential = response.json()
@@ -697,22 +691,22 @@ class TestCredentialsManagement:
         """Test listing user credentials."""
         token = await self._get_auth_token(client)
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         # Create some credentials first
         providers = ["openai", "anthropic", "gemini"]
         created_ids = []
-        
+
         for provider in providers:
             credential_data = {
                 "provider": provider,
                 "api_key": f"test-key-{provider}",
                 "name": f"Test {provider.title()} Key"
             }
-            create_response = await client.post("/api/v1/credentials/", 
+            create_response = await client.post("/api/v1/credentials/",
                                               json=credential_data, headers=headers)
             if create_response.status_code == 201:
                 created_ids.append(create_response.json()["id"])
-        
+
         # List credentials
         response = await client.get("/api/v1/credentials/", headers=headers)
         assert response.status_code == 200
@@ -724,17 +718,17 @@ class TestCredentialsManagement:
         """Test getting credential details."""
         token = await self._get_auth_token(client)
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         # Create a credential
         credential_data = {
             "provider": "openai",
             "api_key": "sk-test-detail-key",
             "name": "Detail Test Key"
         }
-        create_response = await client.post("/api/v1/credentials/", 
+        create_response = await client.post("/api/v1/credentials/",
                                           json=credential_data, headers=headers)
         credential_id = create_response.json()["id"]
-        
+
         # Get credential details
         response = await client.get(f"/api/v1/credentials/{credential_id}", headers=headers)
         assert response.status_code == 200
@@ -747,23 +741,23 @@ class TestCredentialsManagement:
         """Test updating a credential."""
         token = await self._get_auth_token(client)
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         # Create a credential
         credential_data = {
             "provider": "openai",
             "api_key": "sk-test-update-key",
             "name": "Update Test Key"
         }
-        create_response = await client.post("/api/v1/credentials/", 
+        create_response = await client.post("/api/v1/credentials/",
                                           json=credential_data, headers=headers)
         credential_id = create_response.json()["id"]
-        
+
         # Update the credential
         update_data = {
             "name": "Updated Test Key",
             "description": "Updated description"
         }
-        response = await client.put(f"/api/v1/credentials/{credential_id}", 
+        response = await client.put(f"/api/v1/credentials/{credential_id}",
                                   json=update_data, headers=headers)
         assert response.status_code == 200
         updated_credential = response.json()
@@ -774,21 +768,21 @@ class TestCredentialsManagement:
         """Test deleting a credential."""
         token = await self._get_auth_token(client)
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         # Create a credential
         credential_data = {
             "provider": "openai",
             "api_key": "sk-test-delete-key",
             "name": "Delete Test Key"
         }
-        create_response = await client.post("/api/v1/credentials/", 
+        create_response = await client.post("/api/v1/credentials/",
                                           json=credential_data, headers=headers)
         credential_id = create_response.json()["id"]
-        
+
         # Delete the credential
         response = await client.delete(f"/api/v1/credentials/{credential_id}", headers=headers)
         assert response.status_code == 204
-        
+
         # Verify it's deleted
         get_response = await client.get(f"/api/v1/credentials/{credential_id}", headers=headers)
         assert get_response.status_code == 404
@@ -809,13 +803,13 @@ class TestErrorHandlingAndEdgeCases:
             ("POST", "/api/v1/credentials/"),
             ("GET", "/api/v1/credentials/"),
         ]
-        
+
         for method, endpoint in protected_endpoints:
             if method == "GET":
                 response = await client.get(endpoint)
             elif method == "POST":
                 response = await client.post(endpoint, json={})
-            
+
             assert response.status_code == 401
 
     @pytest.mark.asyncio
@@ -825,20 +819,20 @@ class TestErrorHandlingAndEdgeCases:
             ("POST", "/api/v1/runs"),
             ("GET", "/api/v1/runs"),
         ]
-        
+
         for method, endpoint in api_key_endpoints:
             if method == "GET":
                 response = await client.get(endpoint)
             elif method == "POST":
                 response = await client.post(endpoint, json={})
-            
+
             assert response.status_code == 401
 
     @pytest.mark.asyncio
     async def test_invalid_json_handling(self, client: AsyncClient):
         """Test handling of invalid JSON in requests."""
-        response = await client.post("/api/v1/auth/register", 
-                                   content="invalid json", 
+        response = await client.post("/api/v1/auth/register",
+                                   content="invalid json",
                                    headers={"Content-Type": "application/json"})
         assert response.status_code == 422
 
@@ -852,20 +846,20 @@ class TestErrorHandlingAndEdgeCases:
             "full_name": "Not Found User"
         }
         await client.post("/api/v1/auth/register", json=user_data)
-        
+
         login_response = await client.post("/api/v1/auth/login", json={
             "email": "notfound@example.com",
             "password": "NotFoundPassword123!"
         })
         token = login_response.json()["access_token"]
-        
+
         api_key_data = {"name": "Not Found Key", "scopes": ["runs:read"]}
         key_response = await client.post("/api/v1/auth/api-keys", json=api_key_data,
                                        headers={"Authorization": f"Bearer {token}"})
         api_key = key_response.json()["api_key"]
-        
+
         # Test nonexistent run
-        response = await client.get("/api/v1/runs/nonexistent-run-id", 
+        response = await client.get("/api/v1/runs/nonexistent-run-id",
                                   headers={"X-API-Key": api_key})
         assert response.status_code == 404
 
@@ -877,7 +871,7 @@ class TestErrorHandlingAndEdgeCases:
         for _ in range(10):
             response = await client.get("/health")
             responses.append(response.status_code)
-        
+
         # Should either get 200s (rate limiting disabled) or some 429s (rate limiting enabled)
         assert all(status in [200, 429] for status in responses)
 
@@ -886,32 +880,32 @@ class TestErrorHandlingAndEdgeCases:
         """Test handling of large payloads."""
         # Test with very long prompt
         large_prompt = "A" * 10000  # 10k character prompt
-        
+
         user_data = {
             "email": "largepayload@example.com",
             "password": "LargePayloadPassword123!",
             "full_name": "Large Payload User"
         }
         await client.post("/api/v1/auth/register", json=user_data)
-        
+
         login_response = await client.post("/api/v1/auth/login", json={
             "email": "largepayload@example.com",
             "password": "LargePayloadPassword123!"
         })
         token = login_response.json()["access_token"]
-        
+
         api_key_data = {"name": "Large Payload Key", "scopes": ["runs:create"]}
         key_response = await client.post("/api/v1/auth/api-keys", json=api_key_data,
                                        headers={"Authorization": f"Bearer {token}"})
         api_key = key_response.json()["api_key"]
-        
+
         run_data = {
             "github_url": "https://github.com/test/repo",
             "prompt": large_prompt,
             "variations": 1
         }
-        
-        response = await client.post("/api/v1/runs", json=run_data, 
+
+        response = await client.post("/api/v1/runs", json=run_data,
                                    headers={"X-API-Key": api_key})
         # Should either accept (if within limits) or reject with 422
         assert response.status_code in [202, 422]

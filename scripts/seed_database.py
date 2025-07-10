@@ -4,27 +4,27 @@ Database seeding script for development.
 Creates a test user and API key for development.
 """
 
-import sys
-import os
+import asyncio
 import logging
 import secrets
-import asyncio
-from pathlib import Path
+import sys
 from datetime import datetime
+from pathlib import Path
 
 # Add the parent directory to the Python path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.core.config import get_settings
-from app.core.auth import get_password_hash
-from app.core.database import async_session_maker
-from app.models.user import User, APIKey
 from sqlmodel import select
+
+from app.core.auth import get_password_hash
+from app.core.config import get_settings
+from app.core.database import async_session_maker
+from app.models.user import APIKey, User
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
 logger = logging.getLogger(__name__)
@@ -39,10 +39,10 @@ async def create_test_user():
                 select(User).where(User.email == "test@aideator.local")
             )
             existing_user = result.scalar_one_or_none()
-            
+
             if existing_user:
                 logger.info("Test user already exists")
-                
+
                 # Check for existing API key
                 result = await session.execute(
                     select(APIKey).where(
@@ -51,7 +51,7 @@ async def create_test_user():
                     )
                 )
                 existing_key = result.scalar_one_or_none()
-                
+
                 if existing_key:
                     logger.info("Test API key already exists")
                     return {
@@ -59,36 +59,35 @@ async def create_test_user():
                         "email": existing_user.email,
                         "message": "Test user and API key already exist"
                     }
-                else:
-                    # Create new API key for existing user
-                    api_key_value = f"aid_sk_test_{secrets.token_urlsafe(32)}"
-                    api_key_hash = get_password_hash(api_key_value)
-                    
-                    new_key = APIKey(
-                        id=f"key_test_{secrets.token_urlsafe(12)}",
-                        user_id=existing_user.id,
-                        key_hash=api_key_hash,
-                        name="Development Test Key",
-                        scopes=["read", "write"],
-                        is_active=True,
-                        created_at=datetime.utcnow(),
-                        total_requests=0,
-                        total_runs=0
-                    )
-                    
-                    session.add(new_key)
-                    await session.commit()
-                    
-                    logger.info(f"Created new API key for existing test user")
-                    print_credentials(existing_user.email, "testpass123", api_key_value)
-                    
-                    return {
-                        "user_id": existing_user.id,
-                        "email": existing_user.email,
-                        "api_key": api_key_value,
-                        "message": "Created new API key for existing test user"
-                    }
-            
+                # Create new API key for existing user
+                api_key_value = f"aid_sk_test_{secrets.token_urlsafe(32)}"
+                api_key_hash = get_password_hash(api_key_value)
+
+                new_key = APIKey(
+                    id=f"key_test_{secrets.token_urlsafe(12)}",
+                    user_id=existing_user.id,
+                    key_hash=api_key_hash,
+                    name="Development Test Key",
+                    scopes=["read", "write"],
+                    is_active=True,
+                    created_at=datetime.utcnow(),
+                    total_requests=0,
+                    total_runs=0
+                )
+
+                session.add(new_key)
+                await session.commit()
+
+                logger.info("Created new API key for existing test user")
+                print_credentials(existing_user.email, "testpass123", api_key_value)
+
+                return {
+                    "user_id": existing_user.id,
+                    "email": existing_user.email,
+                    "api_key": api_key_value,
+                    "message": "Created new API key for existing test user"
+                }
+
             # Create new test user
             test_user = User(
                 id=f"user_test_{secrets.token_urlsafe(12)}",
@@ -103,15 +102,15 @@ async def create_test_user():
                 max_runs_per_day=100,
                 max_variations_per_run=5
             )
-            
+
             session.add(test_user)
             await session.commit()
             await session.refresh(test_user)
-            
+
             # Create API key for test user
             api_key_value = f"aid_sk_test_{secrets.token_urlsafe(32)}"
             api_key_hash = get_password_hash(api_key_value)
-            
+
             api_key = APIKey(
                 id=f"key_test_{secrets.token_urlsafe(12)}",
                 user_id=test_user.id,
@@ -123,13 +122,13 @@ async def create_test_user():
                 total_requests=0,
                 total_runs=0
             )
-            
+
             session.add(api_key)
             await session.commit()
-            
+
             logger.info(f"Test user created successfully: {test_user.email}")
             print_credentials(test_user.email, "testpass123", api_key_value)
-            
+
             return {
                 "user_id": test_user.id,
                 "email": test_user.email,
@@ -137,7 +136,7 @@ async def create_test_user():
                 "api_key": api_key_value,
                 "message": "Test user and API key created successfully"
             }
-            
+
         except Exception as e:
             logger.error(f"Error creating test user: {e}")
             await session.rollback()
@@ -166,13 +165,13 @@ async def main():
     """Main entry point."""
     try:
         logger.info("Starting database seeding...")
-        
+
         settings = get_settings()
         logger.info(f"Database URL: {settings.database_url}")
-        
+
         result = await create_test_user()
         logger.info(f"Seeding completed: {result['message']}")
-        
+
     except Exception as e:
         logger.error(f"Database seeding failed: {e}")
         sys.exit(1)

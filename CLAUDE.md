@@ -267,17 +267,30 @@ helm uninstall aideator -n aideator
 ### Testing & Quality
 
 ```bash
-# Run tests (same as before)
-pytest
-pytest --cov=app --cov-report=html
+# Backend tests (ALWAYS use uv for Python commands)
+uv run pytest                                   # Run all tests
+uv run pytest --cov=app --cov-report=html      # With coverage
+uv run pytest -m unit                          # Unit tests only  
+uv run pytest -m integration                   # Integration tests only
+uv run pytest -m e2e                           # E2E tests only
+
+# Frontend tests
+cd frontend/
+npm run test:e2e                               # Playwright E2E tests (211 test cases)
+npm run test:e2e:ui                            # Interactive Playwright UI
+npm test                                       # Jest unit tests
+npm run type-check                             # TypeScript validation
 
 # Linting and formatting
-ruff check .
-ruff format .
-mypy app/
+uv run ruff check .                            # Python linting
+uv run ruff format .                           # Python formatting  
+uv run mypy app/                               # Type checking
 
 # Run in container for consistency
-docker run --rm -v $(pwd):/app aideator-api:dev pytest
+docker run --rm -v $(pwd):/app \
+  -e SECRET_KEY=test-secret-key-32-chars-minimum \
+  -e OPENAI_API_KEY=sk-test-key \
+  aideator-api:dev uv run pytest
 ```
 
 ## 📋 Quality Standards
@@ -1097,49 +1110,149 @@ timeout 30 curl -N -H "X-API-Key: $API_KEY" \
 # If SSE is missing events that kubectl shows, there's a problem
 ```
 
-### Unit Testing
+### Comprehensive Testing Strategy
+
+#### Backend Testing (pytest + 80% coverage achieved)
 
 ```bash
-# Run unit tests locally
-pytest tests/
+# ALWAYS use uv for Python commands (faster, more reliable)
+uv run pytest                                   # All tests (30+ files)
+uv run pytest --cov=app --cov-report=html      # Coverage report
+uv run pytest -m unit                          # Unit tests only (25+ files)
+uv run pytest -m integration                   # Integration tests (6 files) 
+uv run pytest -m e2e                           # E2E tests (5 files)
+uv run pytest -m slow                          # Long-running tests
+uv run pytest --maxfail=1                      # Stop on first failure
 
-# Run with coverage
-pytest --cov=app --cov-report=html
+# Parallel execution for faster tests
+uv run pytest -n auto                          # Use all CPU cores
 
-# Run in Docker (for consistency)
+# Run in Docker for consistency
 docker run --rm -v $(pwd):/app \
   -e SECRET_KEY=test-secret-key-32-chars-minimum \
   -e OPENAI_API_KEY=sk-test-key \
-  aideator-api:dev pytest
+  aideator-api:dev uv run pytest
+```
+
+#### Frontend Testing (Playwright + Jest)
+
+```bash
+cd frontend/
+
+# E2E tests with Playwright (211 test cases across 21 files)
+npm run test:e2e                               # Full E2E suite
+npm run test:e2e:ui                            # Interactive Playwright UI
+npm run test:e2e:debug                         # Debug mode with DevTools
+npm run test:e2e -- --headed                   # Run with visible browser
+
+# Specific E2E test categories
+npm run test:e2e -- tests/e2e/streaming.spec.ts          # Core streaming tests
+npm run test:e2e -- tests/e2e/auth-simple.spec.ts        # Auth workflows  
+npm run test:e2e -- tests/e2e/agent-streaming.spec.ts    # Multi-agent tests
+
+# Unit tests with Jest
+npm test                                       # All unit tests
+npm run test:watch                             # Watch mode
+npm run test:coverage                          # Coverage report
+
+# Type checking
+npm run type-check                             # TypeScript validation
+```
+
+#### Test Structure & Coverage
+
+**Backend Tests (35+ files, 80% coverage):**
+- `tests/unit/` - 25+ files (auth, APIs, models, services)
+- `tests/integration/` - 6 files (streaming, LiteLLM, parallel execution)  
+- `tests/e2e/` - 5 files (full user journeys, error handling)
+
+**Frontend Tests (30+ files, 211 E2E test cases):**
+- `tests/e2e/` - 21 files covering all user workflows
+- `tests/integration/` - API client integration tests
+- `tests/unit/` - React hooks, utilities, model mapping
+
+#### E2E Testing Best Practices
+
+```bash
+# 1. ALWAYS start with Tilt (don't use kubectl port-forward)
+tilt up
+# Wait for services: FastAPI (8000), Frontend (3001), Tilt UI (10350)
+
+# 2. Test complete user journeys with timeouts
+timeout 20 curl -N -H "X-API-Key: $API_KEY" \
+  http://localhost:8000/api/v1/runs/${RUN_ID}/stream
+
+# 3. Verify streaming pipeline (kubectl logs match SSE output)
+# Terminal 1: Monitor kubectl logs
+kubectl logs -f job/agent-${RUN_ID}-0 -n aideator | grep "Streaming"
+
+# Terminal 2: Monitor SSE stream  
+timeout 30 curl -N -H "X-API-Key: $API_KEY" \
+  http://localhost:8000/api/v1/runs/${RUN_ID}/stream | grep "Streaming"
+# Both should show identical streaming events!
+
+# 4. Test with realistic data (no mock endpoints)
+curl -X POST http://localhost:8000/api/v1/runs \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"github_url": "https://github.com/octocat/Hello-World", "prompt": "Add README", "variations": 1}'
+```
+
+#### Quality Gates
+
+```bash
+# Pre-commit checks (REQUIRED before any commit)
+uv run ruff check .                            # Python linting must pass
+uv run ruff format .                           # Auto-format Python code
+uv run mypy app/                               # Type checking must pass
+cd frontend/ && npm run type-check             # TypeScript validation
+
+# Coverage requirements
+uv run pytest --cov=app --cov-fail-under=80   # 80% minimum backend coverage
+cd frontend/ && npm run test:coverage          # Frontend coverage report
+
+# E2E validation (REQUIRED for major features)
+npm run test:e2e                               # All 211 E2E tests must pass
 ```
 
 ## 🚨 Common Pitfalls to Avoid
 
 ### What I Never Do
 
+- ❌ Use `python` or `python3` commands (ALWAYS use `uv run`)
+- ❌ Use `pip` for package management (ALWAYS use `uv`)
+- ❌ Skip timeouts on streaming/SSE endpoints (causes hanging tests)
+- ❌ Use kubectl port-forward when Tilt is running (conflicts)
+- ❌ Test without realistic data (no mock endpoints)
+- ❌ Run E2E tests inside containers (treat as black box)
+- ❌ Ignore test markers (use `-m unit`, `-m integration`, `-m e2e`)
 - ❌ Hardcode cluster URLs or namespaces
 - ❌ Skip resource limits on containers
 - ❌ Use `kubectl exec` for normal operations
 - ❌ Ignore Job TTL settings
 - ❌ Mix development and production configs
-- ❌ Use kubectl port-forward when Tilt is running
-- ❌ Test without timeouts on streaming endpoints
-- ❌ Run e2e tests inside containers (treat as black box)
 - ❌ Forget to create required secrets before deployment
 - ❌ Use OpenRouter references (we use LiteLLM with OpenAI)
 - ❌ Assume Tilt will instantly rebuild (wait 10+ seconds)
 
 ### What I Always Do
 
+- ✅ Use `uv run` for ALL Python commands (pytest, ruff, mypy)
+- ✅ Use `npm run test:e2e` for Playwright E2E tests (211 test cases)
+- ✅ Add timeouts to ALL streaming/SSE tests (prevent hanging)
+- ✅ Start with `tilt up` for E2E testing (not kubectl port-forward)
+- ✅ Verify kubectl logs match SSE output (streaming pipeline validation)
+- ✅ Test with realistic data and real API endpoints
+- ✅ Use test markers: `uv run pytest -m unit|integration|e2e`
+- ✅ Check coverage with `uv run pytest --cov=app --cov-report=html`
+- ✅ Run frontend type checking with `npm run type-check`
 - ✅ Use Kubernetes Jobs for batch workloads
 - ✅ Set resource requests and limits
 - ✅ Implement proper RBAC
 - ✅ Use ConfigMaps and Secrets appropriately
 - ✅ Add meaningful labels and annotations
 - ✅ Test with Tilt before manual deployment
-- ✅ Use timeout when testing SSE/streaming endpoints
 - ✅ Treat the API as a black box for e2e tests
-- ✅ Verify kubectl logs streaming works via SSE
 - ✅ Create openai-secret before deployment: `kubectl create secret generic openai-secret --from-literal=api-key=$OPENAI_API_KEY -n aideator`
 - ✅ Use agent-job-dev-test for testing agent changes
 - ✅ Touch files to trigger Tilt rebuilds when needed

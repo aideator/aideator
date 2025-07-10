@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -8,8 +8,8 @@ class ErrorResponse(BaseModel):
 
     detail: str = Field(..., description="Error message")
     status_code: int = Field(..., description="HTTP status code")
-    error_code: Optional[str] = Field(None, description="Application-specific error code")
-    
+    error_code: str | None = Field(None, description="Application-specific error code")
+
     model_config = {
         "json_schema_extra": {
             "example": {
@@ -24,7 +24,7 @@ class ErrorResponse(BaseModel):
 class ValidationErrorDetail(BaseModel):
     """Details about a validation error."""
 
-    loc: List[str] = Field(..., description="Location of the error")
+    loc: list[str] = Field(..., description="Location of the error")
     msg: str = Field(..., description="Error message")
     type: str = Field(..., description="Error type")
 
@@ -32,8 +32,8 @@ class ValidationErrorDetail(BaseModel):
 class ValidationErrorResponse(BaseModel):
     """Validation error response."""
 
-    detail: List[ValidationErrorDetail] = Field(..., description="List of validation errors")
-    
+    detail: list[ValidationErrorDetail] = Field(..., description="List of validation errors")
+
     model_config = {
         "json_schema_extra": {
             "example": {
@@ -53,8 +53,8 @@ class SuccessResponse(BaseModel):
     """Generic success response."""
 
     message: str = Field(..., description="Success message")
-    data: Optional[Dict[str, Any]] = Field(None, description="Additional data")
-    
+    data: dict[str, Any] | None = Field(None, description="Additional data")
+
     model_config = {
         "json_schema_extra": {
             "example": {
@@ -70,17 +70,17 @@ class PaginationParams(BaseModel):
 
     page: int = Field(1, ge=1, description="Page number")
     per_page: int = Field(20, ge=1, le=100, description="Items per page")
-    
+
 
 class PaginatedResponse(BaseModel):
     """Paginated response wrapper."""
 
-    items: List[Any] = Field(..., description="List of items")
+    items: list[Any] = Field(..., description="List of items")
     total: int = Field(..., description="Total number of items")
     page: int = Field(..., description="Current page")
     per_page: int = Field(..., description="Items per page")
     pages: int = Field(..., description="Total number of pages")
-    
+
     model_config = {
         "json_schema_extra": {
             "example": {

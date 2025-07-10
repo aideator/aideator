@@ -1,27 +1,31 @@
 """
-Service for synchronizing model definitions from LiteLLM proxy to our database.
+Service for synchronizing model definitions using LiteLLM's native discovery capabilities.
 """
 
 import logging
-import httpx
-from typing import List, Dict, Any, Optional
 from datetime import datetime
+from typing import Any
+
+import httpx
 from sqlmodel import Session, select
 
-from app.core.database import get_sync_session
+from app.core.config import get_settings
 from app.models.model_definition import ModelDefinitionDB, ModelSyncLog
-from app.core.config import settings
+from app.models.user import User
+from app.services.model_discovery_service import model_discovery_service
+from app.services.provider_key_service import ProviderKeyService
 
 logger = logging.getLogger(__name__)
 
 
 class ModelSyncService:
     """Synchronizes model definitions from LiteLLM proxy to our database."""
-    
+
     def __init__(self):
+        settings = get_settings()
         self.proxy_base_url = settings.LITELLM_PROXY_URL or "http://localhost:4000"
-        self.proxy_api_key = settings.LITELLM_PROXY_API_KEY or ""
-        
+        self.proxy_api_key = settings.LITELLM_MASTER_KEY or ""
+
     async def sync_models(self, session: Session) -> ModelSyncLog:
         """Fetch models from LiteLLM proxy and sync to database.
         
@@ -31,37 +35,48 @@ class ModelSyncService:
         sync_log = ModelSyncLog(status="in_progress")
         session.add(sync_log)
         session.commit()
-        
+
         try:
             # Fetch models from LiteLLM proxy
             models_data = await self._fetch_models_from_proxy()
             sync_log.models_discovered = len(models_data)
-            
+
             # Process each model
             for model_data in models_data:
-                await self._process_model(session, model_data, sync_log)
-            
+                try:
+                    await self._process_model(session, model_data, sync_log)
+                    session.commit()  # Commit after each model to avoid conflicts
+                except Exception as e:
+                    session.rollback()
+                    # If it's a unique constraint violation, the model already exists - skip it
+                    if "duplicate key value violates unique constraint" in str(e):
+                        logger.warning(f"Model {model_data.get('model_name')} already exists, skipping")
+                        continue
+                    else:
+                        # Re-raise other exceptions
+                        raise
+
             # Deactivate models not seen in this sync
             await self._deactivate_missing_models(session, models_data, sync_log)
-            
+
             sync_log.status = "success"
             sync_log.completed_at = datetime.utcnow()
-            
+
         except Exception as e:
-            logger.error(f"Model sync failed: {str(e)}")
+            logger.error(f"Model sync failed: {e!s}")
             sync_log.status = "failed"
             sync_log.error_message = str(e)
             sync_log.completed_at = datetime.utcnow()
-            
+
         session.commit()
         return sync_log
-    
-    async def _fetch_models_from_proxy(self) -> List[Dict[str, Any]]:
+
+    async def _fetch_models_from_proxy(self) -> list[dict[str, Any]]:
         """Fetch model information from LiteLLM proxy."""
         headers = {}
         if self.proxy_api_key:
             headers["Authorization"] = f"Bearer {self.proxy_api_key}"
-            
+
         async with httpx.AsyncClient() as client:
             # First get basic model list
             models_response = await client.get(
@@ -71,7 +86,7 @@ class ModelSyncService:
             )
             models_response.raise_for_status()
             models_list = models_response.json().get("data", [])
-            
+
             # Then get detailed model info
             model_info_response = await client.get(
                 f"{self.proxy_base_url}/v1/model/info",
@@ -80,13 +95,13 @@ class ModelSyncService:
             )
             model_info_response.raise_for_status()
             model_info_data = model_info_response.json().get("data", [])
-            
+
             # Merge the data
             model_info_map = {
-                info["model_name"]: info 
+                info["model_name"]: info
                 for info in model_info_data
             }
-            
+
             merged_models = []
             for model in models_list:
                 model_name = model["id"]
@@ -99,58 +114,63 @@ class ModelSyncService:
                         "litellm_params": {"model": model_name},
                         "model_info": {}
                     })
-                    
+
             return merged_models
-    
+
     async def _process_model(
-        self, 
-        session: Session, 
-        model_data: Dict[str, Any],
+        self,
+        session: Session,
+        model_data: dict[str, Any],
         sync_log: ModelSyncLog
     ):
         """Process a single model from the proxy."""
         model_name = model_data["model_name"]
         model_info = model_data.get("model_info", {})
-        
+
         # Check if model exists
         existing_model = session.exec(
             select(ModelDefinitionDB).where(
                 ModelDefinitionDB.model_name == model_name
             )
         ).first()
-        
+
         if existing_model:
             # Update existing model
             existing_model.last_seen_at = datetime.utcnow()
             existing_model.is_active = True
-            
+
             # Update fields from proxy
-            existing_model.litellm_provider = model_info.get("litellm_provider", "unknown")
+            provider = model_info.get("litellm_provider", "unknown")
+            existing_model.provider = provider
+            existing_model.litellm_provider = provider
             existing_model.max_tokens = model_info.get("max_tokens")
             existing_model.max_input_tokens = model_info.get("max_input_tokens")
             existing_model.max_output_tokens = model_info.get("max_output_tokens")
             existing_model.input_cost_per_token = model_info.get("input_cost_per_token")
             existing_model.output_cost_per_token = model_info.get("output_cost_per_token")
-            existing_model.supports_function_calling = model_info.get("supports_function_calling", False)
-            existing_model.supports_vision = model_info.get("supports_vision", False)
-            existing_model.supports_streaming = model_info.get("supports_streaming", True)
-            
+            existing_model.supports_function_calling = model_info.get("supports_function_calling") if model_info.get("supports_function_calling") is not None else False
+            existing_model.supports_vision = model_info.get("supports_vision") if model_info.get("supports_vision") is not None else False
+            existing_model.supports_streaming = model_info.get("supports_streaming") if model_info.get("supports_streaming") is not None else True
+
             sync_log.models_updated += 1
-            
+
         else:
             # Create new model
+            provider = model_info.get("litellm_provider", "unknown")
             new_model = ModelDefinitionDB(
                 model_name=model_name,
-                litellm_provider=model_info.get("litellm_provider", "unknown"),
+                provider=provider,
+                litellm_provider=provider,
+                litellm_model_name=model_name,
                 display_name=self._generate_display_name(model_name),
                 max_tokens=model_info.get("max_tokens"),
                 max_input_tokens=model_info.get("max_input_tokens"),
                 max_output_tokens=model_info.get("max_output_tokens"),
                 input_cost_per_token=model_info.get("input_cost_per_token"),
                 output_cost_per_token=model_info.get("output_cost_per_token"),
-                supports_function_calling=model_info.get("supports_function_calling", False),
-                supports_vision=model_info.get("supports_vision", False),
-                supports_streaming=model_info.get("supports_streaming", True),
+                supports_function_calling=model_info.get("supports_function_calling") if model_info.get("supports_function_calling") is not None else False,
+                supports_vision=model_info.get("supports_vision") if model_info.get("supports_vision") is not None else False,
+                supports_streaming=model_info.get("supports_streaming") if model_info.get("supports_streaming") is not None else True,
                 description=self._generate_description(model_name, model_info),
                 category=self._determine_category(model_name, model_info),
                 tags=self._generate_tags(model_name, model_info),
@@ -162,35 +182,35 @@ class ModelSyncService:
             )
             session.add(new_model)
             sync_log.models_added += 1
-    
+
     async def _deactivate_missing_models(
-        self, 
-        session: Session, 
-        current_models: List[Dict[str, Any]],
+        self,
+        session: Session,
+        current_models: list[dict[str, Any]],
         sync_log: ModelSyncLog
     ):
         """Deactivate models that weren't seen in the current sync."""
         current_model_names = {m["model_name"] for m in current_models}
-        
+
         # Find active models not in current sync
         active_models = session.exec(
             select(ModelDefinitionDB).where(
                 ModelDefinitionDB.is_active == True
             )
         ).all()
-        
+
         for model in active_models:
             if model.model_name not in current_model_names:
                 model.is_active = False
                 model.last_seen_at = datetime.utcnow()
                 sync_log.models_deactivated += 1
-    
+
     def _generate_display_name(self, model_name: str) -> str:
         """Generate a human-friendly display name."""
         # Remove provider prefixes
         name = model_name.replace("openai/", "").replace("anthropic/", "")
         name = name.replace("vertex_ai/", "").replace("bedrock/", "")
-        
+
         # Capitalize and format
         parts = name.replace("-", " ").replace("_", " ").split()
         formatted_parts = []
@@ -199,10 +219,10 @@ class ModelSyncService:
                 formatted_parts.append(part.upper())
             else:
                 formatted_parts.append(part.capitalize())
-        
+
         return " ".join(formatted_parts)
-    
-    def _generate_description(self, model_name: str, model_info: Dict) -> str:
+
+    def _generate_description(self, model_name: str, model_info: dict) -> str:
         """Generate a description based on model characteristics."""
         descriptions = {
             "gpt-4": "OpenAI's most capable model for complex tasks",
@@ -215,54 +235,52 @@ class ModelSyncService:
             "gemini-1.5-pro": "Google's multimodal model with large context",
             "gemini-1.5-flash": "Google's fastest model for high-volume tasks",
         }
-        
+
         # Check for exact match
         for key, desc in descriptions.items():
             if key in model_name.lower():
                 return desc
-        
+
         # Generate based on characteristics
         if model_info.get("supports_vision"):
             return "Multimodal model with vision capabilities"
-        elif "embed" in model_name.lower():
+        if "embed" in model_name.lower():
             return "Embedding model for semantic search and similarity"
-        elif model_info.get("max_tokens", 0) > 100000:
+        if (model_info.get("max_tokens") or 0) > 100000:
             return "Large context window model"
-        else:
-            return "General purpose language model"
-    
-    def _determine_category(self, model_name: str, model_info: Dict) -> str:
+        return "General purpose language model"
+
+    def _determine_category(self, model_name: str, model_info: dict) -> str:
         """Determine the category of the model."""
         if "embed" in model_name.lower():
             return "embedding"
-        elif model_info.get("supports_vision"):
+        if model_info.get("supports_vision"):
             return "vision"
-        elif "code" in model_name.lower() or "codex" in model_name.lower():
+        if "code" in model_name.lower() or "codex" in model_name.lower():
             return "code"
-        elif any(x in model_name.lower() for x in ["gpt-4", "claude-3-opus", "gemini-pro"]):
+        if any(x in model_name.lower() for x in ["gpt-4", "claude-3-opus", "gemini-pro"]):
             return "advanced"
-        else:
-            return "general"
-    
-    def _generate_tags(self, model_name: str, model_info: Dict) -> List[str]:
+        return "general"
+
+    def _generate_tags(self, model_name: str, model_info: dict) -> list[str]:
         """Generate tags for the model."""
         tags = []
-        
+
         if model_info.get("supports_function_calling"):
             tags.append("functions")
         if model_info.get("supports_vision"):
             tags.append("vision")
         if model_info.get("supports_streaming"):
             tags.append("streaming")
-        if model_info.get("max_tokens", 0) > 100000:
+        if (model_info.get("max_tokens") or 0) > 100000:
             tags.append("large-context")
         if "turbo" in model_name.lower() or "flash" in model_name.lower():
             tags.append("fast")
         if any(x in model_name.lower() for x in ["gpt-4", "opus", "pro"]):
             tags.append("powerful")
-            
+
         return tags
-    
+
     def _is_recommended(self, model_name: str) -> bool:
         """Determine if this is a recommended model."""
         recommended = [
@@ -270,21 +288,21 @@ class ModelSyncService:
             "gemini-1.5-pro", "gemini-1.5-flash"
         ]
         return any(r in model_name.lower() for r in recommended)
-    
+
     def _is_popular(self, model_name: str) -> bool:
         """Determine if this is a popular model."""
         popular = [
             "gpt-4", "gpt-3.5-turbo", "claude-3", "gemini"
         ]
         return any(p in model_name.lower() for p in popular)
-    
-    def _requires_api_key(self, model_info: Dict) -> bool:
+
+    def _requires_api_key(self, model_info: dict) -> bool:
         """Determine if the model requires an API key."""
         # Most models require API keys except local ones
         provider = model_info.get("litellm_provider", "").lower()
         return provider not in ["ollama", "local"]
-    
-    def _get_api_key_env_var(self, model_info: Dict) -> Optional[str]:
+
+    def _get_api_key_env_var(self, model_info: dict) -> str | None:
         """Get the environment variable name for the API key."""
         provider_env_vars = {
             "openai": "OPENAI_API_KEY",
@@ -298,7 +316,7 @@ class ModelSyncService:
             "perplexity": "PERPLEXITY_API_KEY",
             "deepseek": "DEEPSEEK_API_KEY",
         }
-        
+
         provider = model_info.get("litellm_provider", "").lower()
         return provider_env_vars.get(provider)
 

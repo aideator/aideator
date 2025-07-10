@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -13,8 +12,8 @@ class UserCreate(BaseModel):
         min_length=8,
         description="User password (min 8 characters)",
     )
-    full_name: Optional[str] = Field(None, description="User's full name")
-    company: Optional[str] = Field(None, description="Company name")
+    full_name: str | None = Field(None, description="User's full name")
+    company: str | None = Field(None, description="Company name")
 
     @field_validator("password")
     @classmethod
@@ -82,8 +81,8 @@ class UserResponse(BaseModel):
     is_active: bool = Field(..., description="Whether user is active")
     is_superuser: bool = Field(..., description="Whether user is superuser")
     created_at: datetime = Field(..., description="Account creation date")
-    full_name: Optional[str] = Field(None, description="User's full name")
-    company: Optional[str] = Field(None, description="Company name")
+    full_name: str | None = Field(None, description="User's full name")
+    company: str | None = Field(None, description="Company name")
     max_runs_per_day: int = Field(..., description="Daily run limit")
     max_variations_per_run: int = Field(..., description="Variations per run limit")
 
@@ -114,11 +113,11 @@ class CreateAPIKeyRequest(BaseModel):
         max_length=100,
         description="Name for the API key",
     )
-    scopes: List[str] = Field(
+    scopes: list[str] = Field(
         default_factory=lambda: ["runs:create", "runs:read"],
         description="Permission scopes for the key",
     )
-    expires_in_days: Optional[int] = Field(
+    expires_in_days: int | None = Field(
         None,
         ge=1,
         le=365,
@@ -143,9 +142,9 @@ class APIKeyResponse(BaseModel):
     name: str = Field(..., description="Key name")
     is_active: bool = Field(..., description="Whether key is active")
     created_at: datetime = Field(..., description="Creation date")
-    last_used_at: Optional[datetime] = Field(None, description="Last usage date")
-    expires_at: Optional[datetime] = Field(None, description="Expiration date")
-    scopes: List[str] = Field(..., description="Permission scopes")
+    last_used_at: datetime | None = Field(None, description="Last usage date")
+    expires_at: datetime | None = Field(None, description="Expiration date")
+    scopes: list[str] = Field(..., description="Permission scopes")
     total_requests: int = Field(..., description="Total requests made")
     total_runs: int = Field(..., description="Total runs created")
 

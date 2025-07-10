@@ -2,16 +2,15 @@
 API endpoints for provider API key management.
 """
 
-from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Depends, Query
-from sqlmodel import Session
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, validator
+from sqlmodel import Session
 
 from app.core.database import get_session
 from app.core.dependencies import CurrentUser
-from app.services.provider_key_service import ProviderKeyService
 from app.models.provider_key import ProviderAPIKeyDB
-
+from app.services.provider_key_service import ProviderKeyService
 
 router = APIRouter(prefix="/provider-keys", tags=["provider-keys"])
 provider_key_service = ProviderKeyService()
@@ -22,14 +21,14 @@ class CreateProviderKeyRequest(BaseModel):
     """Request to create a new provider API key."""
     provider: str = Field(..., description="Provider name: openai, anthropic, etc")
     api_key: str = Field(..., min_length=1, description="The API key to store")
-    name: Optional[str] = Field(None, description="User-friendly name for the key")
-    model_name: Optional[str] = Field(None, description="Optional: specific model override")
-    
-    @validator('provider')
+    name: str | None = Field(None, description="User-friendly name for the key")
+    model_name: str | None = Field(None, description="Optional: specific model override")
+
+    @validator("provider")
     def validate_provider(cls, v):
         valid_providers = [
-            'openai', 'anthropic', 'google', 'cohere', 'together', 
-            'replicate', 'huggingface', 'azure', 'bedrock', 'vertex_ai'
+            "openai", "anthropic", "google", "cohere", "together",
+            "replicate", "huggingface", "azure", "bedrock", "vertex_ai"
         ]
         if v.lower() not in valid_providers:
             raise ValueError(f"Provider must be one of: {', '.join(valid_providers)}")
@@ -38,25 +37,25 @@ class CreateProviderKeyRequest(BaseModel):
 
 class UpdateProviderKeyRequest(BaseModel):
     """Request to update a provider API key."""
-    api_key: Optional[str] = Field(None, description="New API key (if changing)")
-    name: Optional[str] = Field(None, description="New name")
-    is_active: Optional[bool] = Field(None, description="Active status")
+    api_key: str | None = Field(None, description="New API key (if changing)")
+    name: str | None = Field(None, description="New name")
+    is_active: bool | None = Field(None, description="Active status")
 
 
 class ProviderKeyResponse(BaseModel):
     """Response containing provider key info (without the actual key)."""
     id: str
     provider: str
-    model_name: Optional[str]
-    name: Optional[str]
+    model_name: str | None
+    name: str | None
     key_hint: str
     is_active: bool
-    is_valid: Optional[bool]
-    last_validated_at: Optional[str]
-    last_used_at: Optional[str]
+    is_valid: bool | None
+    last_validated_at: str | None
+    last_used_at: str | None
     total_requests: int
     created_at: str
-    
+
     @classmethod
     def from_db(cls, db_key: ProviderAPIKeyDB) -> "ProviderKeyResponse":
         return cls(
@@ -89,15 +88,15 @@ async def create_provider_key(
         name=request.name,
         model_name=request.model_name,
     )
-    
+
     return ProviderKeyResponse.from_db(db_key)
 
 
-@router.get("/", response_model=List[ProviderKeyResponse])
+@router.get("/", response_model=list[ProviderKeyResponse])
 async def list_provider_keys(
     current_user: CurrentUser,
     session: Session = Depends(get_session),
-    provider: Optional[str] = Query(None, description="Filter by provider"),
+    provider: str | None = Query(None, description="Filter by provider"),
     include_inactive: bool = Query(False, description="Include inactive keys"),
 ):
     """List all provider keys for the current user."""
@@ -107,7 +106,7 @@ async def list_provider_keys(
         provider=provider,
         include_inactive=include_inactive,
     )
-    
+
     return [ProviderKeyResponse.from_db(key) for key in keys]
 
 
@@ -123,11 +122,11 @@ async def get_provider_key(
         user=current_user,
         include_inactive=True,
     )
-    
+
     for key in keys:
         if key.id == key_id:
             return ProviderKeyResponse.from_db(key)
-    
+
     raise HTTPException(status_code=404, detail="Provider key not found")
 
 
@@ -147,7 +146,7 @@ async def update_provider_key(
         name=request.name,
         is_active=request.is_active,
     )
-    
+
     return ProviderKeyResponse.from_db(db_key)
 
 
@@ -163,10 +162,10 @@ async def delete_provider_key(
         user=current_user,
         key_id=key_id,
     )
-    
+
     if not success:
         raise HTTPException(status_code=404, detail="Provider key not found")
-    
+
     return {"status": "success", "message": "Provider key deleted"}
 
 
@@ -182,7 +181,7 @@ async def validate_provider_key(
         user=current_user,
         key_id=key_id,
     )
-    
+
     return {
         "status": "success",
         "is_valid": is_valid,

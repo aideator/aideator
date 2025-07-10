@@ -1,4 +1,3 @@
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -42,25 +41,25 @@ async def stream_run(
     """
     # Verify run exists and user has access
     query = select(Run).where(Run.id == run_id)
-    
+
     # Filter by user
     query = query.where(Run.user_id == current_user.id)
-    
+
     result = await db.execute(query)
     run = result.scalar_one_or_none()
-    
+
     if not run:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Run not found",
         )
-    
+
     logger.info(
         "stream_connection_started",
         run_id=run_id,
         user_id=current_user.id if current_user else None,
     )
-    
+
     # Create SSE response
     return StreamingResponse(
         sse_manager.connect(run_id),
@@ -83,7 +82,7 @@ async def stream_debug_logs(
     run_id: str,
     variation_id: int = 0,
     db: AsyncSession = Depends(get_session),
-    current_user: Optional[User] = Depends(get_current_user_from_api_key),
+    current_user: User | None = Depends(get_current_user_from_api_key),
 ) -> StreamingResponse:
     """
     Stream raw Kubernetes logs from agent containers for debugging.
@@ -100,59 +99,59 @@ async def stream_debug_logs(
         StreamingResponse with raw log lines
     """
     settings = get_settings()
-    
+
     # Check if debug mode is enabled
     if not settings.debug_agent_container:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Debug mode is not enabled. Set DEBUG_AGENT_CONTAINER=true to enable.",
         )
-    
+
     # Verify run exists and user has access
     query = select(Run).where(Run.id == run_id)
-    
+
     # Filter by user if authenticated
     if current_user:
         query = query.where(Run.user_id == current_user.id)
-    
+
     result = await db.execute(query)
     run = result.scalar_one_or_none()
-    
+
     if not run:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Run not found",
         )
-    
+
     logger.info(
         "debug_logs_stream_started",
         run_id=run_id,
         variation_id=variation_id,
         user_id=current_user.id if current_user else None,
     )
-    
+
     # Import here to avoid circular imports
     from app.services.kubernetes_service import KubernetesService
-    
+
     kubernetes_service = KubernetesService(namespace=settings.kubernetes_namespace)
-    
+
     async def stream_raw_logs():
         """Stream raw kubectl logs for debugging."""
         job_name = f"agent-{run_id}-{variation_id}"
-        
+
         try:
             # First send a connection event
             yield f"data: Debug logs for {job_name}\n\n"
-            
+
             # Stream raw logs from the job
             async for log_line in kubernetes_service.stream_raw_debug_logs(job_name):
                 yield f"data: {log_line}\n\n"
-                
+
         except Exception as e:
-            error_msg = f"Error streaming debug logs: {str(e)}"
+            error_msg = f"Error streaming debug logs: {e!s}"
             logger.error("debug_logs_stream_error", error=error_msg, run_id=run_id)
             yield f"data: [ERROR] {error_msg}\n\n"
-    
+
     # Create SSE response
     return StreamingResponse(
         stream_raw_logs(),

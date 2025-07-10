@@ -1,5 +1,5 @@
 import asyncio
-from typing import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Generator
 
 import pytest
 import pytest_asyncio
@@ -13,7 +13,6 @@ from app.core.database import get_session
 from app.main import app
 from app.models.run import Run
 from app.models.user import APIKey, User
-from app.services.kubernetes_service import KubernetesService
 from app.services.sse_manager import SSEManager
 
 
@@ -48,12 +47,12 @@ async def db_engine(test_settings: Settings):
         echo=False,
         pool_pre_ping=True,
     )
-    
+
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
-    
+
     yield engine
-    
+
     await engine.dispose()
 
 
@@ -65,7 +64,7 @@ async def db_session(db_engine) -> AsyncGenerator[AsyncSession, None]:
         class_=AsyncSession,
         expire_on_commit=False,
     )
-    
+
     async with async_session_maker() as session:
         yield session
         await session.rollback()
@@ -74,22 +73,22 @@ async def db_session(db_engine) -> AsyncGenerator[AsyncSession, None]:
 @pytest_asyncio.fixture
 async def client(db_session: AsyncSession, test_settings: Settings) -> AsyncGenerator[AsyncClient, None]:
     """Create test client with database override."""
-    
+
     def override_get_settings():
         return test_settings
-    
+
     async def override_get_session():
         yield db_session
-    
+
     app.dependency_overrides[get_settings] = override_get_settings
     app.dependency_overrides[get_session] = override_get_session
-    
+
     # Mock Kubernetes service
     app.state.kubernetes = MockKubernetesService()
-    
+
     async with AsyncClient(app=app, base_url="http://test") as ac:
         yield ac
-    
+
     app.dependency_overrides.clear()
 
 
@@ -108,24 +107,24 @@ def sse_manager():
 # Mock implementations
 class MockKubernetesService:
     """Mock Kubernetes service for testing."""
-    
+
     def __init__(self):
         self._connected = True
-    
+
     async def connect(self) -> None:
         self._connected = True
-    
+
     async def disconnect(self) -> None:
         self._connected = False
-    
+
     @property
     def is_connected(self) -> bool:
         return self._connected
-    
+
     async def create_agent_job(self, *args, **kwargs):
         """Mock job creation."""
         return f"agent-{kwargs.get('run_id', 'test')}-{kwargs.get('variation_id', 0)}"
-    
+
     async def stream_job_logs(self, job_name, run_id, variation_id=None):
         """Mock job log streaming."""
         for i in range(5):
@@ -139,7 +138,7 @@ def make_user(db_session: AsyncSession):
     """Factory for creating test users."""
     async def _make_user(**kwargs):
         from app.api.v1.auth import get_password_hash
-        
+
         defaults = {
             "id": f"user_test_{asyncio.get_event_loop().time()}",
             "email": f"test_{asyncio.get_event_loop().time()}@example.com",
@@ -152,7 +151,7 @@ def make_user(db_session: AsyncSession):
         await db_session.commit()
         await db_session.refresh(user)
         return user
-    
+
     return _make_user
 
 
@@ -161,7 +160,7 @@ def make_api_key(db_session: AsyncSession):
     """Factory for creating test API keys."""
     async def _make_api_key(user: User, **kwargs):
         from app.api.v1.auth import generate_api_key, get_password_hash
-        
+
         api_key = generate_api_key()
         defaults = {
             "id": f"key_test_{asyncio.get_event_loop().time()}",
@@ -176,7 +175,7 @@ def make_api_key(db_session: AsyncSession):
         await db_session.commit()
         await db_session.refresh(key_record)
         return api_key, key_record
-    
+
     return _make_api_key
 
 
@@ -196,7 +195,7 @@ def make_run(db_session: AsyncSession):
         await db_session.commit()
         await db_session.refresh(run)
         return run
-    
+
     return _make_run
 
 

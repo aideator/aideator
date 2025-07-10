@@ -3,16 +3,16 @@ API endpoints for provider credentials management.
 """
 
 import logging
-from typing import List
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
-from datetime import datetime
 
 from app.core.database import get_session
 from app.core.dependencies import get_current_user
-from app.models.user import User
 from app.models.provider import ProviderCredential, ProviderType
+from app.models.user import User
 from app.schemas.models import (
     ProviderCredentialCreate,
     ProviderCredentialResponse,
@@ -60,26 +60,26 @@ async def create_provider_credential(
             )
         )
         existing = result.first()
-        
+
         if existing:
             raise HTTPException(
                 status_code=400,
                 detail=f"Active credentials for {credential.provider.value} already exist"
             )
-        
+
         # Validate required credential fields based on provider
         required_fields = _get_required_credential_fields(credential.provider)
         missing_fields = [field for field in required_fields if field not in credential.credentials]
-        
+
         if missing_fields:
             raise HTTPException(
                 status_code=400,
                 detail=f"Missing required fields for {credential.provider.value}: {', '.join(missing_fields)}"
             )
-        
+
         # Encrypt credentials
         encrypted_creds = encrypt_credentials(credential.credentials)
-        
+
         # Create new credential
         new_credential = ProviderCredential(
             id=f"cred_{credential.provider.value}_{current_user.id}_{int(datetime.utcnow().timestamp())}",
@@ -88,11 +88,11 @@ async def create_provider_credential(
             name=credential.name,
             encrypted_credentials=encrypted_creds,
         )
-        
+
         db.add(new_credential)
         await db.commit()
         await db.refresh(new_credential)
-        
+
         return ProviderCredentialResponse(
             id=new_credential.id,
             provider=new_credential.provider,
@@ -104,7 +104,7 @@ async def create_provider_credential(
             total_requests=new_credential.total_requests,
             total_cost_usd=new_credential.total_cost_usd,
         )
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -112,7 +112,7 @@ async def create_provider_credential(
         raise HTTPException(status_code=500, detail="Failed to create provider credential")
 
 
-@router.get("/", response_model=List[ProviderCredentialResponse])
+@router.get("/", response_model=list[ProviderCredentialResponse])
 async def get_provider_credentials(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
@@ -127,7 +127,7 @@ async def get_provider_credentials(
             )
         )
         credentials = result.all()
-        
+
         return [
             ProviderCredentialResponse(
                 id=cred.id,
@@ -142,7 +142,7 @@ async def get_provider_credentials(
             )
             for cred in credentials
         ]
-    
+
     except Exception as e:
         logger.error(f"Error getting provider credentials: {e}")
         raise HTTPException(status_code=500, detail="Failed to get provider credentials")
@@ -165,10 +165,10 @@ async def get_provider_credential(
             )
         )
         credential = result.first()
-        
+
         if not credential:
             raise HTTPException(status_code=404, detail="Credential not found")
-        
+
         return ProviderCredentialResponse(
             id=credential.id,
             provider=credential.provider,
@@ -180,7 +180,7 @@ async def get_provider_credential(
             total_requests=credential.total_requests,
             total_cost_usd=credential.total_cost_usd,
         )
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -206,36 +206,36 @@ async def update_provider_credential(
             )
         )
         credential = result.first()
-        
+
         if not credential:
             raise HTTPException(status_code=404, detail="Credential not found")
-        
+
         # Update fields
         if update.name is not None:
             credential.name = update.name
-        
+
         if update.is_active is not None:
             credential.is_active = update.is_active
-        
+
         if update.credentials is not None:
             # Validate required fields
             required_fields = _get_required_credential_fields(credential.provider)
             missing_fields = [field for field in required_fields if field not in update.credentials]
-            
+
             if missing_fields:
                 raise HTTPException(
                     status_code=400,
                     detail=f"Missing required fields for {credential.provider.value}: {', '.join(missing_fields)}"
                 )
-            
+
             # Encrypt new credentials
             credential.encrypted_credentials = encrypt_credentials(update.credentials)
-        
+
         credential.updated_at = datetime.utcnow()
-        
+
         await db.commit()
         await db.refresh(credential)
-        
+
         return ProviderCredentialResponse(
             id=credential.id,
             provider=credential.provider,
@@ -247,7 +247,7 @@ async def update_provider_credential(
             total_requests=credential.total_requests,
             total_cost_usd=credential.total_cost_usd,
         )
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -272,15 +272,15 @@ async def delete_provider_credential(
             )
         )
         credential = result.first()
-        
+
         if not credential:
             raise HTTPException(status_code=404, detail="Credential not found")
-        
+
         db.delete(credential)
         await db.commit()
-        
+
         return {"message": "Credential deleted successfully"}
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -288,7 +288,7 @@ async def delete_provider_credential(
         raise HTTPException(status_code=500, detail="Failed to delete provider credential")
 
 
-def _get_required_credential_fields(provider: ProviderType) -> List[str]:
+def _get_required_credential_fields(provider: ProviderType) -> list[str]:
     """
     Get required credential fields for a provider.
     """
@@ -321,5 +321,5 @@ def _get_required_credential_fields(provider: ProviderType) -> List[str]:
         ProviderType.GALADRIEL: ["api_key"],
         ProviderType.AI21: ["api_key"],
     }
-    
+
     return field_map.get(provider, ["api_key"])  # Default to api_key

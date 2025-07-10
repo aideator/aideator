@@ -3,10 +3,9 @@
 Database migration script using Alembic.
 """
 
-import sys
-import os
 import logging
 import subprocess
+import sys
 from pathlib import Path
 
 # Add the parent directory to the Python path
@@ -17,7 +16,7 @@ from app.core.config import get_settings
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
 logger = logging.getLogger(__name__)
@@ -27,17 +26,17 @@ def run_alembic_command(command: str, *args) -> int:
     """Run an Alembic command."""
     cmd = ["python", "-m", "alembic", command] + list(args)
     logger.info(f"Running: {' '.join(cmd)}")
-    
+
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+
         if result.stdout:
             print(result.stdout)
         if result.stderr:
             print(result.stderr, file=sys.stderr)
-            
+
         return result.returncode
-    
+
     except FileNotFoundError:
         logger.error("Alembic not found. Please install alembic: pip install alembic")
         return 1
@@ -95,10 +94,10 @@ def main():
         print("  pending          - Show pending migrations")
         print("  create <message> - Create new migration")
         sys.exit(1)
-    
+
     command = sys.argv[1]
     args = sys.argv[2:]
-    
+
     # Verify database connection
     try:
         settings = get_settings()
@@ -106,7 +105,7 @@ def main():
     except Exception as e:
         logger.error(f"Error loading settings: {e}")
         sys.exit(1)
-    
+
     try:
         if command == "up":
             revision = args[0] if args else "head"
@@ -130,9 +129,9 @@ def main():
         else:
             logger.error(f"Unknown command: {command}")
             sys.exit(1)
-        
+
         sys.exit(exit_code)
-        
+
     except KeyboardInterrupt:
         logger.info("Migration interrupted by user")
         sys.exit(1)

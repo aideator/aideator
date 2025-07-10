@@ -88,7 +88,7 @@ describe('Auth-dependent Hooks', () => {
       });
     });
 
-    it('should use default models when not authenticated', async () => {
+    it('should show authentication error when not authenticated', async () => {
       // Mock unauthenticated state
       mockUseAuth.mockReturnValue({
         user: null,
@@ -107,12 +107,69 @@ describe('Auth-dependent Hooks', () => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      // Should have default instances
-      expect(result.current.instances.length).toBeGreaterThan(0);
+      // Should show authentication error
+      expect(result.current.error).toBe('Authentication required to load models');
+      expect(result.current.availableModels).toHaveLength(0);
       
       // Should not have made API calls
       const { getModels } = require('@/lib/api-client');
       expect(getModels).not.toHaveBeenCalled();
+    });
+
+    it('should surface API errors to the user', async () => {
+      // Mock authenticated state
+      mockUseAuth.mockReturnValue({
+        user: { id: '1', email: 'test@example.com', full_name: 'Test User' },
+        token: 'mock-token',
+        apiKey: 'mock-api-key',
+        isLoading: false,
+        isAuthenticated: true,
+        login: jest.fn(),
+        logout: jest.fn(),
+        autoLoginDev: jest.fn(),
+      });
+
+      // Mock API error
+      const { getModels } = require('@/lib/api-client');
+      getModels.mockRejectedValue(new Error('API endpoint not available'));
+
+      const { result } = renderHook(() => useModelInstances());
+
+      // Should eventually show the API error
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      expect(result.current.error).toBe('API endpoint not available');
+      expect(result.current.availableModels).toHaveLength(0);
+      expect(getModels).toHaveBeenCalled();
+    });
+
+    it('should handle non-Error API failures', async () => {
+      // Mock authenticated state
+      mockUseAuth.mockReturnValue({
+        user: { id: '1', email: 'test@example.com', full_name: 'Test User' },
+        token: 'mock-token',
+        apiKey: 'mock-api-key',
+        isLoading: false,
+        isAuthenticated: true,
+        login: jest.fn(),
+        logout: jest.fn(),
+        autoLoginDev: jest.fn(),
+      });
+
+      // Mock API non-Error failure
+      const { getModels } = require('@/lib/api-client');
+      getModels.mockRejectedValue('String error message');
+
+      const { result } = renderHook(() => useModelInstances());
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      expect(result.current.error).toBe('Failed to load models from API');
+      expect(result.current.availableModels).toHaveLength(0);
     });
   });
 

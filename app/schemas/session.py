@@ -1,6 +1,5 @@
 from datetime import datetime
-from typing import Optional, List, Dict, Any
-from uuid import uuid4
+from typing import Any
 
 from pydantic import BaseModel, Field, validator
 
@@ -8,21 +7,20 @@ from pydantic import BaseModel, Field, validator
 class SessionBase(BaseModel):
     """Base schema for session."""
     title: str = Field(..., max_length=200)
-    description: Optional[str] = Field(None, max_length=1000)
-    models_used: List[str] = Field(default_factory=list)
+    description: str | None = Field(None, max_length=1000)
+    models_used: list[str] = Field(default_factory=list)
 
 
 class SessionCreate(SessionBase):
     """Schema for creating a session."""
-    pass
 
 
 class SessionUpdate(BaseModel):
     """Schema for updating a session."""
-    title: Optional[str] = Field(None, max_length=200)
-    description: Optional[str] = Field(None, max_length=1000)
-    is_active: Optional[bool] = None
-    is_archived: Optional[bool] = None
+    title: str | None = Field(None, max_length=200)
+    description: str | None = Field(None, max_length=1000)
+    is_active: bool | None = None
+    is_archived: bool | None = None
 
 
 class SessionResponse(SessionBase):
@@ -44,7 +42,7 @@ class SessionResponse(SessionBase):
 
 class SessionListResponse(BaseModel):
     """Schema for session list response."""
-    sessions: List[SessionResponse]
+    sessions: list[SessionResponse]
     total: int
     limit: int
     offset: int
@@ -53,13 +51,12 @@ class SessionListResponse(BaseModel):
 class TurnBase(BaseModel):
     """Base schema for turn."""
     prompt: str = Field(..., min_length=1)
-    context: Optional[str] = None
-    models_requested: List[str] = Field(..., min_items=1)
+    context: str | None = None
+    models_requested: list[str] = Field(..., min_items=1)
 
 
 class TurnCreate(TurnBase):
     """Schema for creating a turn."""
-    pass
 
 
 class TurnResponse(TurnBase):
@@ -67,10 +64,10 @@ class TurnResponse(TurnBase):
     id: str
     session_id: str
     turn_number: int
-    responses: Dict[str, Any]
+    responses: dict[str, Any]
     started_at: datetime
-    completed_at: Optional[datetime]
-    duration_seconds: Optional[float]
+    completed_at: datetime | None
+    duration_seconds: float | None
     total_cost: float
     status: str
 
@@ -83,13 +80,13 @@ class PreferenceBase(BaseModel):
     """Base schema for preference."""
     preferred_model: str = Field(..., min_length=1)
     preferred_response_id: str = Field(..., min_length=1)
-    compared_models: List[str] = Field(..., min_items=2)
-    response_quality_scores: Dict[str, int] = Field(default_factory=dict)
-    feedback_text: Optional[str] = None
-    confidence_score: Optional[int] = Field(None, ge=1, le=5)
+    compared_models: list[str] = Field(..., min_items=2)
+    response_quality_scores: dict[str, int] = Field(default_factory=dict)
+    feedback_text: str | None = None
+    confidence_score: int | None = Field(None, ge=1, le=5)
     preference_type: str = Field(default="response")
 
-    @validator('response_quality_scores')
+    @validator("response_quality_scores")
     def validate_quality_scores(cls, v):
         """Validate quality scores are between 1-5."""
         for model, score in v.items():
@@ -100,7 +97,6 @@ class PreferenceBase(BaseModel):
 
 class PreferenceCreate(PreferenceBase):
     """Schema for creating a preference."""
-    pass
 
 
 class PreferenceResponse(PreferenceBase):
@@ -125,9 +121,9 @@ class SessionAnalytics(BaseModel):
     total_cost: float
     average_cost_per_session: float
     average_turns_per_session: float
-    most_used_models: List[Dict[str, Any]]
-    model_preference_stats: Dict[str, Dict[str, Any]]
-    
+    most_used_models: list[dict[str, Any]]
+    model_preference_stats: dict[str, dict[str, Any]]
+
     model_config = {
         "protected_namespaces": (),  # Allow model_ prefixed fields
     }
@@ -142,7 +138,7 @@ class ModelPerformanceMetrics(BaseModel):
     preference_win_rate: float
     average_quality_score: float
     usage_percentage: float
-    
+
     model_config = {
         "protected_namespaces": (),  # Allow model_ prefixed fields
     }
@@ -151,6 +147,6 @@ class ModelPerformanceMetrics(BaseModel):
 class SessionExport(BaseModel):
     """Schema for session export."""
     session: SessionResponse
-    turns: List[TurnResponse]
-    preferences: List[PreferenceResponse]
+    turns: list[TurnResponse]
+    preferences: list[PreferenceResponse]
     export_format: str = Field(default="json")  # json, markdown, csv

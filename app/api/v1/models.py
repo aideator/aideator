@@ -3,33 +3,29 @@ API endpoints for model management and selection.
 """
 
 import logging
-from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
+from app.core.config import get_settings
 from app.core.database import get_session
 from app.core.dependencies import get_current_user
-from app.models.user import User
 from app.models.provider import (
-    ModelDefinition,
+    ModelCapability,
     ProviderCredential,
     ProviderType,
-    ModelCapability,
 )
+from app.models.user import User
 from app.schemas.models import (
     ModelCatalogResponse,
     ModelDefinitionResponse,
+    ModelRecommendation,
     ModelRecommendationRequest,
     ModelRecommendationResponse,
-    ModelRecommendation,
-    ProviderCredentialCreate,
-    ProviderCredentialResponse,
-    ProviderCredentialUpdate,
     ProviderSummary,
 )
 from app.services.model_catalog import model_catalog
-from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -38,9 +34,9 @@ settings = get_settings()
 
 @router.get("/catalog", response_model=ModelCatalogResponse)
 async def get_model_catalog(
-    provider: Optional[ProviderType] = Query(None, description="Filter by provider"),
-    capability: Optional[ModelCapability] = Query(None, description="Filter by capability"),
-    requires_api_key: Optional[bool] = Query(None, description="Filter by API key requirement"),
+    provider: ProviderType | None = Query(None, description="Filter by provider"),
+    capability: ModelCapability | None = Query(None, description="Filter by capability"),
+    requires_api_key: bool | None = Query(None, description="Filter by API key requirement"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
@@ -56,22 +52,22 @@ async def get_model_catalog(
             )
         )
         user_credentials = result.all()
-        
+
         user_provider_map = {cred.provider: True for cred in user_credentials}
-        
+
         # Get all models from catalog
         all_models = model_catalog.get_all_models()
-        
+
         # Apply filters
         if provider:
             all_models = [m for m in all_models if m.provider == provider]
-        
+
         if capability:
             all_models = [m for m in all_models if capability in m.capabilities]
-        
+
         if requires_api_key is not None:
             all_models = [m for m in all_models if m.requires_api_key == requires_api_key]
-        
+
         # Convert to response format
         model_responses = []
         for model in all_models:
@@ -93,7 +89,7 @@ async def get_model_catalog(
                 is_active=True,
             )
             model_responses.append(model_response)
-        
+
         # Create provider summaries
         provider_summaries = []
         provider_names = {
@@ -112,7 +108,7 @@ async def get_model_catalog(
             ProviderType.TOGETHER: "Together AI",
             ProviderType.OLLAMA: "Ollama",
         }
-        
+
         provider_descriptions = {
             ProviderType.OPENAI: "Leading AI research company, creators of GPT models",
             ProviderType.ANTHROPIC: "AI safety company, creators of Claude models",
@@ -129,12 +125,12 @@ async def get_model_catalog(
             ProviderType.TOGETHER: "AI inference platform with open models",
             ProviderType.OLLAMA: "Run AI models locally",
         }
-        
+
         # Group models by provider
         provider_model_count = {}
         for model in model_responses:
             provider_model_count[model.provider] = provider_model_count.get(model.provider, 0) + 1
-        
+
         for provider_type, count in provider_model_count.items():
             provider_summary = ProviderSummary(
                 provider=provider_type,
@@ -145,26 +141,26 @@ async def get_model_catalog(
                 user_has_credentials=user_provider_map.get(provider_type, False),
             )
             provider_summaries.append(provider_summary)
-        
+
         # Sort providers by name
         provider_summaries.sort(key=lambda x: x.display_name)
-        
+
         return ModelCatalogResponse(
             providers=provider_summaries,
             models=model_responses,
             capabilities=model_catalog.get_capabilities(),
         )
-    
+
     except Exception as e:
         logger.error(f"Error getting model catalog: {e}")
         raise HTTPException(status_code=500, detail="Failed to get model catalog")
 
 
-@router.get("/models", response_model=List[ModelDefinitionResponse])
+@router.get("/models", response_model=list[ModelDefinitionResponse])
 async def get_models(
-    provider: Optional[ProviderType] = Query(None, description="Filter by provider"),
-    capability: Optional[ModelCapability] = Query(None, description="Filter by capability"),
-    requires_api_key: Optional[bool] = Query(None, description="Filter by API key requirement"),
+    provider: ProviderType | None = Query(None, description="Filter by provider"),
+    capability: ModelCapability | None = Query(None, description="Filter by capability"),
+    requires_api_key: bool | None = Query(None, description="Filter by API key requirement"),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -173,17 +169,17 @@ async def get_models(
     try:
         # Get models from catalog
         models = model_catalog.get_all_models()
-        
+
         # Apply filters
         if provider:
             models = [m for m in models if m.provider == provider]
-        
+
         if capability:
             models = [m for m in models if capability in m.capabilities]
-        
+
         if requires_api_key is not None:
             models = [m for m in models if m.requires_api_key == requires_api_key]
-        
+
         # Convert to response format
         response_models = []
         for model in models:
@@ -205,9 +201,9 @@ async def get_models(
                 is_active=True,
             )
             response_models.append(response_model)
-        
+
         return response_models
-    
+
     except Exception as e:
         logger.error(f"Error getting models: {e}")
         raise HTTPException(status_code=500, detail="Failed to get models")
@@ -227,16 +223,16 @@ async def get_model(
         parts = model_id.split("_")
         if len(parts) < 3:
             raise HTTPException(status_code=400, detail="Invalid model ID format")
-        
+
         provider_str = parts[-1]
         model_name_parts = parts[1:-1]
         model_name = "_".join(model_name_parts).replace("_", "-")
-        
+
         try:
             provider = ProviderType(provider_str)
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid provider in model ID")
-        
+
         # Find model in catalog
         models = model_catalog.get_models_by_provider(provider)
         model = None
@@ -244,10 +240,10 @@ async def get_model(
             if m.model_name == model_name:
                 model = m
                 break
-        
+
         if not model:
             raise HTTPException(status_code=404, detail="Model not found")
-        
+
         return ModelDefinitionResponse(
             id=model_id,
             provider=model.provider,
@@ -265,7 +261,7 @@ async def get_model(
             requires_project_id=model.requires_project_id,
             is_active=True,
         )
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -291,32 +287,32 @@ async def get_model_recommendations(
             )
         )
         user_credentials = result.all()
-        
+
         available_providers = {cred.provider for cred in user_credentials}
-        
+
         # Get all models
         all_models = model_catalog.get_all_models()
-        
+
         # Filter by available providers or models that don't require API keys
         available_models = [
-            m for m in all_models 
+            m for m in all_models
             if not m.requires_api_key or m.provider in available_providers
         ]
-        
+
         # Simple recommendation logic based on task type and preferences
         recommendations = []
-        
+
         # Analyze prompt for task type
         prompt_lower = request.prompt.lower()
-        
+
         # Code-related tasks
         if any(keyword in prompt_lower for keyword in ["code", "programming", "debug", "implement", "function"]):
             # Prioritize models good for coding
             coding_models = [
-                m for m in available_models 
+                m for m in available_models
                 if any(cap in [ModelCapability.FUNCTION_CALLING, ModelCapability.TEXT_COMPLETION] for cap in m.capabilities)
             ]
-            
+
             if request.performance_preference == "quality":
                 # Prefer high-quality models
                 quality_models = [m for m in coding_models if "gpt-4" in m.model_name.lower() or "claude" in m.model_name.lower()]
@@ -335,15 +331,15 @@ async def get_model_recommendations(
                         confidence_score=0.8,
                         reasoning=f"{model.display_name} provides fast responses for coding tasks"
                     ))
-        
+
         # Analysis tasks
         elif any(keyword in prompt_lower for keyword in ["analyze", "review", "examine", "study"]):
             # Prioritize models good for analysis
             analysis_models = [
-                m for m in available_models 
+                m for m in available_models
                 if ModelCapability.CHAT_COMPLETION in m.capabilities
             ]
-            
+
             # Prefer high-context models for analysis
             high_context_models = [m for m in analysis_models if m.context_window and m.context_window > 32000]
             for model in high_context_models[:3]:
@@ -352,15 +348,15 @@ async def get_model_recommendations(
                     confidence_score=0.85,
                     reasoning=f"{model.display_name} has large context window ({model.context_window} tokens) ideal for analysis"
                 ))
-        
+
         # Default recommendations if no specific task type detected
         if not recommendations:
             # Get balanced recommendations
             balanced_models = [
-                m for m in available_models 
+                m for m in available_models
                 if ModelCapability.CHAT_COMPLETION in m.capabilities
             ]
-            
+
             # Sort by a simple scoring system
             def score_model(model):
                 score = 0
@@ -370,7 +366,7 @@ async def get_model_recommendations(
                     score += 2
                 elif "gemini" in model.model_name.lower():
                     score += 1
-                
+
                 # Budget consideration
                 if request.budget_preference == "low" and model.input_price_per_1m_tokens:
                     if model.input_price_per_1m_tokens < 1.0:
@@ -378,18 +374,18 @@ async def get_model_recommendations(
                 elif request.budget_preference == "high" and model.input_price_per_1m_tokens:
                     if model.input_price_per_1m_tokens > 10.0:
                         score += 1
-                
+
                 return score
-            
+
             balanced_models.sort(key=score_model, reverse=True)
-            
+
             for model in balanced_models[:3]:
                 recommendations.append(ModelRecommendation(
                     model_definition_id=f"model_{model.model_name.replace('-', '_').replace('.', '_')}_{model.provider.value}",
                     confidence_score=0.7,
                     reasoning=f"{model.display_name} is a reliable choice for general tasks"
                 ))
-        
+
         # Ensure we have at least some recommendations
         if not recommendations:
             # Fallback to any available model
@@ -399,26 +395,26 @@ async def get_model_recommendations(
                     confidence_score=0.5,
                     reasoning=f"{model.display_name} is available with your current credentials"
                 ))
-        
-        explanation = f"Based on your task description and preferences, here are the recommended models. "
+
+        explanation = "Based on your task description and preferences, here are the recommended models. "
         if request.task_type:
             explanation += f"Task type: {request.task_type}. "
         if request.budget_preference:
             explanation += f"Budget preference: {request.budget_preference}. "
         if request.performance_preference:
             explanation += f"Performance preference: {request.performance_preference}. "
-        
+
         return ModelRecommendationResponse(
             recommendations=recommendations,
             explanation=explanation
         )
-    
+
     except Exception as e:
         logger.error(f"Error getting recommendations: {e}")
         raise HTTPException(status_code=500, detail="Failed to get recommendations")
 
 
-@router.get("/providers", response_model=List[ProviderSummary])
+@router.get("/providers", response_model=list[ProviderSummary])
 async def get_providers(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
@@ -435,16 +431,16 @@ async def get_providers(
             )
         )
         user_credentials = result.all()
-        
+
         user_provider_map = {cred.provider: True for cred in user_credentials}
-        
+
         # Get providers from catalog
         providers = model_catalog.get_providers()
-        
+
         provider_summaries = []
         for provider in providers:
             models = model_catalog.get_models_by_provider(provider)
-            
+
             summary = ProviderSummary(
                 provider=provider,
                 display_name=provider.value.title(),
@@ -454,15 +450,15 @@ async def get_providers(
                 user_has_credentials=user_provider_map.get(provider, False),
             )
             provider_summaries.append(summary)
-        
+
         return provider_summaries
-    
+
     except Exception as e:
         logger.error(f"Error getting providers: {e}")
         raise HTTPException(status_code=500, detail="Failed to get providers")
 
 
-@router.get("/capabilities", response_model=List[ModelCapability])
+@router.get("/capabilities", response_model=list[ModelCapability])
 async def get_capabilities(
     current_user: User = Depends(get_current_user),
 ):
@@ -471,7 +467,7 @@ async def get_capabilities(
     """
     try:
         return model_catalog.get_capabilities()
-    
+
     except Exception as e:
         logger.error(f"Error getting capabilities: {e}")
         raise HTTPException(status_code=500, detail="Failed to get capabilities")
@@ -487,27 +483,26 @@ async def get_available_models(
     This endpoint checks which API keys are actually available in the cluster.
     """
     try:
-        import os
-        
+
         # Check which API keys are available in the environment
         # These would typically be mounted from Kubernetes secrets
         available_keys = {}
-        
+
         # Check for API keys that are configured
         api_key_mapping = {
             ProviderType.OPENAI: settings.openai_api_key,
             ProviderType.ANTHROPIC: settings.anthropic_api_key,
             ProviderType.GEMINI: settings.gemini_api_key,
         }
-        
+
         for provider, api_key in api_key_mapping.items():
             available_keys[provider] = bool(api_key and api_key.strip() and len(api_key) > 5)
-        
+
         # Get models that can be used with available keys
         available_models = model_catalog.get_available_models_for_keys(
             {provider.value: available for provider, available in available_keys.items()}
         )
-        
+
         # Convert to response format
         model_responses = []
         for model in available_models:
@@ -529,11 +524,11 @@ async def get_available_models(
                 is_active=True,
             )
             model_responses.append(model_response)
-        
+
         # Create provider summaries for available providers only
         provider_summaries = []
         available_providers = set(model.provider for model in available_models)
-        
+
         provider_names = {
             ProviderType.OPENAI: "OpenAI",
             ProviderType.ANTHROPIC: "Anthropic",
@@ -550,7 +545,7 @@ async def get_available_models(
             ProviderType.TOGETHER: "Together AI",
             ProviderType.OLLAMA: "Ollama",
         }
-        
+
         for provider in available_providers:
             provider_models = [m for m in model_responses if m.provider == provider]
             provider_summary = ProviderSummary(
@@ -562,17 +557,17 @@ async def get_available_models(
                 user_has_credentials=available_keys.get(provider, False),
             )
             provider_summaries.append(provider_summary)
-        
+
         # Sort providers by name
         provider_summaries.sort(key=lambda x: x.display_name)
-        
+
         return ModelCatalogResponse(
             models=model_responses,
             providers=provider_summaries,
             total_models=len(model_responses),
             available_providers=len(provider_summaries),
         )
-    
+
     except Exception as e:
         logger.error(f"Error getting available models: {e}")
         raise HTTPException(status_code=500, detail="Failed to get available models")

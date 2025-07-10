@@ -1,6 +1,6 @@
 import time
 from collections import defaultdict
-from typing import Callable, Dict, Tuple
+from collections.abc import Callable
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -18,7 +18,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app):
         super().__init__(app)
-        self.requests: Dict[str, list[float]] = defaultdict(list)
+        self.requests: dict[str, list[float]] = defaultdict(list)
         self.cleanup_interval = 60  # seconds
         self.last_cleanup = time.time()
 
@@ -48,7 +48,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         return "unknown"
 
-    def _is_rate_limited(self, client_id: str) -> Tuple[bool, int]:
+    def _is_rate_limited(self, client_id: str) -> tuple[bool, int]:
         """Check if client is rate limited."""
         current_time = time.time()
         cutoff = current_time - settings.rate_limit_period

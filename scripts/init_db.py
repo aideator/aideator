@@ -3,9 +3,8 @@
 Database initialization script.
 """
 
-import sys
-import os
 import logging
+import sys
 from pathlib import Path
 
 # Add the parent directory to the Python path
@@ -16,7 +15,7 @@ from app.services.database_init import initialize_database
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
 logger = logging.getLogger(__name__)
@@ -28,7 +27,7 @@ def main():
         logger.info("Starting database initialization...")
         initialize_database()
         logger.info("Database initialization completed successfully!")
-        
+
     except Exception as e:
         logger.error(f"Database initialization failed: {e}")
         sys.exit(1)

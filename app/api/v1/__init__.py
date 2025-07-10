@@ -1,6 +1,15 @@
 from fastapi import APIRouter
 
-from app.api.v1 import auth, health, runs, streams, sessions, preferences, models, credentials
+from app.api.v1 import (
+    auth,
+    credentials,
+    health,
+    models,
+    preferences,
+    runs,
+    sessions,
+    streams,
+)
 from app.api.v1.endpoints import admin, provider_keys
 
 api_router = APIRouter()

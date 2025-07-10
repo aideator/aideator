@@ -6,9 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from prometheus_client import make_asgi_app
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
 
 from app.api.v1 import api_router
 from app.core.config import get_settings
@@ -17,6 +14,7 @@ from app.core.logging import setup_logging
 from app.middleware.logging import LoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.tasks.model_sync_task import model_sync_task
+
 # Using Kubernetes service for container orchestration
 from app.utils.openapi import custom_openapi
 
@@ -40,12 +38,12 @@ async def lifespan(app: FastAPI):
 
     # Kubernetes connections are handled via kubectl
     # No persistent connection needed at the server level
-    
+
     yield
 
     # Shutdown
     logger.info("Shutting down application")
-    
+
     # Stop model sync task
     await model_sync_task.stop()
     logger.info("Model sync task stopped")

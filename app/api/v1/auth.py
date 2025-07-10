@@ -1,12 +1,11 @@
 import secrets
 from datetime import datetime, timedelta
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import verify_password, get_password_hash
+from app.core.auth import get_password_hash, verify_password
 from app.core.config import get_settings
 from app.core.database import get_session
 from app.core.dependencies import CurrentUser
@@ -27,16 +26,16 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """Create JWT access token."""
     from jose import jwt
-    
+
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() + timedelta(minutes=15)
-    
+
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
     return encoded_jwt
@@ -62,7 +61,7 @@ async def register(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered",
         )
-    
+
     # Create user
     user = User(
         id=f"user_{secrets.token_urlsafe(12)}",
@@ -71,13 +70,13 @@ async def register(
         full_name=user_data.full_name,
         company=user_data.company,
     )
-    
+
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    
+
     logger.info("user_registered", user_id=user.id, email=user.email)
-    
+
     return user
 
 
@@ -90,27 +89,27 @@ async def login(
     # Find user
     result = await db.execute(select(User).where(User.email == credentials.email))
     user = result.scalar_one_or_none()
-    
+
     if not user or not verify_password(credentials.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
         )
-    
+
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Inactive user",
         )
-    
+
     # Create token
     access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
     access_token = create_access_token(
         data={"sub": user.id}, expires_delta=access_token_expires
     )
-    
+
     logger.info("user_login", user_id=user.id)
-    
+
     return Token(
         access_token=access_token,
         token_type="bearer",
@@ -134,12 +133,12 @@ async def create_api_key(
     # Generate key
     api_key = generate_api_key()
     key_hash = get_password_hash(api_key)
-    
+
     # Calculate expiration
     expires_at = None
     if request.expires_in_days:
         expires_at = datetime.utcnow() + timedelta(days=request.expires_in_days)
-    
+
     # Create API key record
     key_record = APIKey(
         id=f"key_{secrets.token_urlsafe(12)}",
@@ -149,13 +148,13 @@ async def create_api_key(
         scopes=request.scopes,
         expires_at=expires_at,
     )
-    
+
     db.add(key_record)
     await db.commit()
     await db.refresh(key_record)
-    
+
     logger.info("api_key_created", user_id=current_user.id, key_id=key_record.id)
-    
+
     return CreateAPIKeyResponse(
         api_key=api_key,
         key_info=key_record,
@@ -191,16 +190,16 @@ async def delete_api_key(
         )
     )
     key = result.scalar_one_or_none()
-    
+
     if not key:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="API key not found",
         )
-    
+
     await db.delete(key)
     await db.commit()
-    
+
     logger.info("api_key_deleted", user_id=current_user.id, key_id=key_id)
 
 
@@ -218,11 +217,11 @@ async def dev_test_login(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Not found",
         )
-    
+
     # Find or create test user
     result = await db.execute(select(User).where(User.email == "test@aideator.local"))
     user = result.scalar_one_or_none()
-    
+
     if not user:
         # Create test user
         user = User(
@@ -237,17 +236,17 @@ async def dev_test_login(
         db.add(user)
         await db.commit()
         await db.refresh(user)
-    
+
     # Create access token
     access_token_expires = timedelta(days=30)  # Long-lived for development
     access_token = create_access_token(
         data={"sub": user.id}, expires_delta=access_token_expires
     )
-    
+
     # Always create a fresh API key for development
     api_key = f"aid_sk_test_{secrets.token_urlsafe(32)}"
     key_hash = get_password_hash(api_key)
-    
+
     # Remove old development key if exists
     await db.execute(
         select(APIKey).where(
@@ -263,7 +262,7 @@ async def dev_test_login(
     )
     for old_key in old_keys.scalars().all():
         await db.delete(old_key)
-    
+
     # Create new API key
     api_key_record = APIKey(
         id=f"key_test_{secrets.token_urlsafe(12)}",
@@ -272,10 +271,10 @@ async def dev_test_login(
         name="Development Test Key",
         scopes=["runs:create", "runs:read"],
     )
-    
+
     db.add(api_key_record)
     await db.commit()
-    
+
     return {
         "user": {
             "id": user.id,

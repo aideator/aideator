@@ -130,6 +130,11 @@ spec:
                 secretKeyRef:
                   name: aideator-secret
                   key: secret-key
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aideator-secret
+                  key: encryption-key
             {{- if .Values.env }}
             {{- range .Values.env }}
             - name: {{ .name }}

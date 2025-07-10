@@ -1,7 +1,7 @@
 from functools import lru_cache
-from typing import Any, Optional
+from typing import Any
 
-from pydantic import Field, HttpUrl, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,11 +25,11 @@ class Settings(BaseSettings):
     secret_key: str
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
-    openai_api_key: Optional[str] = None  # Required for LiteLLM
+    openai_api_key: str | None = None  # Required for LiteLLM
     openai_api_key_env_var: str = "OPENAI_API_KEY"  # Environment variable name for containers
-    anthropic_api_key: Optional[str] = None  # Required for Claude Code CLI
+    anthropic_api_key: str | None = None  # Required for Claude Code CLI
     anthropic_api_key_env_var: str = "ANTHROPIC_API_KEY"  # Environment variable name for containers
-    gemini_api_key: Optional[str] = None  # Required for Gemini CLI
+    gemini_api_key: str | None = None  # Required for Gemini CLI
     gemini_api_key_env_var: str = "GEMINI_API_KEY"  # Environment variable name for containers
     api_key_header: str = "X-API-Key"
     allowed_origins: list[str] = ["*"]
@@ -67,8 +67,8 @@ class Settings(BaseSettings):
     sse_max_connections: int = 100
 
     # Redis (optional, for production)
-    redis_url: Optional[str] = None
-    redis_password: Optional[str] = None
+    redis_url: str | None = None
+    redis_password: str | None = None
     redis_db: int = 0
     redis_decode_responses: bool = True
 
@@ -76,8 +76,8 @@ class Settings(BaseSettings):
     enable_metrics: bool = True
     metrics_port: int = 9090
     enable_tracing: bool = False
-    jaeger_agent_host: Optional[str] = None
-    jaeger_agent_port: Optional[int] = None
+    jaeger_agent_host: str | None = None
+    jaeger_agent_port: int | None = None
 
     # Rate Limiting
     rate_limit_enabled: bool = True
@@ -88,10 +88,10 @@ class Settings(BaseSettings):
     upload_max_size_mb: int = Field(default=50, ge=1, le=200)
     temp_dir: str = "/tmp/aideator"
     results_retention_days: int = Field(default=30, ge=1, le=365)
-    
+
     # LiteLLM Proxy Configuration
     LITELLM_PROXY_URL: str = "http://localhost:4000"
-    LITELLM_PROXY_API_KEY: Optional[str] = None
+    LITELLM_MASTER_KEY: str | None = None
     model_sync_interval_minutes: int = Field(default=60, ge=5, le=1440)  # 5 min to 24 hours
 
     model_config = SettingsConfigDict(
@@ -123,7 +123,7 @@ class Settings(BaseSettings):
 
     @field_validator("openai_api_key")
     @classmethod
-    def validate_openai_key(cls, v: Optional[str]) -> Optional[str]:
+    def validate_openai_key(cls, v: str | None) -> str | None:
         """Validate OpenAI API key format."""
         if v is not None and not v.startswith("sk-"):
             raise ValueError("Invalid OpenAI API key format")
@@ -131,7 +131,7 @@ class Settings(BaseSettings):
 
     @field_validator("anthropic_api_key")
     @classmethod
-    def validate_anthropic_key(cls, v: Optional[str]) -> Optional[str]:
+    def validate_anthropic_key(cls, v: str | None) -> str | None:
         """Validate Anthropic API key format."""
         if v is not None and not v.startswith("sk-ant-"):
             raise ValueError("Invalid Anthropic API key format")
@@ -139,7 +139,7 @@ class Settings(BaseSettings):
 
     @field_validator("gemini_api_key")
     @classmethod
-    def validate_gemini_key(cls, v: Optional[str]) -> Optional[str]:
+    def validate_gemini_key(cls, v: str | None) -> str | None:
         """Validate Gemini API key format."""
         if v is not None and not v.startswith("AIza"):
             raise ValueError("Invalid Gemini API key format")
@@ -172,6 +172,9 @@ class Settings(BaseSettings):
             if self.database_url.startswith("postgresql+asyncpg://"):
                 return self.database_url
             return self.database_url.replace("postgresql://", "postgresql+asyncpg://")
+        if "sqlite" in self.database_url:
+            # Use aiosqlite for SQLite async support
+            return self.database_url.replace("sqlite://", "sqlite+aiosqlite://")
         return self.database_url
 
 

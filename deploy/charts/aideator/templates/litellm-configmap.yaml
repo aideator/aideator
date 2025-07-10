@@ -9,32 +9,81 @@ metadata:
 data:
   config.yaml: |
     model_list:
-      - model_name: gpt-4o-mini
+      # Wildcard patterns for dynamic model discovery
+      - model_name: openai/*
         litellm_params:
-          model: openai/gpt-4o-mini
-          api_key: os.environ/OPENAI_API_KEY
-      - model_name: gpt-4
-        litellm_params:
-          model: openai/gpt-4
-          api_key: os.environ/OPENAI_API_KEY
-      - model_name: gpt-3.5-turbo
-        litellm_params:
-          model: openai/gpt-3.5-turbo
+          model: openai/*
           api_key: os.environ/OPENAI_API_KEY
       {{- if .Values.secrets.anthropic }}
-      - model_name: claude-3-opus
+      - model_name: anthropic/*
         litellm_params:
-          model: anthropic/claude-3-opus-20240229
-          api_key: os.environ/ANTHROPIC_API_KEY
-      - model_name: claude-3-sonnet
-        litellm_params:
-          model: anthropic/claude-3-sonnet-20240229
-          api_key: os.environ/ANTHROPIC_API_KEY
-      - model_name: claude-3-haiku
-        litellm_params:
-          model: anthropic/claude-3-haiku-20240307
+          model: anthropic/*
           api_key: os.environ/ANTHROPIC_API_KEY
       {{- end }}
+      {{- if .Values.secrets.gemini }}
+      - model_name: gemini/*
+        litellm_params:
+          model: gemini/*
+          api_key: os.environ/GEMINI_API_KEY
+      {{- end }}
+      # Additional provider wildcards for comprehensive coverage
+      - model_name: vertex_ai/*
+        litellm_params:
+          model: vertex_ai/*
+          vertex_project: os.environ/VERTEX_PROJECT_ID
+          vertex_location: os.environ/VERTEX_LOCATION
+      - model_name: bedrock/*
+        litellm_params:
+          model: bedrock/*
+          aws_access_key_id: os.environ/AWS_ACCESS_KEY_ID
+          aws_secret_access_key: os.environ/AWS_SECRET_ACCESS_KEY
+          aws_region_name: os.environ/AWS_REGION
+      - model_name: azure/*
+        litellm_params:
+          model: azure/*
+          api_key: os.environ/AZURE_API_KEY
+          api_base: os.environ/AZURE_API_BASE
+          api_version: os.environ/AZURE_API_VERSION
+      - model_name: mistral/*
+        litellm_params:
+          model: mistral/*
+          api_key: os.environ/MISTRAL_API_KEY
+      - model_name: cohere/*
+        litellm_params:
+          model: cohere/*
+          api_key: os.environ/COHERE_API_KEY
+      - model_name: groq/*
+        litellm_params:
+          model: groq/*
+          api_key: os.environ/GROQ_API_KEY
+      - model_name: deepseek/*
+        litellm_params:
+          model: deepseek/*
+          api_key: os.environ/DEEPSEEK_API_KEY
+      - model_name: perplexity/*
+        litellm_params:
+          model: perplexity/*
+          api_key: os.environ/PERPLEXITY_API_KEY
+      - model_name: together_ai/*
+        litellm_params:
+          model: together_ai/*
+          api_key: os.environ/TOGETHER_API_KEY
+      - model_name: huggingface/*
+        litellm_params:
+          model: huggingface/*
+          api_key: os.environ/HUGGINGFACE_API_KEY
+      - model_name: replicate/*
+        litellm_params:
+          model: replicate/*
+          api_key: os.environ/REPLICATE_API_KEY
+      - model_name: ollama/*
+        litellm_params:
+          model: ollama/*
+          api_base: os.environ/OLLAMA_API_BASE
+      - model_name: xai/*
+        litellm_params:
+          model: xai/*
+          api_key: os.environ/XAI_API_KEY
       {{- if .Values.litellm.models }}
       {{- range .Values.litellm.models }}
       - model_name: {{ .name }}
@@ -78,6 +127,7 @@ data:
     litellm_settings:
       drop_params: false
       set_verbose: {{ .Values.litellm.verbose | default false }}
+      check_provider_endpoint: true  # Enable dynamic model discovery from provider endpoints
       {{- if .Values.litellm.timeout }}
       request_timeout: {{ .Values.litellm.timeout }}
       {{- end }}

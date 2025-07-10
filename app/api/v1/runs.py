@@ -1,5 +1,4 @@
 import uuid
-from typing import Optional
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
@@ -12,9 +11,8 @@ from app.core.dependencies import CurrentUserAPIKey
 from app.core.deps import get_orchestrator
 from app.core.logging import get_logger
 from app.models.run import Run, RunStatus
-from app.models.user import User
 from app.models.session import Session, Turn
-from app.schemas.common import PaginatedResponse, PaginationParams
+from app.schemas.common import PaginatedResponse
 from app.schemas.runs import (
     CreateRunRequest,
     CreateRunResponse,
@@ -51,14 +49,14 @@ async def create_run(
     """
     # Generate run ID (use hyphens for Kubernetes compatibility)
     run_id = f"run-{uuid.uuid4().hex}"
-    
+
     # Validate that requested models have available API keys
     available_keys = {
         "openai": bool(settings.openai_api_key and settings.openai_api_key.strip()),
         "anthropic": bool(settings.anthropic_api_key and settings.anthropic_api_key.strip()),
         "gemini": bool(settings.gemini_api_key and settings.gemini_api_key.strip()),
     }
-    
+
     unavailable_models = []
     for variant in request.model_variants:
         is_valid, error_msg = model_catalog.validate_model_access(
@@ -69,28 +67,28 @@ async def create_run(
                 "model": variant.model_definition_id,
                 "error": error_msg
             })
-    
+
     if unavailable_models:
         # Get available alternatives
         available_models = model_catalog.get_available_models_for_keys(available_keys)
         available_model_names = [model.model_name for model in available_models[:5]]
-        
+
         error_detail = {
             "message": "Some requested models are not available due to missing API keys",
             "unavailable_models": unavailable_models,
             "available_models": available_model_names,
             "suggestion": f"Try using one of these available models: {', '.join(available_model_names)}" if available_model_names else "No models are currently available. Please configure API keys."
         }
-        
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=error_detail
         )
-    
+
     # Handle session and turn creation
     session_id = request.session_id
     turn_id = request.turn_id
-    
+
     if not session_id:
         # Create a new session if none provided
         session_id = str(uuid.uuid4())
@@ -111,22 +109,22 @@ async def create_run(
         )
         session_result = await db.execute(session_query)
         session = session_result.scalar_one_or_none()
-        
+
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Session not found or not accessible"
             )
-    
+
     if not turn_id:
         # Create a new turn if none provided
         turn_id = str(uuid.uuid4())
-        
+
         # Get next turn number
         turn_count_query = select(func.count(Turn.id)).where(Turn.session_id == session_id)
         turn_count_result = await db.execute(turn_count_query)
         turn_number = turn_count_result.scalar() + 1
-        
+
         turn = Turn(
             id=turn_id,
             session_id=session_id,
@@ -146,13 +144,13 @@ async def create_run(
         )
         turn_result = await db.execute(turn_query)
         turn = turn_result.scalar_one_or_none()
-        
+
         if not turn:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Turn not found or not accessible"
             )
-    
+
     # Create run record
     run = Run(
         id=run_id,
@@ -169,17 +167,17 @@ async def create_run(
         user_id=current_user.id,
         status=RunStatus.PENDING,
     )
-    
+
     db.add(run)
     await db.commit()
-    
+
     logger.info(
         "run_created",
         run_id=run_id,
         user_id=current_user.id,
         variations=len(request.model_variants),
     )
-    
+
     # Schedule background orchestration
     background_tasks.add_task(
         orchestrator.execute_variations,
@@ -192,7 +190,7 @@ async def create_run(
         db_session=db,
         use_batch_job=False,  # Use individual jobs for now
     )
-    
+
     return CreateRunResponse(
         run_id=run_id,
         stream_url=f"{settings.api_v1_prefix}/runs/{run_id}/stream",
@@ -211,35 +209,35 @@ async def create_run(
 async def list_runs(
     current_user: CurrentUserAPIKey,
     db: AsyncSession = Depends(get_session),
-    status: Optional[RunStatus] = Query(None, description="Filter by status"),
+    status: RunStatus | None = Query(None, description="Filter by status"),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=100, description="Items per page"),
 ) -> PaginatedResponse:
     """List runs with optional filtering."""
     # Build query
     query = select(Run).order_by(Run.created_at.desc())
-    
+
     # Apply filters
     query = query.where(Run.user_id == current_user.id)
     if status:
         query = query.where(Run.status == status)
-    
+
     # Count total
     count_query = select(func.count()).select_from(query.subquery())
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
-    
+
     # Paginate
     offset = (page - 1) * per_page
     query = query.offset(offset).limit(per_page)
-    
+
     # Execute
     result = await db.execute(query)
     runs = result.scalars().all()
-    
+
     # Convert to list items
     items = [RunListItem.model_validate(run) for run in runs]
-    
+
     return PaginatedResponse(
         items=items,
         total=total,
@@ -261,19 +259,19 @@ async def get_run(
 ) -> Run:
     """Get detailed information about a specific run."""
     query = select(Run).where(Run.id == run_id)
-    
+
     # Filter by user
     query = query.where(Run.user_id == current_user.id)
-    
+
     result = await db.execute(query)
     run = result.scalar_one_or_none()
-    
+
     if not run:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Run not found",
         )
-    
+
     return run
 
 
@@ -290,42 +288,42 @@ async def select_winner(
 ) -> Run:
     """Select the winning variation for a completed run."""
     query = select(Run).where(Run.id == run_id)
-    
+
     # Filter by user
     query = query.where(Run.user_id == current_user.id)
-    
+
     result = await db.execute(query)
     run = result.scalar_one_or_none()
-    
+
     if not run:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Run not found",
         )
-    
+
     if run.status != RunStatus.COMPLETED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Can only select winner for completed runs",
         )
-    
+
     if request.winning_variation_id >= run.variations:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid variation ID. Must be between 0 and {run.variations - 1}",
         )
-    
+
     # Update winning variation
     run.winning_variation_id = request.winning_variation_id
     await db.commit()
     await db.refresh(run)
-    
+
     logger.info(
         "winner_selected",
         run_id=run_id,
         variation_id=request.winning_variation_id,
     )
-    
+
     return run
 
 
@@ -341,27 +339,27 @@ async def cancel_run(
 ) -> None:
     """Cancel a pending or running run."""
     query = select(Run).where(Run.id == run_id)
-    
+
     # Filter by user
     query = query.where(Run.user_id == current_user.id)
-    
+
     result = await db.execute(query)
     run = result.scalar_one_or_none()
-    
+
     if not run:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Run not found",
         )
-    
+
     if run.status in [RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot cancel run with status: {run.status}",
         )
-    
+
     # Update status
     run.status = RunStatus.CANCELLED
     await db.commit()
-    
+
     logger.info("run_cancelled", run_id=run_id)

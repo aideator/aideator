@@ -2,8 +2,9 @@
 Schemas for model management and selection.
 """
 
-from typing import Dict, List, Optional, Any
 from datetime import datetime
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 from app.models.provider import ModelCapability, ProviderType
@@ -11,13 +12,13 @@ from app.models.provider import ModelCapability, ProviderType
 
 class ProviderCredentialCreate(BaseModel):
     """Schema for creating provider credentials."""
-    
+
     provider: ProviderType
     name: str
-    credentials: Dict[str, str] = Field(
+    credentials: dict[str, str] = Field(
         description="Provider credentials (will be encrypted before storage)"
     )
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -32,25 +33,25 @@ class ProviderCredentialCreate(BaseModel):
 
 class ProviderCredentialUpdate(BaseModel):
     """Schema for updating provider credentials."""
-    
-    name: Optional[str] = None
-    credentials: Optional[Dict[str, str]] = None
-    is_active: Optional[bool] = None
+
+    name: str | None = None
+    credentials: dict[str, str] | None = None
+    is_active: bool | None = None
 
 
 class ProviderCredentialResponse(BaseModel):
     """Schema for provider credential responses."""
-    
+
     id: str
     provider: ProviderType
     name: str
     is_active: bool
     created_at: datetime
     updated_at: datetime
-    last_used_at: Optional[datetime] = None
+    last_used_at: datetime | None = None
     total_requests: int
-    total_cost_usd: Optional[float] = None
-    
+    total_cost_usd: float | None = None
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -69,23 +70,23 @@ class ProviderCredentialResponse(BaseModel):
 
 class ModelDefinitionResponse(BaseModel):
     """Schema for model definition responses."""
-    
+
     id: str
     provider: ProviderType
     model_name: str
     litellm_model_name: str
     display_name: str
-    description: Optional[str] = None
-    context_window: Optional[int] = None
-    max_output_tokens: Optional[int] = None
-    input_price_per_1m_tokens: Optional[float] = None
-    output_price_per_1m_tokens: Optional[float] = None
-    capabilities: List[ModelCapability]
+    description: str | None = None
+    context_window: int | None = None
+    max_output_tokens: int | None = None
+    input_price_per_1m_tokens: float | None = None
+    output_price_per_1m_tokens: float | None = None
+    capabilities: list[ModelCapability]
     requires_api_key: bool
     requires_region: bool
     requires_project_id: bool
     is_active: bool
-    
+
     class Config:
         protected_namespaces = ()
         json_schema_extra = {
@@ -111,11 +112,11 @@ class ModelDefinitionResponse(BaseModel):
 
 class ModelVariantCreate(BaseModel):
     """Schema for creating model variants."""
-    
+
     model_definition_id: str
-    provider_credential_id: Optional[str] = None
-    model_parameters: Dict[str, Any] = Field(default_factory=dict)
-    
+    provider_credential_id: str | None = None
+    model_parameters: dict[str, Any] = Field(default_factory=dict)
+
     class Config:
         protected_namespaces = ()
         json_schema_extra = {
@@ -132,23 +133,23 @@ class ModelVariantCreate(BaseModel):
 
 class ModelVariantResponse(BaseModel):
     """Schema for model variant responses."""
-    
+
     id: str
     run_id: str
     variation_id: int
     model_definition_id: str
-    provider_credential_id: Optional[str] = None
-    model_parameters: Dict[str, Any]
+    provider_credential_id: str | None = None
+    model_parameters: dict[str, Any]
     status: str
-    output: Optional[str] = None
-    error_message: Optional[str] = None
-    tokens_used: Optional[int] = None
-    cost_usd: Optional[float] = None
-    response_time_ms: Optional[int] = None
+    output: str | None = None
+    error_message: str | None = None
+    tokens_used: int | None = None
+    cost_usd: float | None = None
+    response_time_ms: int | None = None
     created_at: datetime
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
     class Config:
         protected_namespaces = ()
         json_schema_extra = {
@@ -173,11 +174,11 @@ class ModelVariantResponse(BaseModel):
 
 class ModelSelectionRequest(BaseModel):
     """Schema for model selection in runs."""
-    
-    model_variants: List[ModelVariantCreate] = Field(
+
+    model_variants: list[ModelVariantCreate] = Field(
         description="List of model variants to run"
     )
-    
+
     model_config = {
         "protected_namespaces": (),  # Allow model_ prefixed fields
         "json_schema_extra": {
@@ -206,14 +207,14 @@ class ModelSelectionRequest(BaseModel):
 
 class ProviderSummary(BaseModel):
     """Schema for provider summary information."""
-    
+
     provider: ProviderType
     display_name: str
     description: str
     requires_api_key: bool
     model_count: int
     user_has_credentials: bool
-    
+
     model_config = {
         "protected_namespaces": (),  # Allow model_ prefixed fields
         "json_schema_extra": {
@@ -231,11 +232,11 @@ class ProviderSummary(BaseModel):
 
 class ModelCatalogResponse(BaseModel):
     """Schema for model catalog responses."""
-    
-    providers: List[ProviderSummary]
-    models: List[ModelDefinitionResponse]
-    capabilities: List[ModelCapability]
-    
+
+    providers: list[ProviderSummary]
+    models: list[ModelDefinitionResponse]
+    capabilities: list[ModelCapability]
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -265,11 +266,11 @@ class ModelCatalogResponse(BaseModel):
 
 class ModelRecommendation(BaseModel):
     """Schema for model recommendations."""
-    
+
     model_definition_id: str
     confidence_score: float = Field(ge=0.0, le=1.0)
     reasoning: str
-    
+
     model_config = {
         "protected_namespaces": (),  # Allow model_ prefixed fields
         "json_schema_extra": {
@@ -284,12 +285,12 @@ class ModelRecommendation(BaseModel):
 
 class ModelRecommendationRequest(BaseModel):
     """Schema for requesting model recommendations."""
-    
+
     prompt: str
-    task_type: Optional[str] = None
-    budget_preference: Optional[str] = Field(None, pattern="^(low|medium|high)$")
-    performance_preference: Optional[str] = Field(None, pattern="^(speed|quality|balanced)$")
-    
+    task_type: str | None = None
+    budget_preference: str | None = Field(None, pattern="^(low|medium|high)$")
+    performance_preference: str | None = Field(None, pattern="^(speed|quality|balanced)$")
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -303,10 +304,10 @@ class ModelRecommendationRequest(BaseModel):
 
 class ModelRecommendationResponse(BaseModel):
     """Schema for model recommendation responses."""
-    
-    recommendations: List[ModelRecommendation]
+
+    recommendations: list[ModelRecommendation]
     explanation: str
-    
+
     class Config:
         json_schema_extra = {
             "example": {

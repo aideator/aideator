@@ -116,10 +116,29 @@ tilt up
 tilt down
 ```
 
-### Testing Model Comparisons
+### Testing & Quality (ALWAYS use uv for Python)
 
 ```bash
-# Create a multi-model comparison run
+# Backend tests (ALWAYS use uv, never python/pip)
+uv run pytest                                   # All tests (35+ files, 80% coverage)
+uv run pytest --cov=app --cov-report=html      # Coverage report
+uv run pytest -m unit                          # Unit tests only (25+ files)
+uv run pytest -m integration                   # Integration tests (6 files)
+uv run pytest -m e2e                           # E2E tests (5 files)
+
+# Frontend tests (Playwright + Jest)
+cd frontend/
+npm run test:e2e                               # 211 E2E test cases across 21 files
+npm run test:e2e:ui                            # Interactive Playwright debugging
+npm test                                       # Jest unit tests
+npm run type-check                             # TypeScript validation
+
+# Quality gates (REQUIRED before commits)
+uv run ruff check .                            # Python linting
+uv run ruff format .                           # Auto-formatting
+uv run mypy app/                               # Type checking
+
+# Testing Model Comparisons
 curl -X POST http://localhost:8000/api/v1/prompts \
   -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
@@ -128,9 +147,14 @@ curl -X POST http://localhost:8000/api/v1/prompts \
     "models": ["gpt-4", "claude-3", "gemini-pro"]
   }' | jq
 
-# Stream responses (includes Gateway metrics)
+# Stream responses (ALWAYS use timeout to prevent hanging)
 timeout 30 curl -N -H "X-API-Key: $API_KEY" \
   http://localhost:8000/api/v1/prompts/${PROMPT_ID}/stream
+
+# Verify streaming pipeline (kubectl logs must match SSE output)
+kubectl logs -f job/agent-${RUN_ID}-0 -n aideator | grep "Streaming"
+timeout 30 curl -N -H "X-API-Key: $API_KEY" \
+  http://localhost:8000/api/v1/runs/${RUN_ID}/stream | grep "Streaming"
 
 # View analytics
 curl http://localhost:8000/api/v1/analytics/models | jq
@@ -426,6 +450,10 @@ curl http://localhost:9090/api/v1/query \
 
 ### What I Never Do
 
+- ❌ Use `python` or `python3` commands (ALWAYS use `uv run`)
+- ❌ Use `pip` for package management (ALWAYS use `uv`)
+- ❌ Test streaming without timeouts (causes hanging tests)
+- ❌ Use kubectl port-forward when Tilt is running
 - ❌ Call LLM APIs directly (always use Gateway)
 - ❌ Run models sequentially (always parallel Jobs)
 - ❌ Ignore Gateway metrics (always display them)
@@ -433,9 +461,16 @@ curl http://localhost:9090/api/v1/query \
 - ❌ Skip preference tracking
 - ❌ Hardcode model lists (use config)
 - ❌ Mix Gateway and direct API calls
+- ❌ Run E2E tests without realistic data
 
 ### What I Always Do
 
+- ✅ Use `uv run` for ALL Python commands (pytest, ruff, mypy)
+- ✅ Use `npm run test:e2e` for Playwright tests (211 test cases)
+- ✅ Add timeouts to streaming tests: `timeout 30 curl`
+- ✅ Start E2E testing with `tilt up` (not kubectl port-forward)
+- ✅ Use test markers: `uv run pytest -m unit|integration|e2e`
+- ✅ Verify kubectl logs match SSE output for streaming
 - ✅ Route all LLM calls through LiteLLM Gateway
 - ✅ Run models in parallel Kubernetes Jobs
 - ✅ Display metrics from Gateway (time, cost, tokens)
