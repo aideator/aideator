@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { useAgentMode, AGENT_MODE_OPTIONS, AgentMode } from '@/hooks/useAgentMode';
+import { useAgentMode, AGENT_MODE_OPTIONS, AgentMode } from '@/contexts/AgentModeContext';
 import { cn } from '@/lib/utils';
 
 interface ModeSelectorProps {
@@ -17,7 +17,8 @@ interface ModeSelectorProps {
 export function ModeSelector({ disabled = false, className }: ModeSelectorProps) {
   const { agentMode, setAgentMode, currentModeInfo } = useAgentMode();
 
-  const handleModeChange = (mode: AgentMode) => {
+  const handleModeChange = (value: string) => {
+    const mode = value as AgentMode;
     setAgentMode(mode);
   };
 

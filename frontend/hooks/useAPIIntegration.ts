@@ -14,6 +14,7 @@ export interface ModelComparisonRequest {
   systemPrompt?: string;
   agentMode?: string; // Agent execution mode
   repositoryUrl?: string; // GitHub repository URL (only for code modes)
+  turnId?: string; // Turn ID for existing turns
 }
 
 export interface ModelComparisonResponse {
@@ -79,7 +80,7 @@ export function useAPIIntegration() {
   const startModelComparison = useCallback(async (
     request: ModelComparisonRequest,
     onUpdate: (update: StreamingUpdate) => void
-  ): Promise<string> => {
+  ): Promise<{ runId: string; sessionId: string; turnId: string }> => {
     try {
       setState(prev => ({ ...prev, lastError: null }));
 
@@ -109,6 +110,8 @@ export function useAPIIntegration() {
         model_variants: modelVariants,
         use_claude_code: false,
         agent_mode: request.agentMode || 'litellm',
+        session_id: request.sessionId,
+        turn_id: request.turnId,
       };
 
       // Include github_url - required by backend schema
@@ -168,7 +171,9 @@ export function useAPIIntegration() {
       
       console.log('🔥 Parsed response data:', data);
       const runId = data.run_id;
-      console.log('🔥 Extracted runId:', runId);
+      const sessionId = data.session_id;
+      const turnId = data.turn_id;
+      console.log('🔥 Extracted runId:', runId, 'sessionId:', sessionId, 'turnId:', turnId);
 
       // Initialize comparison state
       console.log('🔥 BACKEND: Request data:', { 
@@ -208,7 +213,7 @@ export function useAPIIntegration() {
       // Start streaming updates
       startStreaming(runId, onUpdate);
 
-      return runId;
+      return { runId, sessionId, turnId };
     } catch (error) {
       console.error('🚨 useAPIIntegration error:', error);
       console.error('🚨 Error type:', typeof error);

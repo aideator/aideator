@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+'use client';
 
-const STORAGE_KEY = 'aideator-agent-mode';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
 export type AgentMode = 'litellm' | 'claude-cli' | 'gemini-cli' | 'openai-codex';
 
@@ -45,7 +45,24 @@ export const AGENT_MODE_OPTIONS: AgentModeInfo[] = [
   },
 ];
 
-export function useAgentMode() {
+interface AgentModeContextType {
+  agentMode: AgentMode;
+  setAgentMode: (mode: AgentMode) => void;
+  currentModeInfo: AgentModeInfo;
+  isLiteLLM: boolean;
+  isCodeMode: boolean;
+  requiresRepo: boolean;
+}
+
+const AgentModeContext = createContext<AgentModeContextType | undefined>(undefined);
+
+const STORAGE_KEY = 'aideator-agent-mode';
+
+interface AgentModeProviderProps {
+  children: ReactNode;
+}
+
+export function AgentModeProvider({ children }: AgentModeProviderProps) {
   const [agentMode, setAgentModeState] = useState<AgentMode>('litellm');
 
   // Load from LocalStorage on mount
@@ -78,7 +95,7 @@ export function useAgentMode() {
   const isCodeMode = currentModeInfo.executionMode === 'code';
   const requiresRepo = currentModeInfo.requiresRepo;
 
-  return {
+  const contextValue = {
     agentMode,
     setAgentMode,
     currentModeInfo,
@@ -86,4 +103,18 @@ export function useAgentMode() {
     isCodeMode,
     requiresRepo,
   };
+
+  return (
+    <AgentModeContext.Provider value={contextValue}>
+      {children}
+    </AgentModeContext.Provider>
+  );
+}
+
+export function useAgentMode() {
+  const context = useContext(AgentModeContext);
+  if (context === undefined) {
+    throw new Error('useAgentMode must be used within an AgentModeProvider');
+  }
+  return context;
 }

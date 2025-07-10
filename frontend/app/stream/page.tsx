@@ -34,7 +34,7 @@ import { useAPIIntegration } from "@/hooks/useAPIIntegration";
 import { AuthStatus } from "@/components/AuthStatus";
 import { ModeSelector } from "@/components/ModeSelector";
 import { RepositoryPicker } from "@/components/RepositoryPicker";
-import { useAgentMode } from "@/hooks/useAgentMode";
+import { useAgentMode, AgentModeProvider } from "@/contexts/AgentModeContext";
 
 // Import streaming update type
 import { StreamingUpdate } from '@/hooks/useAPIIntegration';
@@ -71,6 +71,14 @@ function StreamPageContent() {
   const [formError, setFormError] = useState<string | null>(null);
   const [showTranscript, setShowTranscript] = useState(false);
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
+  
+  // Multi-turn conversation state
+  const [isFollowUp, setIsFollowUp] = useState(false);
+  const [conversationHistory, setConversationHistory] = useState<any[]>([]);
+  const [currentTurnNumber, setCurrentTurnNumber] = useState(0);
+  const [currentTurnPrompt, setCurrentTurnPrompt] = useState('');
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [currentTurnId, setCurrentTurnId] = useState<string | null>(null);
   
   // Model responses state
   const [modelResponses, setModelResponses] = useState<ModelResponse[]>([]);
@@ -112,6 +120,9 @@ function StreamPageContent() {
     setIsComparing(true);
     setIsConfigExpanded(false);
     
+    // Capture the current prompt for this turn
+    setCurrentTurnPrompt(prompt);
+    
     // Initialize model responses
     const initialResponses: ModelResponse[] = modelInstances.selectedInstances.map(instance => ({
       id: instance.instanceId,
@@ -151,33 +162,21 @@ function StreamPageContent() {
       })));
       
       // Start actual model comparison via API
-      if (state.activeSession) {
-        const runId = await apiIntegration.startModelComparison({
-          sessionId: state.activeSession.id,
-          prompt: prompt,
-          modelIds: modelIds,
-          instanceIds: instanceIds,
-          agentMode: agentMode.agentMode,
-          repositoryUrl: agentMode.requiresRepo ? selectedRepository : undefined,
-        }, handleStreamingUpdate);
-        
-        setCurrentRunId(runId);
-      } else {
-        // Create a temporary session if none exists
-        const tempSessionId = `temp-${Date.now()}`;
-        actions.createSession(tempSessionId);
-        
-        const runId = await apiIntegration.startModelComparison({
-          sessionId: tempSessionId,
-          prompt: prompt,
-          modelIds: modelIds,
-          instanceIds: instanceIds,
-          agentMode: agentMode.agentMode,
-          repositoryUrl: agentMode.requiresRepo ? selectedRepository : undefined,
-        }, handleStreamingUpdate);
-        
-        setCurrentRunId(runId);
-      }
+      const sessionId = currentSessionId || state.activeSession?.id || `temp-${Date.now()}`;
+      
+      const response = await apiIntegration.startModelComparison({
+        sessionId: sessionId,
+        prompt: prompt,
+        modelIds: modelIds,
+        instanceIds: instanceIds,
+        agentMode: agentMode.agentMode,
+        repositoryUrl: agentMode.requiresRepo ? selectedRepository : undefined,
+        turnId: currentTurnId || undefined, // Include turn ID for follow-up prompts
+      }, handleStreamingUpdate);
+      
+      setCurrentRunId(response.runId);
+      setCurrentSessionId(response.sessionId);
+      setCurrentTurnId(response.turnId);
     } catch (error) {
       console.error('🚨 Stream page error:', error);
       console.error('🚨 Error type:', typeof error);
@@ -364,6 +363,69 @@ function StreamPageContent() {
     });
   };
 
+  const handleFollowUpPrompt = async () => {
+    if (!prompt.trim() || !isFollowUp) return;
+    
+    // Save current turn to conversation history
+    const currentTurn = {
+      turnNumber: currentTurnNumber,
+      prompt: currentTurnPrompt, // Use the captured prompt from the current turn
+      timestamp: new Date().toISOString(),
+      modelResponses: [...modelResponses],
+      selectedResponse: selectedResponse,
+    };
+    
+    // Add to conversation history
+    setConversationHistory(prev => [...prev, currentTurn]);
+    setCurrentTurnNumber(prev => prev + 1);
+    
+    // Build context from conversation history including the current turn
+    const contextPrompt = buildContextPrompt([...conversationHistory, currentTurn], prompt);
+    
+    // Reset current state for new turn
+    setIsFollowUp(false);
+    setSelectedResponse(null);
+    setModelResponses([]);
+    
+    // Start new comparison with context
+    try {
+      // Clear current turn ID so a new turn gets created
+      setCurrentTurnId(null);
+      
+      // Temporarily set the prompt to the context prompt
+      const originalPrompt = prompt;
+      setPrompt(contextPrompt);
+      
+      await handleStartComparison();
+      
+      // Reset prompt to original for display
+      setPrompt(originalPrompt);
+    } catch (error) {
+      console.error('Failed to start follow-up:', error);
+      setFormError('Failed to start follow-up prompt');
+    }
+  };
+
+  const buildContextPrompt = (history: any[], newPrompt: string): string => {
+    if (history.length === 0) return newPrompt;
+    
+    let contextPrompt = "Previous conversation:\n\n";
+    
+    history.forEach((turn, index) => {
+      contextPrompt += `Turn ${index + 1}: ${turn.prompt}\n`;
+      
+      if (turn.selectedResponse && turn.modelResponses) {
+        const selectedModel = turn.modelResponses.find((r: any) => r.id === turn.selectedResponse);
+        if (selectedModel) {
+          contextPrompt += `Selected response (${selectedModel.name}): ${selectedModel.content.substring(0, 500)}...\n\n`;
+        }
+      }
+    });
+    
+    contextPrompt += `New prompt: ${newPrompt}`;
+    return contextPrompt;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-neural-twilight flex">
       {/* Auth Status - Fixed in corner */}
@@ -431,6 +493,7 @@ function StreamPageContent() {
         </motion.header>
 
         {/* Configuration Panel - Collapsible */}
+        
         <div className="bg-neutral-paper rounded-2xl shadow-xl mb-8 transition-all duration-300">
           {/* Header - Always visible */}
           <div
@@ -496,6 +559,7 @@ function StreamPageContent() {
           </div>
 
           {/* Collapsible Content */}
+          
           <AnimatePresence>
             {isConfigExpanded && (
               <motion.div
@@ -670,6 +734,74 @@ function StreamPageContent() {
           </div>
         )}
 
+        {/* Conversation History */}
+        {conversationHistory.length > 0 && (
+          <div className="mb-8 space-y-4">
+            <h2 className="text-h2 font-bold text-neutral-white flex items-center gap-2">
+              <History className="h-6 w-6" />
+              Conversation History
+            </h2>
+            
+            {conversationHistory.map((turn, index) => (
+              <div key={index} className="bg-neutral-paper rounded-2xl shadow-lg p-lg">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-ai-primary to-ai-secondary text-white text-body-sm font-semibold">
+                    {turn.turnNumber + 1}
+                  </div>
+                  <div>
+                    <h3 className="text-h3 font-semibold text-neutral-charcoal">
+                      Turn {turn.turnNumber + 1}
+                    </h3>
+                    <p className="text-caption text-neutral-shadow">
+                      {new Date(turn.timestamp).toLocaleTimeString()}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="mb-4">
+                  <p className="text-body text-neutral-charcoal bg-neutral-fog p-md rounded-md">
+                    {turn.prompt}
+                  </p>
+                </div>
+                
+                {turn.selectedResponse && turn.modelResponses && (
+                  <div className="border-t border-neutral-fog pt-4">
+                    <p className="text-body-sm text-neutral-shadow mb-2">Selected Response:</p>
+                    {(() => {
+                      const selectedModel = turn.modelResponses.find((r: any) => r.id === turn.selectedResponse);
+                      return selectedModel ? (
+                        <div className="bg-agent-3/10 border border-agent-3/20 rounded-md p-md">
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className="w-3 h-3 bg-agent-3 rounded-full"></div>
+                            <span className="text-body-sm font-medium text-agent-3">
+                              {selectedModel.name}
+                            </span>
+                          </div>
+                          <p className="text-body-sm text-neutral-charcoal">
+                            {selectedModel.content.substring(0, 200)}...
+                          </p>
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Current Turn Header */}
+        {conversationHistory.length > 0 && modelResponses.length > 0 && (
+          <div className="mb-6">
+            <h2 className="text-h2 font-bold text-neutral-white flex items-center gap-2">
+              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-ai-secondary to-ai-accent text-white text-body-sm font-semibold">
+                {currentTurnNumber + 1}
+              </div>
+              Current Turn
+            </h2>
+          </div>
+        )}
+
         {/* Model Comparison Grid */}
         {modelResponses.length > 0 && (
           <ComparisonGrid
@@ -677,6 +809,70 @@ function StreamPageContent() {
             onSelectResponse={handleSelectResponse}
             onPreferenceFeedback={handlePreferenceFeedback}
           />
+        )}
+
+        {/* Follow-up Prompt Section */}
+        {modelResponses.length > 0 && !isComparing && modelResponses.some(r => r.status === 'completed') && (
+          <div className="mt-8 bg-neutral-paper rounded-2xl shadow-xl p-lg">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-gradient-to-br from-ai-secondary to-ai-accent text-white">
+                <History className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-h3 font-bold text-neutral-charcoal">
+                  Continue Conversation
+                </h3>
+                <p className="text-body-sm text-neutral-shadow mt-1">
+                  Ask a follow-up question based on the responses above
+                </p>
+              </div>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-label font-medium text-neutral-charcoal mb-2">
+                  Follow-up Prompt
+                </label>
+                <Textarea
+                  placeholder="Ask a follow-up question or request modifications..."
+                  value={isFollowUp ? prompt : ''}
+                  onChange={(e) => {
+                    setPrompt(e.target.value);
+                    setIsFollowUp(true);
+                  }}
+                  rows={3}
+                  className="w-full bg-neutral-white border border-neutral-fog rounded-md px-md py-md text-body placeholder:text-neutral-shadow focus:border-ai-primary focus:ring-2 focus:ring-ai-primary/20 transition-colors resize-none"
+                />
+                {isFollowUp && (
+                  <div className="mt-2 text-caption text-neutral-shadow">
+                    This will be sent with context from the previous conversation
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex items-center gap-4">
+                <Button
+                  onClick={() => handleFollowUpPrompt()}
+                  disabled={!isFollowUp || !prompt.trim() || !apiKey}
+                  className="bg-gradient-to-r from-ai-secondary to-ai-accent text-white px-lg py-md rounded-lg font-semibold hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Play className="inline w-5 h-5 mr-2" />
+                  Send Follow-up
+                </Button>
+                
+                <Button
+                  onClick={() => {
+                    setIsFollowUp(false);
+                    setPrompt('');
+                  }}
+                  variant="outline"
+                  className="border-2 border-neutral-fog text-neutral-charcoal px-lg py-md rounded-lg font-semibold hover:bg-neutral-fog transition-all"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Preference Feedback Modal */}
@@ -725,7 +921,9 @@ function StreamPageContent() {
 export default function StreamPage() {
   return (
     <SessionProvider>
-      <StreamPageContent />
+      <AgentModeProvider>
+        <StreamPageContent />
+      </AgentModeProvider>
     </SessionProvider>
   );
 }

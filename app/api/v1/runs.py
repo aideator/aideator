@@ -1,5 +1,6 @@
 import uuid
 from typing import Optional
+from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
@@ -12,6 +13,7 @@ from app.core.deps import get_orchestrator
 from app.core.logging import get_logger
 from app.models.run import Run, RunStatus
 from app.models.user import User
+from app.models.session import Session, Turn
 from app.schemas.common import PaginatedResponse, PaginationParams
 from app.schemas.runs import (
     CreateRunRequest,
@@ -49,6 +51,71 @@ async def create_run(
     # Generate run ID (use hyphens for Kubernetes compatibility)
     run_id = f"run-{uuid.uuid4().hex}"
     
+    # Handle session and turn creation
+    session_id = request.session_id
+    turn_id = request.turn_id
+    
+    if not session_id:
+        # Create a new session if none provided
+        session_id = str(uuid.uuid4())
+        session = Session(
+            id=session_id,
+            user_id=current_user.id,
+            title=f"Session {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
+            description="Multi-model comparison session",
+            models_used=[variant.model_definition_id for variant in request.model_variants],
+        )
+        db.add(session)
+        logger.info(f"Created new session: {session_id}")
+    else:
+        # Verify session exists and belongs to user
+        session_query = select(Session).where(
+            Session.id == session_id,
+            Session.user_id == current_user.id
+        )
+        session_result = await db.execute(session_query)
+        session = session_result.scalar_one_or_none()
+        
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found or not accessible"
+            )
+    
+    if not turn_id:
+        # Create a new turn if none provided
+        turn_id = str(uuid.uuid4())
+        
+        # Get next turn number
+        turn_count_query = select(func.count(Turn.id)).where(Turn.session_id == session_id)
+        turn_count_result = await db.execute(turn_count_query)
+        turn_number = turn_count_result.scalar() + 1
+        
+        turn = Turn(
+            id=turn_id,
+            session_id=session_id,
+            turn_number=turn_number,
+            prompt=request.prompt,
+            models_requested=[variant.model_definition_id for variant in request.model_variants],
+            status="pending",
+        )
+        db.add(turn)
+        logger.info(f"Created new turn: {turn_id} (turn #{turn_number})")
+    else:
+        # Verify turn exists and belongs to the session
+        turn_query = select(Turn).where(
+            Turn.id == turn_id,
+            Turn.session_id == session_id
+        )
+        turn_result = await db.execute(turn_query)
+        turn = turn_result.scalar_one_or_none()
+        
+        if not turn:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Turn not found or not accessible"
+            )
+    
     # Create run record
     run = Run(
         id=run_id,
@@ -59,6 +126,8 @@ async def create_run(
             "model_variants": [variant.model_dump() for variant in request.model_variants],
             "use_claude_code": request.use_claude_code,
             "agent_mode": request.agent_mode,
+            "session_id": session_id,
+            "turn_id": turn_id,
         },
         user_id=current_user.id,
         status=RunStatus.PENDING,
@@ -92,6 +161,8 @@ async def create_run(
         stream_url=f"{settings.api_v1_prefix}/runs/{run_id}/stream",
         status="accepted",
         estimated_duration_seconds=len(request.model_variants) * 40,  # Rough estimate
+        session_id=session_id,
+        turn_id=turn_id,
     )
 
 

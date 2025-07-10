@@ -82,6 +82,16 @@ class CreateRunRequest(BaseModel):
         description="Agent execution mode: 'litellm', 'claude-cli', 'gemini-cli', or 'openai-codex'",
         examples=["litellm", "claude-cli", "gemini-cli", "openai-codex"],
     )
+    
+    # Session and turn management
+    session_id: Optional[str] = Field(
+        None,
+        description="Session ID for multi-turn conversations. If not provided, a new session will be created.",
+    )
+    turn_id: Optional[str] = Field(
+        None,
+        description="Turn ID for this specific turn. If not provided, a new turn will be created.",
+    )
 
     @field_validator("github_url")
     @classmethod
@@ -152,6 +162,8 @@ class CreateRunResponse(BaseModel):
     estimated_duration_seconds: int = Field(
         ..., description="Estimated time to complete"
     )
+    session_id: str = Field(..., description="Session ID for this run")
+    turn_id: str = Field(..., description="Turn ID for this run")
 
     model_config = {
         "json_schema_extra": {
