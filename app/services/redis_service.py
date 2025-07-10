@@ -7,9 +7,10 @@ from datetime import datetime
 from typing import Any, AsyncIterator, Dict, Optional
 
 import redis.asyncio as redis
-from redis.asyncio.client import PubSub
 
-from app.core.config import settings
+from app.core.config import get_settings
+
+settings = get_settings()
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,6 @@ class RedisService:
         """Initialize Redis service."""
         self.redis_url = settings.redis_url or "redis://localhost:6379/0"
         self._client: Optional[redis.Redis] = None
-        self._pubsub: Optional[PubSub] = None
         
     async def connect(self) -> None:
         """Connect to Redis."""
@@ -40,8 +40,6 @@ class RedisService:
             
     async def disconnect(self) -> None:
         """Disconnect from Redis."""
-        if self._pubsub:
-            await self._pubsub.close()
         if self._client:
             await self._client.close()
             
@@ -74,7 +72,10 @@ class RedisService:
             "timestamp": datetime.utcnow().isoformat(),
             "variation_id": variation_id
         })
-        return await self.client.publish(channel, message)
+        logger.info(f"[REDIS-SERVICE] Publishing to channel: {channel}, content_length: {len(content)}")
+        result = await self.client.publish(channel, message)
+        logger.info(f"[REDIS-SERVICE] Published to {result} subscribers on channel: {channel}")
+        return result
         
     async def publish_agent_log(
         self, 
@@ -132,37 +133,61 @@ class RedisService:
         Yields:
             Messages from the subscribed channels
         """
-        if not self._pubsub:
-            self._pubsub = self.client.pubsub()
+        logger.info(f"[REDIS-SUB] Starting subscription for run {run_id}")
+        
+        # Create a new pubsub client for this subscription to avoid concurrent access
+        logger.info(f"[REDIS-SUB] Creating new pubsub client for this subscription")
+        pubsub = self.client.pubsub()
             
         # Subscribe to all channels for this run
         pattern = f"run:{run_id}:*"
-        await self._pubsub.psubscribe(pattern)
+        logger.info(f"[REDIS-SUB] Subscribing to pattern: {pattern}")
+        await pubsub.psubscribe(pattern)
+        logger.info(f"[REDIS-SUB] Successfully subscribed to pattern: {pattern}")
         
+        message_count = 0
         try:
-            async for message in self._pubsub.listen():
+            logger.info(f"[REDIS-SUB] Starting to listen for messages on pattern: {pattern}")
+            async for message in pubsub.listen():
+                message_count += 1
+                logger.debug(f"[REDIS-SUB] Raw message #{message_count}: type={message.get('type')}, channel={message.get('channel')}")
+                
                 if message["type"] == "pmessage":
                     # Parse channel to determine message type
                     channel = message["channel"]
                     parts = channel.split(":")
+                    logger.debug(f"[REDIS-SUB] Channel parts: {parts}")
                     
                     if len(parts) >= 3:
                         message_type = parts[2]  # output, logs, or status
+                        logger.info(f"[REDIS-SUB] Processing {message_type} message from channel: {channel}")
                         
                         # Parse the data
                         try:
                             data = json.loads(message["data"])
+                            logger.debug(f"[REDIS-SUB] Parsed JSON data: {data}")
                         except json.JSONDecodeError:
                             # If not JSON, treat as plain text
+                            logger.warning(f"[REDIS-SUB] Failed to parse JSON, treating as plain text: {message['data']}")
                             data = {"content": message["data"]}
                             
+                        logger.info(f"[REDIS-SUB] Yielding message: type={message_type}, channel={channel}")
                         yield {
                             "type": message_type,
                             "channel": channel,
                             "data": data
                         }
+                elif message["type"] == "psubscribe":
+                    logger.info(f"[REDIS-SUB] Subscription confirmed for pattern: {message.get('pattern')}")
+                else:
+                    logger.debug(f"[REDIS-SUB] Ignoring message type: {message.get('type')}")
         finally:
-            await self._pubsub.punsubscribe(pattern)
+            logger.info(f"[REDIS-SUB] Unsubscribing from pattern: {pattern}")
+            await pubsub.punsubscribe(pattern)
+            logger.info(f"[REDIS-SUB] Unsubscribed from pattern: {pattern}")
+            # Close the pubsub client to free resources
+            await pubsub.close()
+            logger.info(f"[REDIS-SUB] Closed pubsub client for run {run_id}")
             
     async def health_check(self) -> bool:
         """Check if Redis is healthy.

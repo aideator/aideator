@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     agent_cpu_limit: float = Field(default=0.5, ge=0.1, le=2.0)
     agent_timeout: int = 300  # 5 minutes
     default_agent_model: str = "gpt-4o-mini"
+    
+    # Concurrency limits
+    max_concurrent_runs: int = Field(default=10, ge=1, le=50)
+    max_concurrent_jobs: int = Field(default=20, ge=1, le=100)  # Total jobs across all runs
 
     # Repository Configuration
     clone_timeout: int = 300  # 5 minutes

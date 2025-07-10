@@ -37,7 +37,7 @@ spec:
             - name: REPO_URL
               value: "{repo_url}"
             - name: PROMPT
-              value: "{prompt}"
+              value: {prompt}
             - name: RUN_ID
               value: "{run_id}"
             - name: LOG_LEVEL

@@ -4,9 +4,8 @@ Agent orchestrator using Kubernetes jobs and kubectl log streaming.
 
 import asyncio
 import json
-from typing import Dict, Any, AsyncGenerator, Optional, List
-from uuid import uuid4
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,8 +14,8 @@ from app.core.logging import get_logger
 from app.models.run import Run, RunStatus
 from app.schemas.runs import AgentConfig
 from app.services.kubernetes_service import KubernetesService
-from app.services.sse_manager import sse_manager, SSEManager
 from app.services.redis_service import redis_service
+from app.services.sse_manager import SSEManager, sse_manager
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -24,11 +23,46 @@ settings = get_settings()
 
 class AgentOrchestrator:
     """Orchestrates LLM agents using Kubernetes jobs."""
-    
+
     def __init__(self, kubernetes_service: KubernetesService, sse_manager_instance: SSEManager = None):
         self.kubernetes = kubernetes_service
         self.sse = sse_manager_instance or sse_manager
-        self.active_runs: Dict[str, Dict[str, Any]] = {}
+        self.active_runs: dict[str, dict[str, Any]] = {}
+        self._job_count_lock = asyncio.Lock()
+        self._total_active_jobs = 0
+
+    async def _check_concurrency_limits(self, requested_jobs: int) -> bool:
+        """Check if we can create the requested number of jobs.
+        
+        Returns True if within limits, False otherwise.
+        """
+        async with self._job_count_lock:
+            # Check run limit
+            if len(self.active_runs) >= settings.max_concurrent_runs:
+                logger.warning(f"Max concurrent runs limit reached: {settings.max_concurrent_runs}")
+                return False
+
+            # Check job limit
+            if self._total_active_jobs + requested_jobs > settings.max_concurrent_jobs:
+                logger.warning(
+                    f"Would exceed max concurrent jobs: {self._total_active_jobs} + {requested_jobs} > {settings.max_concurrent_jobs}"
+                )
+                return False
+
+            return True
+
+    async def _increment_job_count(self, count: int) -> None:
+        """Increment the active job count."""
+        async with self._job_count_lock:
+            self._total_active_jobs += count
+            logger.info(f"Active jobs: {self._total_active_jobs}")
+
+    async def _decrement_job_count(self, count: int) -> None:
+        """Decrement the active job count."""
+        async with self._job_count_lock:
+            self._total_active_jobs -= count
+            self._total_active_jobs = max(0, self._total_active_jobs)  # Ensure non-negative
+            logger.info(f"Active jobs: {self._total_active_jobs}")
 
     async def execute_variations(
         self,
@@ -36,9 +70,9 @@ class AgentOrchestrator:
         repo_url: str,
         prompt: str,
         variations: int,
-        agent_config: Optional[AgentConfig] = None,
-        agent_mode: Optional[str] = None,
-        db_session: Optional[AsyncSession] = None,
+        agent_config: AgentConfig | None = None,
+        agent_mode: str | None = None,
+        db_session: AsyncSession | None = None,
         use_batch_job: bool = True,
     ) -> None:
         """Execute N agent variations using Kubernetes jobs."""
@@ -48,14 +82,22 @@ class AgentOrchestrator:
             variations=variations,
             repo_url=repo_url,
         )
-        
+
+        # Check concurrency limits before starting
+        if not await self._check_concurrency_limits(variations):
+            raise RuntimeError(
+                f"Cannot start run: would exceed concurrency limits. "
+                f"Active runs: {len(self.active_runs)}/{settings.max_concurrent_runs}, "
+                f"Active jobs: {self._total_active_jobs}/{settings.max_concurrent_jobs}"
+            )
+
         # Update run status
         if db_session:
             await self._update_run_status(
                 db_session, run_id, RunStatus.RUNNING
             )
-        
-        # Store run metadata
+
+        # Store run metadata and increment job count
         self.active_runs[run_id] = {
             "repo_url": repo_url,
             "prompt": prompt,
@@ -65,22 +107,28 @@ class AgentOrchestrator:
             "start_time": datetime.utcnow().isoformat(),
             "jobs": []
         }
-        
+
         try:
+            # Increment job count
+            await self._increment_job_count(variations)
+
             if use_batch_job:
                 await self._execute_batch_job(run_id, repo_url, prompt, variations, agent_mode, db_session)
             else:
                 await self._execute_individual_jobs(run_id, repo_url, prompt, variations, agent_mode, db_session)
-            
+
         except Exception as e:
             logger.error(f"Error executing variations for run {run_id}: {e}")
             await self._send_error_event(run_id, str(e))
             self.active_runs[run_id]["status"] = "failed"
-            
+
+            # Decrement job count on failure
+            await self._decrement_job_count(variations)
+
             # Update database status
             if db_session:
                 await self._update_run_status(db_session, run_id, RunStatus.FAILED)
-        
+
         finally:
             # Clean up run metadata after some time
             asyncio.create_task(self._cleanup_run_metadata(run_id, delay=3600))
@@ -91,8 +139,8 @@ class AgentOrchestrator:
         repo_url: str,
         prompt: str,
         variations: int,
-        agent_mode: Optional[str] = None,
-        db_session: Optional[AsyncSession] = None,
+        agent_mode: str | None = None,
+        db_session: AsyncSession | None = None,
     ) -> None:
         """Execute agents using a single batch job."""
         # Create batch job
@@ -103,24 +151,24 @@ class AgentOrchestrator:
             variations=variations,
             parallelism=min(variations, 3)  # Max 3 parallel
         )
-        
+
         self.active_runs[run_id]["jobs"].append(job_name)
         self.active_runs[run_id]["status"] = "running"
-        
+
         # Send start event
         await self._send_status_event(run_id, "started", f"Batch job {job_name} created")
-        
+
         # Stream logs from batch job
         await self._stream_batch_job_logs(run_id, job_name, db_session)
-    
+
     async def _execute_individual_jobs(
         self,
         run_id: str,
         repo_url: str,
         prompt: str,
         variations: int,
-        agent_mode: Optional[str] = None,
-        db_session: Optional[AsyncSession] = None,
+        agent_mode: str | None = None,
+        db_session: AsyncSession | None = None,
     ) -> None:
         """Execute agents using individual jobs."""
         # Create individual jobs
@@ -134,13 +182,13 @@ class AgentOrchestrator:
                 agent_mode=agent_mode,
             )
             jobs.append((job_name, i))
-        
+
         self.active_runs[run_id]["jobs"] = [job[0] for job in jobs]
         self.active_runs[run_id]["status"] = "running"
-        
+
         # Send start event
         await self._send_status_event(run_id, "started", f"Created {len(jobs)} agent jobs")
-        
+
         # Stream logs from all jobs concurrently
         tasks = []
         for job_name, variation_id in jobs:
@@ -148,22 +196,22 @@ class AgentOrchestrator:
                 self._stream_job_logs(run_id, job_name, variation_id)
             )
             tasks.append(task)
-        
+
         # Wait for all streaming tasks to complete
         await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         # Send run completion event to frontend
         await self.sse.send_run_complete(run_id, "completed")
-        
+
         # Update database status
         if db_session:
             await self._update_run_status(db_session, run_id, RunStatus.COMPLETED)
-    
+
     async def _stream_batch_job_logs(
-        self, 
-        run_id: str, 
-        job_name: str, 
-        db_session: Optional[AsyncSession] = None
+        self,
+        run_id: str,
+        job_name: str,
+        db_session: AsyncSession | None = None
     ) -> None:
         """Stream logs from a batch job."""
         try:
@@ -171,49 +219,49 @@ class AgentOrchestrator:
                 try:
                     log_entry = json.loads(log_line)
                     # Skip JSON log entries - only process non-log content
-                    if 'timestamp' in log_entry and 'level' in log_entry:
+                    if "timestamp" in log_entry and "level" in log_entry:
                         # This is a structured log, skip it
                         logger.debug(f"Agent log: {log_entry.get('message', log_entry)}")
                         continue
                     # If it's JSON but not a log, send it
-                    if 'variation_id' in log_entry:
-                        await self.sse.send_agent_output(run_id, log_entry['variation_id'], json.dumps(log_entry))
+                    if "variation_id" in log_entry:
+                        await self.sse.send_agent_output(run_id, log_entry["variation_id"], json.dumps(log_entry))
                     else:
                         await self.sse.send_agent_output(run_id, 0, json.dumps(log_entry))
                 except json.JSONDecodeError:
                     # This is plain text content (markdown), send it
                     await self.sse.send_agent_output(run_id, 0, log_line)
-            
+
             # Send completion event
             await self._send_status_event(run_id, "completed", f"Batch job {job_name} completed")
             self.active_runs[run_id]["status"] = "completed"
-            
+
             # Send SSE completion events to frontend
             # For batch jobs, we need to send completion for all variations
             variations = self.active_runs[run_id].get("variations", 1)
             for i in range(variations):
                 await self.sse.send_agent_complete(run_id, i)
             await self.sse.send_run_complete(run_id, "completed")
-            
+
             # Update database status
             if db_session:
                 await self._update_run_status(db_session, run_id, RunStatus.COMPLETED)
-            
+
         except Exception as e:
             logger.error(f"Error streaming batch job logs for run {run_id}: {e}")
-            await self._send_error_event(run_id, f"Log streaming error: {str(e)}")
+            await self._send_error_event(run_id, f"Log streaming error: {e!s}")
             self.active_runs[run_id]["status"] = "failed"
-            
+
             # Send SSE error events to frontend
             variations = self.active_runs[run_id].get("variations", 1)
             for i in range(variations):
                 await self.sse.send_agent_error(run_id, i, str(e))
             await self.sse.send_run_complete(run_id, "failed")
-            
+
             # Update database status
             if db_session:
                 await self._update_run_status(db_session, run_id, RunStatus.FAILED)
-    
+
     async def _stream_job_logs(self, run_id: str, job_name: str, variation_id: int) -> None:
         """Stream logs from an individual job."""
         try:
@@ -221,7 +269,7 @@ class AgentOrchestrator:
                 try:
                     log_entry = json.loads(log_line)
                     # Skip JSON log entries - only process non-log content
-                    if 'timestamp' in log_entry and 'level' in log_entry:
+                    if "timestamp" in log_entry and "level" in log_entry:
                         # This is a structured log, skip it
                         logger.debug(f"Agent log: {log_entry.get('message', log_entry)}")
                         # Publish to Redis logs channel if available
@@ -236,7 +284,9 @@ class AgentOrchestrator:
                     # Also publish to Redis if available
                     if settings.redis_url:
                         try:
-                            await redis_service.publish_agent_output(run_id, str(variation_id), json.dumps(log_entry))
+                            logger.debug(f"[REDIS-PUB] Publishing JSON agent output to Redis for run {run_id}, variation {variation_id}")
+                            result = await redis_service.publish_agent_output(run_id, str(variation_id), json.dumps(log_entry))
+                            logger.debug(f"[REDIS-PUB] Published to {result} subscribers")
                         except Exception as e:
                             logger.warning(f"Failed to publish output to Redis: {e}")
                 except json.JSONDecodeError:
@@ -245,44 +295,46 @@ class AgentOrchestrator:
                     # Also publish to Redis if available
                     if settings.redis_url:
                         try:
-                            await redis_service.publish_agent_output(run_id, str(variation_id), log_line)
+                            logger.debug(f"[REDIS-PUB] Publishing plain text agent output to Redis for run {run_id}, variation {variation_id}")
+                            result = await redis_service.publish_agent_output(run_id, str(variation_id), log_line)
+                            logger.debug(f"[REDIS-PUB] Published to {result} subscribers")
                         except Exception as e:
                             logger.warning(f"Failed to publish output to Redis: {e}")
-            
+
             # Send job completion event
             await self._send_status_event(
-                run_id, 
-                "job_completed", 
+                run_id,
+                "job_completed",
                 f"Job {job_name} (variation {variation_id}) completed"
             )
-            
+
             # Send SSE completion event to frontend
             await self.sse.send_agent_complete(run_id, variation_id)
-            
+
             # Publish status to Redis if available
             if settings.redis_url:
                 try:
                     await redis_service.publish_status(
-                        run_id, 
+                        run_id,
                         "variation_completed",
                         {"variation_id": variation_id, "job_name": job_name}
                     )
                 except Exception as e:
                     logger.warning(f"Failed to publish status to Redis: {e}")
-            
+
         except Exception as e:
             logger.error(f"Error streaming job logs for {job_name}: {e}")
-            await self._send_error_event(run_id, f"Job {job_name} error: {str(e)}")
+            await self._send_error_event(run_id, f"Job {job_name} error: {e!s}")
             # Send SSE error event to frontend
             await self.sse.send_agent_error(run_id, variation_id, str(e))
-    
-    async def get_run_status(self, run_id: str) -> Dict[str, Any]:
+
+    async def get_run_status(self, run_id: str) -> dict[str, Any]:
         """Get the status of a run."""
         if run_id not in self.active_runs:
             return {"status": "not_found", "error": "Run not found"}
-        
+
         run_data = self.active_runs[run_id]
-        
+
         # Get job statuses
         job_statuses = []
         for job_name in run_data["jobs"]:
@@ -291,7 +343,7 @@ class AgentOrchestrator:
                 "job_name": job_name,
                 "status": job_status
             })
-        
+
         return {
             "run_id": run_id,
             "status": run_data["status"],
@@ -301,54 +353,59 @@ class AgentOrchestrator:
             "repo_url": run_data["repo_url"],
             "prompt": run_data["prompt"]
         }
-    
+
     async def cancel_run(self, run_id: str) -> bool:
         """Cancel a running job."""
         if run_id not in self.active_runs:
             return False
-        
+
         run_data = self.active_runs[run_id]
-        
+
         # Delete all jobs for this run
         success = True
         for job_name in run_data["jobs"]:
             deleted = await self.kubernetes.delete_job(job_name)
             if not deleted:
                 success = False
-        
+
         # Update run status
         run_data["status"] = "cancelled"
         await self._send_status_event(run_id, "cancelled", "Run cancelled by user")
-        
+
         return success
-    
+
     async def _send_status_event(self, run_id: str, status: str, message: str) -> None:
         """Send a status event via SSE."""
         # Log the status internally but don't send to agent output
         logger.info(f"Run {run_id} status: {status} - {message}")
-    
+
     async def _send_error_event(self, run_id: str, error: str) -> None:
         """Send an error event via SSE."""
         await self.sse.send_agent_error(run_id, 0, error)
-    
+
     async def _cleanup_run_metadata(self, run_id: str, delay: int = 3600) -> None:
         """Clean up run metadata after a delay."""
         await asyncio.sleep(delay)
-        
+
         if run_id in self.active_runs:
             run_data = self.active_runs[run_id]
-            
+
             # Only cleanup if the run is completed/failed/cancelled
             if run_data["status"] in ["completed", "failed", "cancelled"]:
                 # Delete associated jobs
                 for job_name in run_data["jobs"]:
                     await self.kubernetes.delete_job(job_name)
-                
+
+                # Decrement job count
+                variations = run_data.get("variations", 0)
+                if variations > 0:
+                    await self._decrement_job_count(variations)
+
                 # Remove from active runs
                 del self.active_runs[run_id]
                 logger.info(f"Cleaned up run metadata for {run_id}")
-    
-    def get_active_runs(self) -> Dict[str, Dict[str, Any]]:
+
+    def get_active_runs(self) -> dict[str, dict[str, Any]]:
         """Get all active runs."""
         return dict(self.active_runs)
 

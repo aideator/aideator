@@ -114,15 +114,6 @@ rbac:
       resources: ["jobs"]
       verbs: ["create", "get", "list", "watch", "delete"]
 
-# Redis configuration
+# Redis configuration (disabled for student project - using Tiltfile Redis)
 redis:
-  enabled: true
-  auth:
-    enabled: true
-    password: "changeme"  # Override in production
-  master:
-    persistence:
-      enabled: true
-      size: 8Gi
-  replica:
-    replicaCount: 0  # Disable replicas for development
+  enabled: false  # Student project uses simple Redis from Tiltfile

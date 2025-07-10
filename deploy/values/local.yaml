@@ -68,3 +68,7 @@ env:
     value: "DEBUG"
   - name: DATABASE_URL
     value: "sqlite+aiosqlite:////app/data/aideator.db"
+
+# Redis configuration override for student project
+redis:
+  enabled: false  # We use the simple Tiltfile Redis instead

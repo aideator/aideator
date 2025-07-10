@@ -59,11 +59,20 @@ class AIdeatorAgent:
         redis_url = os.getenv("REDIS_URL")
         if redis_url:
             try:
+                self.log(f"[REDIS-CONNECT] Attempting to connect to Redis at: {redis_url}", "INFO")
                 self.redis_client = redis.from_url(redis_url, decode_responses=True)
+                self.log("[REDIS-CONNECT] Redis client created, testing connection...", "DEBUG")
                 self.redis_client.ping()
+                self.log("[REDIS-CONNECT] Redis ping successful", "DEBUG")
+                # Test publish to verify permissions
+                test_channel = f"run:{self.run_id}:test"
+                test_result = self.redis_client.publish(test_channel, "test")
+                self.log(f"[REDIS-CONNECT] Test publish successful, {test_result} subscribers", "DEBUG")
                 self.log("Redis connected successfully", "INFO", redis_url=redis_url)
             except Exception as e:
+                self.log(f"[REDIS-CONNECT] Redis connection failed: {e}", "ERROR")
                 self.log(f"Redis connection failed (will use stdout only): {e}", "WARNING")
+                self.redis_client = None
     
     def _setup_file_logging(self):
         """Setup file-only logging to avoid stdout pollution."""
@@ -134,9 +143,13 @@ class AIdeatorAgent:
                     "timestamp": datetime.utcnow().isoformat(),
                     "variation_id": self.variation_id
                 })
-                self.redis_client.publish(channel, message)
+                self.log(f"[REDIS-PUB] Publishing to channel: {channel}", "DEBUG")
+                self.log(f"[REDIS-PUB] Message size: {len(message)} bytes", "DEBUG")
+                result = self.redis_client.publish(channel, message)
+                self.log(f"[REDIS-PUB] Published successfully, {result} subscribers received message", "INFO")
             except Exception as e:
                 # Don't fail if Redis publish fails
+                self.log(f"[REDIS-PUB] Failed to publish output to Redis: {e}", "ERROR")
                 self.file_logger.warning(f"Failed to publish output to Redis: {e}")
     
     def publish_status(self, status: str, metadata: Optional[Dict[str, Any]] = None):

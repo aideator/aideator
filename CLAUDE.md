@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 🚨 CRITICAL RULES (P0 - NEVER BREAK THESE)
 
+### This is a student project.  Ease of development prioritized over all, particularly security.
+
 ### Code & Version Control Safety
 - **NEVER discard uncommitted implementation details (API calls, config, endpoints)**
 - **ALWAYS preserve original attempts in comments when simplifying broken code**

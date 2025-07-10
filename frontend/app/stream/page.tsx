@@ -53,10 +53,21 @@ export default function StreamPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isConfigExpanded, setIsConfigExpanded] = useState(true);
   
+  // Streaming backend state
+  const [streamingBackend, setStreamingBackend] = useState<'kubectl' | 'redis'>('kubectl');
+  
   // Dialog state
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newRepoUrl, setNewRepoUrl] = useState('');
   const [dialogError, setDialogError] = useState<string | null>(null);
+  
+  // Load streaming backend preference from localStorage
+  React.useEffect(() => {
+    const stored = localStorage.getItem('streamingBackend');
+    if (stored === 'redis' || stored === 'kubectl') {
+      setStreamingBackend(stored);
+    }
+  }, []);
 
   // Streaming state
   const {
@@ -100,8 +111,8 @@ export default function StreamPage() {
       console.log("Run created:", response);
       setCurrentRunId(response.run_id);
 
-      // Start streaming
-      startStream(response.run_id);
+      // Start streaming with selected backend
+      startStream(response.run_id, streamingBackend);
 
       // Collapse config panel to maximize screen space
       setIsConfigExpanded(false);
@@ -334,22 +345,49 @@ export default function StreamPage() {
                               <Settings2 className="h-4 w-4" />
                             </button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-56">
-                            <div className="space-y-2">
-                              <p className="text-sm font-medium">Agent Mode</p>
-                              <div className="flex items-center justify-between">
-                                <label htmlFor="agent-mode-switch" className="text-sm text-gray-600">
-                                  {isLiteLLM ? 'LiteLLM' : 'Claude CLI'}
-                                </label>
-                                <Switch
-                                  id="agent-mode-switch"
-                                  checked={!isLiteLLM}
-                                  onCheckedChange={(checked) => setAgentMode(checked ? 'claude-cli' : 'litellm')}
-                                />
+                          <PopoverContent className="w-72">
+                            <div className="space-y-4">
+                              {/* Agent Mode */}
+                              <div className="space-y-2">
+                                <p className="text-sm font-medium">Agent Mode</p>
+                                <div className="flex items-center justify-between">
+                                  <label htmlFor="agent-mode-switch" className="text-sm text-gray-600">
+                                    {isLiteLLM ? 'LiteLLM' : 'Claude CLI'}
+                                  </label>
+                                  <Switch
+                                    id="agent-mode-switch"
+                                    checked={!isLiteLLM}
+                                    onCheckedChange={(checked) => setAgentMode(checked ? 'claude-cli' : 'litellm')}
+                                  />
+                                </div>
+                                <p className="text-xs text-gray-500">
+                                  {isLiteLLM ? 'Using LiteLLM with GPT-4' : 'Using Claude Code CLI'}
+                                </p>
                               </div>
-                              <p className="text-xs text-gray-500">
-                                {isLiteLLM ? 'Using LiteLLM with GPT-4' : 'Using Claude Code CLI'}
-                              </p>
+                              
+                              {/* Streaming Backend */}
+                              <div className="space-y-2 border-t pt-3">
+                                <p className="text-sm font-medium">Streaming Backend</p>
+                                <div className="flex items-center justify-between">
+                                  <label htmlFor="streaming-backend-switch" className="text-sm text-gray-600">
+                                    {streamingBackend === 'redis' ? 'Redis' : 'Kubectl'}
+                                  </label>
+                                  <Switch
+                                    id="streaming-backend-switch"
+                                    checked={streamingBackend === 'redis'}
+                                    onCheckedChange={(checked) => {
+                                      const backend = checked ? 'redis' : 'kubectl';
+                                      setStreamingBackend(backend);
+                                      localStorage.setItem('streamingBackend', backend);
+                                    }}
+                                  />
+                                </div>
+                                <p className="text-xs text-gray-500">
+                                  {streamingBackend === 'redis' 
+                                    ? 'Redis pub/sub for improved reliability'
+                                    : 'Kubectl logs streaming (default)'}
+                                </p>
+                              </div>
                             </div>
                           </PopoverContent>
                         </Popover>

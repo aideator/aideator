@@ -17,12 +17,13 @@ export interface AgentStreamState {
 }
 
 export interface AgentStreamHook extends AgentStreamState {
-  startStream: (runId: string) => void;
+  startStream: (runId: string, backend?: 'kubectl' | 'redis') => void;
   stopStream: () => void;
   clearStreams: () => void;
   selectAgent: (variationId: number) => Promise<void>;
   pauseStream: (variationId?: number) => void;
   resumeStream: (variationId?: number) => void;
+  debugState: () => void;
 }
 
 export function useAgentStream(): AgentStreamHook {
@@ -78,15 +79,34 @@ export function useAgentStream(): AgentStreamHook {
   const createStreamBuffer = useCallback((variationId: number): StreamBuffer => {
     const buffer = new StreamBuffer({
       onToken: (token: string) => {
+        console.log('[STREAM-DEBUG] StreamBuffer onToken called:', {
+          variationId,
+          tokenLength: token.length,
+          tokenPreview: token.substring(0, 50) + (token.length > 50 ? '...' : ''),
+          timestamp: new Date().toISOString()
+        });
+        
         setStreams(prevStreams => {
           const newStreams = new Map(prevStreams);
           const existing = newStreams.get(variationId) || [];
-          newStreams.set(variationId, [...existing, token]);
+          const newContent = [...existing, token];
+          newStreams.set(variationId, newContent);
+          
+          console.log('[STREAM-DEBUG] Stream state updated:', {
+            variationId,
+            previousLength: existing.length,
+            newLength: newContent.length,
+            totalContentLength: newContent.join('').length
+          });
+          
           return newStreams;
         });
       },
       onFlush: () => {
-        console.log(`Stream buffer for agent ${variationId} flushed`);
+        console.log('[STREAM-DEBUG] StreamBuffer flushed:', {
+          variationId,
+          timestamp: new Date().toISOString()
+        });
       }
     }, {
       tokensPerSecond: 50, // Smooth streaming rate
@@ -108,7 +128,7 @@ export function useAgentStream(): AgentStreamHook {
     streamBuffersRef.current.clear();
   }, []);
 
-  const startStream = useCallback((runId: string) => {
+  const startStream = useCallback((runId: string, backend?: 'kubectl' | 'redis') => {
     // Stop any existing stream
     stopStream();
     
@@ -118,9 +138,9 @@ export function useAgentStream(): AgentStreamHook {
     setIsStreaming(true);
     currentRunIdRef.current = runId;
 
-    // Check which streaming backend to use - prefer localStorage over env var
+    // Check which streaming backend to use - prefer parameter, then localStorage, then env var
     const storedBackend = typeof window !== 'undefined' ? localStorage.getItem('streamingBackend') : null;
-    const streamingBackend = storedBackend || process.env.NEXT_PUBLIC_STREAMING_BACKEND || 'redis';
+    const streamingBackend = backend || storedBackend || process.env.NEXT_PUBLIC_STREAMING_BACKEND || 'redis';
     const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
     
     // Use Redis endpoint if configured, otherwise use kubectl endpoint
@@ -129,7 +149,12 @@ export function useAgentStream(): AgentStreamHook {
       : `/api/v1/runs/${runId}/stream`;
     
     const streamUrl = `${apiBase}${streamPath}`;
-    console.log(`Starting SSE stream (${streamingBackend}) to:`, streamUrl);
+    console.log(`[STREAM-DEBUG] Starting SSE stream:`, {
+      backend: streamingBackend,
+      runId,
+      streamUrl,
+      timestamp: new Date().toISOString()
+    });
 
     try {
       const eventSource = new EventSource(streamUrl, {
@@ -137,7 +162,13 @@ export function useAgentStream(): AgentStreamHook {
       });
 
       eventSource.onopen = () => {
-        console.log('SSE connection opened for run:', runId);
+        console.log('[STREAM-DEBUG] SSE connection opened:', {
+          runId,
+          backend: streamingBackend,
+          readyState: eventSource.readyState,
+          url: eventSource.url,
+          timestamp: new Date().toISOString()
+        });
         setConnectionState('connected');
         setError(null);
         // Reset retry count on successful connection
@@ -149,8 +180,21 @@ export function useAgentStream(): AgentStreamHook {
       // The backend sends named events, not default messages
       // Handle agent output events
       eventSource.addEventListener('agent_output', (event) => {
+        console.log('[STREAM-DEBUG] Received agent_output event:', {
+          eventType: event.type,
+          eventData: event.data,
+          lastEventId: event.lastEventId,
+          timestamp: new Date().toISOString()
+        });
+        
         try {
           const data: StreamMessage = JSON.parse(event.data);
+          console.log('[STREAM-DEBUG] Parsed agent_output data:', {
+            variation_id: data.variation_id,
+            contentLength: data.content?.length || 0,
+            contentPreview: data.content?.substring(0, 100) + (data.content?.length > 100 ? '...' : ''),
+            timestamp: data.timestamp
+          });
           
           // Filter out JSON log entries - only show actual content
           let shouldDisplay = true;
@@ -172,67 +216,135 @@ export function useAgentStream(): AgentStreamHook {
           }
           
           if (shouldDisplay) {
+            console.log('[STREAM-DEBUG] Adding content to buffer:', {
+              variation_id: data.variation_id,
+              displayContentLength: displayContent.length,
+              displayContentPreview: displayContent.substring(0, 50) + (displayContent.length > 50 ? '...' : '')
+            });
+            
             // Get or create stream buffer for this variation
-            let buffer = streamBuffersRef.current.get(data.variation_id);
+            // Convert variation_id to number (Redis sends strings)
+            const variationId = typeof data.variation_id === 'string' ? parseInt(data.variation_id, 10) : data.variation_id;
+            let buffer = streamBuffersRef.current.get(variationId);
             if (!buffer) {
-              buffer = createStreamBuffer(data.variation_id);
+              console.log('[STREAM-DEBUG] Creating new stream buffer for variation:', variationId);
+              buffer = createStreamBuffer(variationId);
             }
             
             // Add content to the smooth streaming buffer
+            console.log('[STREAM-DEBUG] Calling buffer.add():', {
+              variationId: variationId,
+              contentLength: displayContent.length,
+              hasBuffer: !!buffer,
+              timestamp: new Date().toISOString()
+            });
             buffer.add(displayContent);
+          } else {
+            console.log('[STREAM-DEBUG] Skipping display of JSON log entry');
           }
         } catch (parseError) {
-          console.error('Failed to parse agent_output event:', parseError, 'Raw data:', event.data);
+          console.error('[STREAM-DEBUG] Failed to parse agent_output event:', {
+            error: parseError,
+            rawData: event.data,
+            eventType: event.type
+          });
         }
       });
 
       // Handle agent error events
       eventSource.addEventListener('agent_error', (event) => {
+        console.log('[STREAM-DEBUG] Received agent_error event:', {
+          eventType: event.type,
+          eventData: event.data,
+          timestamp: new Date().toISOString()
+        });
+        
         try {
           const data = JSON.parse(event.data);
-          console.error(`Agent ${data.variation_id} error:`, data.error);
+          console.error('[STREAM-DEBUG] Agent error:', {
+            variation_id: data.variation_id,
+            error: data.error,
+            timestamp: new Date().toISOString()
+          });
           
           // Add error to stream as a special message
           setStreams(prevStreams => {
             const newStreams = new Map(prevStreams);
-            const existing = newStreams.get(data.variation_id) || [];
-            newStreams.set(data.variation_id, [...existing, `ERROR: ${data.error}`]);
+            const variationId = typeof data.variation_id === 'string' ? parseInt(data.variation_id, 10) : data.variation_id;
+            const existing = newStreams.get(variationId) || [];
+            newStreams.set(variationId, [...existing, `ERROR: ${data.error}`]);
             return newStreams;
           });
         } catch (parseError) {
-          console.error('Failed to parse agent_error event:', parseError);
+          console.error('[STREAM-DEBUG] Failed to parse agent_error event:', {
+            error: parseError,
+            rawData: event.data
+          });
         }
       });
 
       // Handle agent complete events
       eventSource.addEventListener('agent_complete', (event) => {
+        console.log('[STREAM-DEBUG] Received agent_complete event:', {
+          eventType: event.type,
+          eventData: event.data,
+          timestamp: new Date().toISOString()
+        });
+        
         try {
           const data = JSON.parse(event.data);
-          console.log(`Agent ${data.variation_id} completed`);
+          console.log('[STREAM-DEBUG] Agent completed:', {
+            variation_id: data.variation_id,
+            timestamp: new Date().toISOString()
+          });
           // Complete the stream buffer for this variation
-          const buffer = streamBuffersRef.current.get(data.variation_id);
+          const variationId = typeof data.variation_id === 'string' ? parseInt(data.variation_id, 10) : data.variation_id;
+          const buffer = streamBuffersRef.current.get(variationId);
           if (buffer) {
             buffer.complete();
           }
         } catch (parseError) {
-          console.error('Failed to parse agent_complete event:', parseError);
+          console.error('[STREAM-DEBUG] Failed to parse agent_complete event:', {
+            error: parseError,
+            rawData: event.data
+          });
         }
       });
 
       // Handle run complete event
       eventSource.addEventListener('run_complete', (event) => {
-        console.log('Run completed, stopping stream');
+        console.log('[STREAM-DEBUG] Received run_complete event:', {
+          eventType: event.type,
+          eventData: event.data,
+          timestamp: new Date().toISOString()
+        });
+        console.log('[STREAM-DEBUG] Run completed, stopping stream');
         stopStream();
       });
 
       // Handle heartbeat events
       eventSource.addEventListener('heartbeat', (event) => {
-        console.log('Heartbeat received:', event.data);
+        console.log('[STREAM-DEBUG] Heartbeat received:', {
+          eventType: event.type,
+          eventData: event.data,
+          timestamp: new Date().toISOString()
+        });
         // Heartbeat keeps connection alive, no action needed
       });
 
       eventSource.onerror = (event) => {
-        console.error('SSE connection error:', event);
+        console.error('[STREAM-DEBUG] SSE connection error:', {
+          error: event,
+          readyState: eventSource.readyState,
+          url: eventSource.url,
+          backend: streamingBackend,
+          timestamp: new Date().toISOString(),
+          readyStateMapping: {
+            0: 'CONNECTING',
+            1: 'OPEN',
+            2: 'CLOSED'
+          }[eventSource.readyState]
+        });
         setError('Streaming connection failed');
         setConnectionState('error');
         setIsStreaming(false);
@@ -253,7 +365,14 @@ export function useAgentStream(): AgentStreamHook {
           
           if (retryCount < maxRetries) {
             const delay = Math.min(reconnectDelay * Math.pow(2, retryCount), 30000);
-            console.log(`Attempting to reconnect SSE (${streamingBackend}) for run: ${runId} in ${delay}ms (retry ${retryCount + 1}/${maxRetries})`);
+            console.log('[STREAM-DEBUG] Attempting SSE reconnection:', {
+              backend: streamingBackend,
+              runId,
+              retryCount: retryCount + 1,
+              maxRetries,
+              delayMs: delay,
+              timestamp: new Date().toISOString()
+            });
             
             setTimeout(() => {
               if (currentRunIdRef.current === runId) {
@@ -262,16 +381,54 @@ export function useAgentStream(): AgentStreamHook {
               }
             }, delay);
           } else {
-            console.error(`Max reconnection attempts (${maxRetries}) reached for ${streamingBackend} streaming`);
+            console.error('[STREAM-DEBUG] Max reconnection attempts reached:', {
+              backend: streamingBackend,
+              maxRetries,
+              runId,
+              timestamp: new Date().toISOString()
+            });
             setError(`Unable to maintain connection after ${maxRetries} attempts`);
           }
         }
       };
 
+      // Add a general message handler to catch any unexpected events
+      eventSource.onmessage = (event) => {
+        console.warn('[STREAM-DEBUG] Received unexpected default message event:', {
+          eventType: 'message',
+          eventData: event.data,
+          lastEventId: event.lastEventId,
+          timestamp: new Date().toISOString()
+        });
+      };
+
+      // Log all events for debugging
+      const originalAddEventListener = eventSource.addEventListener;
+      eventSource.addEventListener = function(type: string, listener: any, options?: any) {
+        console.log('[STREAM-DEBUG] Adding event listener:', {
+          eventType: type,
+          timestamp: new Date().toISOString()
+        });
+        return originalAddEventListener.call(this, type, listener, options);
+      };
+
       eventSourceRef.current = eventSource;
+      
+      console.log('[STREAM-DEBUG] EventSource created and stored:', {
+        readyState: eventSource.readyState,
+        url: eventSource.url,
+        withCredentials: eventSource.withCredentials,
+        timestamp: new Date().toISOString()
+      });
 
     } catch (initError) {
-      console.error('Failed to initialize SSE connection:', initError);
+      console.error('[STREAM-DEBUG] Failed to initialize SSE connection:', {
+        error: initError,
+        backend: streamingBackend,
+        runId,
+        streamUrl,
+        timestamp: new Date().toISOString()
+      });
       setError('Failed to start streaming connection');
       setConnectionState('error');
       setIsStreaming(false);
@@ -317,6 +474,31 @@ export function useAgentStream(): AgentStreamHook {
     };
   }, [stopStream]);
 
+  // Debug helper - can be called from browser console via React DevTools
+  const debugState = useCallback(() => {
+    console.log('[STREAM-DEBUG] Current state:', {
+      runId: currentRunIdRef.current,
+      isStreaming,
+      connectionState,
+      error,
+      eventSourceExists: !!eventSourceRef.current,
+      eventSourceReadyState: eventSourceRef.current?.readyState,
+      streamCount: streams.size,
+      streamBufferCount: streamBuffersRef.current.size,
+      streams: Array.from(streams.entries()).map(([id, content]) => ({
+        variationId: id,
+        contentItems: content.length,
+        totalLength: content.join('').length
+      })),
+      timestamp: new Date().toISOString()
+    });
+  }, [streams, isStreaming, connectionState, error]);
+
+  // Expose debug function globally for easier access
+  if (typeof window !== 'undefined') {
+    (window as any).__debugAgentStream = debugState;
+  }
+
   return {
     streams,
     isStreaming,
@@ -328,6 +510,7 @@ export function useAgentStream(): AgentStreamHook {
     selectAgent,
     pauseStream,
     resumeStream,
+    debugState, // Include in return for component access
   };
 }
 

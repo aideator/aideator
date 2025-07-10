@@ -1,6 +1,7 @@
 from typing import Optional
 from datetime import datetime
 import asyncio
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -133,62 +134,91 @@ async def stream_run_redis(
     
     async def event_generator():
         """Generate SSE events from Redis pub/sub."""
+        logger.info(f"[REDIS-STREAM] Starting event generator for run {run_id}")
+        
         # Use asyncio.Queue to merge Redis messages and heartbeats
         event_queue = asyncio.Queue()
         
         async def redis_listener():
             """Listen to Redis messages and put them in the queue."""
+            logger.info(f"[REDIS-STREAM] Starting Redis listener for run {run_id}")
             try:
+                logger.info(f"[REDIS-STREAM] Subscribing to Redis channels for run {run_id}")
+                message_count = 0
                 async for message in redis_service.subscribe_to_run(run_id):
+                    message_count += 1
+                    logger.info(f"[REDIS-STREAM] Received message #{message_count} from Redis: type={message.get('type')}, channel={message.get('channel')}")
+                    logger.debug(f"[REDIS-STREAM] Message content: {message}")
                     await event_queue.put(("message", message))
+                logger.info(f"[REDIS-STREAM] Redis subscription ended for run {run_id}")
             except Exception as e:
+                logger.error(f"[REDIS-STREAM] Redis listener error for run {run_id}: {e}", exc_info=True)
                 await event_queue.put(("error", str(e)))
         
         async def heartbeat_sender():
             """Send periodic heartbeats."""
+            logger.info(f"[REDIS-STREAM] Starting heartbeat sender for run {run_id}")
+            heartbeat_count = 0
             while True:
                 await asyncio.sleep(30)
+                heartbeat_count += 1
+                logger.debug(f"[REDIS-STREAM] Sending heartbeat #{heartbeat_count} for run {run_id}")
                 await event_queue.put(("heartbeat", None))
         
         # Start background tasks
+        logger.info(f"[REDIS-STREAM] Starting background tasks for run {run_id}")
         redis_task = asyncio.create_task(redis_listener())
         heartbeat_task = asyncio.create_task(heartbeat_sender())
         
         try:
+            logger.info(f"[REDIS-STREAM] Starting main event loop for run {run_id}")
+            event_count = 0
             while True:
+                logger.debug(f"[REDIS-STREAM] Waiting for next event for run {run_id}")
                 event_type, data = await event_queue.get()
+                event_count += 1
+                logger.info(f"[REDIS-STREAM] Processing event #{event_count} for run {run_id}: type={event_type}")
                 
                 if event_type == "heartbeat":
+                    logger.debug(f"[REDIS-STREAM] Yielding heartbeat event for run {run_id}")
                     yield {
                         "event": "heartbeat",
-                        "data": {"timestamp": datetime.utcnow().isoformat()}
+                        "data": json.dumps({"timestamp": datetime.utcnow().isoformat()})
                     }
                 
                 elif event_type == "error":
+                    logger.error(f"[REDIS-STREAM] Yielding error event for run {run_id}: {data}")
                     yield {
                         "event": "error",
-                        "data": {"message": data}
+                        "data": json.dumps({"message": data})
                     }
                     break
                 
                 elif event_type == "message":
                     message = data
+                    logger.info(f"[REDIS-STREAM] Processing Redis message for run {run_id}: type={message.get('type')}, channel={message.get('channel')}")
+                    logger.debug(f"[REDIS-STREAM] Full message data: {message}")
+                    
                     # Convert Redis message to SSE format
                     if message["type"] == "output":
                         # Extract variation_id from channel
                         parts = message["channel"].split(":")
+                        logger.debug(f"[REDIS-STREAM] Channel parts: {parts}")
                         if len(parts) >= 4:
                             variation_id = parts[3]
+                            logger.info(f"[REDIS-STREAM] Extracted variation_id {variation_id} from channel")
                             data = message["data"]
                             content = data.get("content", "") if isinstance(data, dict) else str(data)
+                            logger.debug(f"[REDIS-STREAM] Output content length: {len(content)} chars")
                             
+                            logger.info(f"[REDIS-STREAM] Yielding agent_output event for run {run_id}, variation {variation_id}")
                             yield {
                                 "event": "agent_output",
-                                "data": {
+                                "data": json.dumps({
                                     "variation_id": variation_id,
                                     "content": content,
                                     "timestamp": data.get("timestamp") if isinstance(data, dict) else None
-                                }
+                                })
                             }
                     
                     elif message["type"] == "status":
@@ -199,12 +229,12 @@ async def stream_run_redis(
                             variation_id = data.get("metadata", {}).get("variation_id", 0)
                             yield {
                                 "event": "agent_complete",
-                                "data": {"variation_id": variation_id}
+                                "data": json.dumps({"variation_id": variation_id})
                             }
                         elif status in ["completed", "failed"]:
                             yield {
                                 "event": "run_complete",
-                                "data": {"status": status}
+                                "data": json.dumps({"status": status})
                             }
                     
                     elif message["type"] == "logs":
@@ -212,13 +242,14 @@ async def stream_run_redis(
                         logger.debug(f"Received log message: {message}")
                     
         except Exception as e:
-            logger.error(f"Error in Redis stream: {e}")
+            logger.error(f"[REDIS-STREAM] Critical error in event generator for run {run_id}: {e}", exc_info=True)
             yield {
                 "event": "error",
-                "data": {"message": str(e)}
+                "data": json.dumps({"message": str(e)})
             }
         finally:
             # Clean up background tasks
+            logger.info(f"[REDIS-STREAM] Cleaning up background tasks for run {run_id}")
             redis_task.cancel()
             heartbeat_task.cancel()
             try:
