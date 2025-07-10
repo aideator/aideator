@@ -117,6 +117,114 @@ class AIdeatorAgent:
             
         return available_keys
     
+    def _get_model_provider(self, model_name: str) -> str:
+        """Get the provider for a given model name."""
+        model_lower = model_name.lower()
+        
+        if model_lower.startswith(("gpt", "openai", "o1")):
+            return "openai"
+        elif model_lower.startswith(("claude", "anthropic")):
+            return "anthropic" 
+        elif model_lower.startswith(("gemini", "google")):
+            return "gemini"
+        elif model_lower.startswith(("mistral", "mixtral")):
+            return "mistral"
+        elif model_lower.startswith("cohere"):
+            return "cohere"
+        elif model_lower.startswith("groq"):
+            return "groq"
+        elif model_lower.startswith("perplexity"):
+            return "perplexity"
+        elif model_lower.startswith("deepseek"):
+            return "deepseek"
+        else:
+            # Default to openai for unknown models
+            return "openai"
+    
+    def _validate_model_credentials(self, model_name: str) -> tuple[bool, str]:
+        """Validate that credentials are available for the requested model.
+        
+        Returns:
+            tuple: (is_valid, error_message)
+        """
+        provider = self._get_model_provider(model_name)
+        
+        if not self.available_api_keys.get(provider, False):
+            provider_names = {
+                "openai": "OpenAI",
+                "anthropic": "Anthropic (Claude)",
+                "gemini": "Google Gemini",
+                "mistral": "Mistral AI",
+                "cohere": "Cohere",
+                "groq": "Groq",
+                "perplexity": "Perplexity",
+                "deepseek": "DeepSeek"
+            }
+            
+            readable_provider = provider_names.get(provider, provider.title())
+            
+            error_msg = f"""
+🚫 **Missing API Key for {readable_provider}**
+
+The model '{model_name}' requires a {readable_provider} API key, but none was found.
+
+**To fix this issue:**
+
+1. **Get an API key** from {readable_provider}:
+   - OpenAI: https://platform.openai.com/api-keys
+   - Anthropic: https://console.anthropic.com/
+   - Google Gemini: https://ai.google.dev/
+   - Mistral AI: https://console.mistral.ai/
+   - Cohere: https://dashboard.cohere.ai/
+   - Groq: https://console.groq.com/
+   - Perplexity: https://www.perplexity.ai/settings/api
+   - DeepSeek: https://platform.deepseek.com/
+
+2. **Add the secret to Kubernetes**:
+   ```bash
+   kubectl create secret generic {provider}-secret \\
+     --from-literal=api-key="your-api-key-here" \\
+     -n aideator
+   ```
+
+3. **Try again** - The model should work once the API key is configured.
+
+**Available models:** Try using a model from a provider that has been configured with API keys.
+
+{self._get_available_models_suggestion()}
+"""
+            return False, error_msg
+            
+        return True, ""
+    
+    def _get_available_models_suggestion(self) -> str:
+        """Get a helpful suggestion of available models based on configured API keys."""
+        available_providers = [provider for provider, available in self.available_api_keys.items() if available]
+        
+        if not available_providers:
+            return "No API keys are currently configured. Please add at least one API key to use any models."
+        
+        suggestions = []
+        for provider in available_providers:
+            if provider == "openai":
+                suggestions.append("- OpenAI: gpt-4o, gpt-4o-mini, gpt-3.5-turbo")
+            elif provider == "anthropic":
+                suggestions.append("- Anthropic: claude-3-5-sonnet, claude-3-haiku")
+            elif provider == "gemini":
+                suggestions.append("- Google: gemini-1.5-pro, gemini-1.5-flash")
+            elif provider == "mistral":
+                suggestions.append("- Mistral: mistral-large-latest, mistral-small-latest")
+            elif provider == "cohere":
+                suggestions.append("- Cohere: command-r-plus, command-r")
+            elif provider == "groq":
+                suggestions.append("- Groq: llama3-8b-8192")
+            elif provider == "perplexity":
+                suggestions.append("- Perplexity: llama-3.1-sonar-small-128k-online")
+            elif provider == "deepseek":
+                suggestions.append("- DeepSeek: deepseek-chat")
+        
+        return f"**Available models with configured API keys:**\n" + "\n".join(suggestions)
+    
     def log(self, message: str, level: str = "INFO", **kwargs):
         """
         Structured logging with JSON output.
@@ -155,6 +263,17 @@ class AIdeatorAgent:
     async def run(self) -> None:
         """Main agent execution flow."""
         self.log(f"🚀 Starting AIdeator Agent", "INFO", config=self.config)
+        
+        # Log available API keys for debugging
+        self.log("🔑 API Key availability check", "INFO", available_keys=self.available_api_keys)
+        
+        # Validate model credentials before proceeding
+        is_valid, error_msg = self._validate_model_credentials(self.config["model"])
+        if not is_valid:
+            # Output the user-friendly error message
+            print(error_msg, flush=True)
+            self.log_error(f"Missing API key for model {self.config['model']}", None)
+            raise RuntimeError(f"Missing API key for model {self.config['model']}")
         
         # Log agent mode
         agent_mode = os.getenv("AGENT_MODE", "litellm")
@@ -543,21 +662,109 @@ Be thorough but concise in your response.
             
             # Call THROUGH the LiteLLM Gateway
             # The gateway will handle routing to the actual provider
-            response = await acompletion(
-                model=self.config['model'],  # Use model name directly, Gateway handles routing
-                max_tokens=self.config["max_tokens"],
-                temperature=self.config["temperature"],
-                messages=[
-                    {
-                        "role": "user",
-                        "content": full_prompt
-                    }
-                ],
-                stream=True,  # Enable streaming
-                api_base=self.gateway_url,  # Point to LiteLLM Gateway service
-                api_key=self.gateway_key,  # Use Gateway master key
-                # The gateway will use its own configured API keys to call providers
-            )
+            try:
+                response = await acompletion(
+                    model=self.config['model'],  # Use model name directly, Gateway handles routing
+                    max_tokens=self.config["max_tokens"],
+                    temperature=self.config["temperature"],
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": full_prompt
+                        }
+                    ],
+                    stream=True,  # Enable streaming
+                    api_base=self.gateway_url,  # Point to LiteLLM Gateway service
+                    api_key=self.gateway_key,  # Use Gateway master key
+                    # The gateway will use its own configured API keys to call providers
+                )
+            except Exception as api_error:
+                # Handle specific API errors with user-friendly messages
+                error_str = str(api_error).lower()
+                
+                if "authentication" in error_str or "api key" in error_str or "unauthorized" in error_str:
+                    provider = self._get_model_provider(self.config['model'])
+                    error_message = f"""
+🔑 **Authentication Error**
+
+The {provider.title()} API rejected the request due to authentication issues.
+
+**Possible causes:**
+- API key is invalid or expired
+- API key lacks necessary permissions
+- Model '{self.config['model']}' requires a different tier of access
+
+**Next steps:**
+1. Verify your {provider.title()} API key is valid
+2. Check if your API key has access to model '{self.config['model']}'
+3. Try using a different model from the same provider
+
+Original error: {str(api_error)}
+"""
+                    print(error_message, flush=True)
+                    raise RuntimeError(f"Authentication failed for {provider}: {api_error}")
+                    
+                elif "rate limit" in error_str or "quota" in error_str:
+                    provider = self._get_model_provider(self.config['model'])
+                    error_message = f"""
+⏱️ **Rate Limit Exceeded**
+
+The {provider.title()} API rate limit has been exceeded.
+
+**What this means:**
+- Too many requests have been made to the API
+- Your account may have reached its usage quota
+
+**Next steps:**
+1. Wait a few minutes and try again
+2. Check your {provider.title()} account usage limits
+3. Consider upgrading your API plan if needed
+
+Original error: {str(api_error)}
+"""
+                    print(error_message, flush=True)
+                    raise RuntimeError(f"Rate limit exceeded for {provider}: {api_error}")
+                    
+                elif "model" in error_str and ("not found" in error_str or "does not exist" in error_str):
+                    error_message = f"""
+🤖 **Model Not Available**
+
+The model '{self.config['model']}' is not available or does not exist.
+
+**Possible causes:**
+- Model name is misspelled
+- Model is not available in your region
+- Model requires special access
+
+**Next steps:**
+1. Check the model name spelling
+2. Try a different model like 'gpt-4o-mini' or 'claude-3-haiku'
+3. Verify the model is available through your API provider
+
+Original error: {str(api_error)}
+"""
+                    print(error_message, flush=True)
+                    raise RuntimeError(f"Model not available: {api_error}")
+                    
+                else:
+                    # Generic error
+                    error_message = f"""
+⚠️ **API Request Failed**
+
+An error occurred while calling the model API.
+
+**Error details:**
+{str(api_error)}
+
+**Next steps:**
+1. Check if the API service is available
+2. Verify your internet connection
+3. Try again in a few moments
+
+If the problem persists, contact support with the error details above.
+"""
+                    print(error_message, flush=True)
+                    raise RuntimeError(f"API request failed: {api_error}")
             
             async for chunk in response:
                 # Extract text from chunk

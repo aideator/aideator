@@ -34,16 +34,49 @@ spec:
                 secretKeyRef:
                   name: openai-secret
                   key: api-key
+                  optional: true
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: anthropic-secret
                   key: api-key
+                  optional: true
             - name: GEMINI_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: gemini-secret
                   key: api-key
+                  optional: true
+            - name: MISTRAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mistral-secret
+                  key: api-key
+                  optional: true
+            - name: COHERE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: cohere-secret
+                  key: api-key
+                  optional: true
+            - name: GROQ_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: groq-secret
+                  key: api-key
+                  optional: true
+            - name: PERPLEXITY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: perplexity-secret
+                  key: api-key
+                  optional: true
+            - name: DEEPSEEK_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: deepseek-secret
+                  key: api-key
+                  optional: true
             - name: AGENT_MODE
               value: "{agent_mode}"
             - name: REPO_URL

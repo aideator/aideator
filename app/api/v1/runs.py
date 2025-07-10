@@ -22,6 +22,7 @@ from app.schemas.runs import (
     RunListItem,
     SelectWinnerRequest,
 )
+from app.services.model_catalog import model_catalog
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -50,6 +51,41 @@ async def create_run(
     """
     # Generate run ID (use hyphens for Kubernetes compatibility)
     run_id = f"run-{uuid.uuid4().hex}"
+    
+    # Validate that requested models have available API keys
+    available_keys = {
+        "openai": bool(settings.openai_api_key and settings.openai_api_key.strip()),
+        "anthropic": bool(settings.anthropic_api_key and settings.anthropic_api_key.strip()),
+        "gemini": bool(settings.gemini_api_key and settings.gemini_api_key.strip()),
+    }
+    
+    unavailable_models = []
+    for variant in request.model_variants:
+        is_valid, error_msg = model_catalog.validate_model_access(
+            variant.model_definition_id, available_keys
+        )
+        if not is_valid:
+            unavailable_models.append({
+                "model": variant.model_definition_id,
+                "error": error_msg
+            })
+    
+    if unavailable_models:
+        # Get available alternatives
+        available_models = model_catalog.get_available_models_for_keys(available_keys)
+        available_model_names = [model.model_name for model in available_models[:5]]
+        
+        error_detail = {
+            "message": "Some requested models are not available due to missing API keys",
+            "unavailable_models": unavailable_models,
+            "available_models": available_model_names,
+            "suggestion": f"Try using one of these available models: {', '.join(available_model_names)}" if available_model_names else "No models are currently available. Please configure API keys."
+        }
+        
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_detail
+        )
     
     # Handle session and turn creation
     session_id = request.session_id

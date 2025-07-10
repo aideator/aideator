@@ -874,6 +874,53 @@ class ModelCatalogService:
         """Get a model by its LiteLLM name."""
         return self._models.get(litellm_model_name)
     
+    def validate_model_access(self, model_name: str, available_keys: dict) -> tuple[bool, str]:
+        """Validate that a model can be accessed with available API keys.
+        
+        Args:
+            model_name: The model name to validate
+            available_keys: Dict of provider -> bool indicating available API keys
+            
+        Returns:
+            tuple: (is_valid, error_message)
+        """
+        # Find the model
+        model_info = None
+        for model in self._models.values():
+            if (model.model_name == model_name or 
+                model.litellm_model_name == model_name or
+                model.display_name == model_name):
+                model_info = model
+                break
+        
+        if not model_info:
+            available_models = self._get_available_models_list(available_keys)
+            return False, f"Model '{model_name}' not found. Available models: {', '.join(available_models[:5])}..."
+        
+        # Check if API key is required and available
+        if model_info.requires_api_key:
+            provider_key = model_info.provider.value
+            if not available_keys.get(provider_key, False):
+                return False, f"Model '{model_name}' requires {model_info.provider.value.title()} API key, but none is configured."
+        
+        return True, ""
+    
+    def _get_available_models_list(self, available_keys: dict) -> List[str]:
+        """Get list of available model names based on configured API keys."""
+        available_models = []
+        for model in self._models.values():
+            if not model.requires_api_key or available_keys.get(model.provider.value, False):
+                available_models.append(model.model_name)
+        return sorted(available_models)
+    
+    def get_available_models_for_keys(self, available_keys: dict) -> List[ModelInfo]:
+        """Get models that can be used with the available API keys."""
+        available_models = []
+        for model in self._models.values():
+            if not model.requires_api_key or available_keys.get(model.provider.value, False):
+                available_models.append(model)
+        return available_models
+    
     def get_providers(self) -> List[ProviderType]:
         """Get all providers that have models."""
         return list(set(model.provider for model in self._models.values()))

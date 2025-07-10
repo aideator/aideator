@@ -29,9 +29,11 @@ from app.schemas.models import (
     ProviderSummary,
 )
 from app.services.model_catalog import model_catalog
+from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+settings = get_settings()
 
 
 @router.get("/catalog", response_model=ModelCatalogResponse)
@@ -473,3 +475,104 @@ async def get_capabilities(
     except Exception as e:
         logger.error(f"Error getting capabilities: {e}")
         raise HTTPException(status_code=500, detail="Failed to get capabilities")
+
+
+@router.get("/available", response_model=ModelCatalogResponse)
+async def get_available_models(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """
+    Get models that are currently available based on configured Kubernetes secrets.
+    This endpoint checks which API keys are actually available in the cluster.
+    """
+    try:
+        import os
+        
+        # Check which API keys are available in the environment
+        # These would typically be mounted from Kubernetes secrets
+        available_keys = {}
+        
+        # Check for API keys that are configured
+        api_key_mapping = {
+            ProviderType.OPENAI: settings.openai_api_key,
+            ProviderType.ANTHROPIC: settings.anthropic_api_key,
+            ProviderType.GEMINI: settings.gemini_api_key,
+        }
+        
+        for provider, api_key in api_key_mapping.items():
+            available_keys[provider] = bool(api_key and api_key.strip() and len(api_key) > 5)
+        
+        # Get models that can be used with available keys
+        available_models = model_catalog.get_available_models_for_keys(
+            {provider.value: available for provider, available in available_keys.items()}
+        )
+        
+        # Convert to response format
+        model_responses = []
+        for model in available_models:
+            model_response = ModelDefinitionResponse(
+                id=f"model_{model.model_name.replace('-', '_').replace('.', '_')}_{model.provider.value}",
+                provider=model.provider,
+                model_name=model.model_name,
+                litellm_model_name=model.litellm_model_name,
+                display_name=model.display_name,
+                description=model.description,
+                context_window=model.context_window,
+                max_output_tokens=model.max_output_tokens,
+                input_price_per_1m_tokens=model.input_price_per_1m_tokens,
+                output_price_per_1m_tokens=model.output_price_per_1m_tokens,
+                capabilities=model.capabilities,
+                requires_api_key=model.requires_api_key,
+                requires_region=model.requires_region,
+                requires_project_id=model.requires_project_id,
+                is_active=True,
+            )
+            model_responses.append(model_response)
+        
+        # Create provider summaries for available providers only
+        provider_summaries = []
+        available_providers = set(model.provider for model in available_models)
+        
+        provider_names = {
+            ProviderType.OPENAI: "OpenAI",
+            ProviderType.ANTHROPIC: "Anthropic",
+            ProviderType.GEMINI: "Google Gemini",
+            ProviderType.VERTEX_AI: "Google Vertex AI",
+            ProviderType.MISTRAL: "Mistral AI",
+            ProviderType.COHERE: "Cohere",
+            ProviderType.BEDROCK: "AWS Bedrock",
+            ProviderType.AZURE: "Azure OpenAI",
+            ProviderType.HUGGINGFACE: "Hugging Face",
+            ProviderType.GROQ: "Groq",
+            ProviderType.PERPLEXITY: "Perplexity",
+            ProviderType.DEEPSEEK: "DeepSeek",
+            ProviderType.TOGETHER: "Together AI",
+            ProviderType.OLLAMA: "Ollama",
+        }
+        
+        for provider in available_providers:
+            provider_models = [m for m in model_responses if m.provider == provider]
+            provider_summary = ProviderSummary(
+                provider=provider,
+                display_name=provider_names.get(provider, provider.value.title()),
+                description=f"Available {provider.value.title()} models",
+                requires_api_key=any(m.requires_api_key for m in provider_models),
+                model_count=len(provider_models),
+                user_has_credentials=available_keys.get(provider, False),
+            )
+            provider_summaries.append(provider_summary)
+        
+        # Sort providers by name
+        provider_summaries.sort(key=lambda x: x.display_name)
+        
+        return ModelCatalogResponse(
+            models=model_responses,
+            providers=provider_summaries,
+            total_models=len(model_responses),
+            available_providers=len(provider_summaries),
+        )
+    
+    except Exception as e:
+        logger.error(f"Error getting available models: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get available models")
