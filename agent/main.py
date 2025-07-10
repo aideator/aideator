@@ -34,12 +34,16 @@ class AIdeatorAgent:
         
         # LLM configuration
         self.config = {
-            "model": os.getenv("MODEL", "gpt-4o-mini"),
+            "model": os.getenv("MODEL", "gpt-4"),
             "temperature": float(os.getenv("TEMPERATURE", "0.7")),
             "max_tokens": int(os.getenv("MAX_TOKENS", "4000")),
         }
         
-        # API key setup
+        # LiteLLM Gateway configuration
+        self.gateway_url = os.getenv("LITELLM_GATEWAY_URL", "http://aideator-litellm:4000")
+        self.gateway_key = os.getenv("LITELLM_GATEWAY_KEY", "sk-1234")
+        
+        # API key setup (for direct calls if needed)
         api_key = os.getenv("OPENAI_API_KEY")
         if api_key:
             os.environ["OPENAI_API_KEY"] = api_key
@@ -122,10 +126,11 @@ class AIdeatorAgent:
         gemini_version = self._get_cli_version("gemini")
         self.log(f"💎 Gemini CLI version: {gemini_version}", "INFO", gemini_version=gemini_version)
         
-        # Log LiteLLM SDK configuration
-        self.log("🔧 Using LiteLLM SDK", "INFO", 
-                 provider="openai",
-                 note="Direct SDK usage - no proxy needed")
+        # Log LiteLLM Gateway configuration
+        self.log("🔧 Using LiteLLM Gateway", "INFO", 
+                 gateway_url=self.gateway_url,
+                 model=self.config["model"],
+                 note="Routing through LiteLLM Gateway for unified API access")
         
         # Log file location to file only, not stdout
         self.log(f"Debug logs location: {self.log_file}", "INFO")
@@ -414,15 +419,17 @@ Please provide a comprehensive analysis and recommendations. Focus on:
 Be thorough but concise in your response.
 """
             
-            # Make API call via LiteLLM with streaming
+            # Make API call via LiteLLM Gateway with streaming
             self.log("Starting LLM streaming", "INFO", step="streaming_start")
             
             response_text = ""
             chunk_count = 0
             buffer = ""
             
-            async for chunk in await acompletion(
-                model=f"openai/{self.config['model']}",
+            # Call THROUGH the LiteLLM Gateway
+            # The gateway will handle routing to the actual provider
+            response = await acompletion(
+                model=self.config['model'],  # Use model name directly, Gateway handles routing
                 max_tokens=self.config["max_tokens"],
                 temperature=self.config["temperature"],
                 messages=[
@@ -431,8 +438,13 @@ Be thorough but concise in your response.
                         "content": full_prompt
                     }
                 ],
-                stream=True  # Enable streaming
-            ):
+                stream=True,  # Enable streaming
+                api_base=self.gateway_url,  # Point to LiteLLM Gateway service
+                api_key=self.gateway_key,  # Use Gateway master key
+                # The gateway will use its own configured API keys to call providers
+            )
+            
+            async for chunk in response:
                 # Extract text from chunk
                 if chunk.choices and chunk.choices[0].delta.content:
                     chunk_text = chunk.choices[0].delta.content

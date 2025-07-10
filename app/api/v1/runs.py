@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.database import get_session
-from app.core.deps import get_current_user_from_api_key, get_orchestrator
+from app.core.dependencies import CurrentUserAPIKey
+from app.core.deps import get_orchestrator
 from app.core.logging import get_logger
 from app.models.run import Run, RunStatus
 from app.models.user import User
@@ -35,9 +36,9 @@ router = APIRouter()
 async def create_run(
     request: CreateRunRequest,
     background_tasks: BackgroundTasks,
+    current_user: CurrentUserAPIKey,
     orchestrator = Depends(get_orchestrator),
     db: AsyncSession = Depends(get_session),
-    current_user: Optional[User] = Depends(get_current_user_from_api_key),
 ) -> CreateRunResponse:
     """
     Create a new agent run that will spawn N containerized LLM agents.
@@ -53,9 +54,13 @@ async def create_run(
         id=run_id,
         github_url=str(request.github_url),
         prompt=request.prompt,
-        variations=request.variations,
-        agent_config=request.agent_config.model_dump() if request.agent_config else {},
-        user_id=current_user.id if current_user else None,
+        variations=len(request.model_variants),  # Number of model variants
+        agent_config={
+            "model_variants": [variant.model_dump() for variant in request.model_variants],
+            "use_claude_code": request.use_claude_code,
+            "agent_mode": request.agent_mode,
+        },
+        user_id=current_user.id,
         status=RunStatus.PENDING,
     )
     
@@ -65,8 +70,8 @@ async def create_run(
     logger.info(
         "run_created",
         run_id=run_id,
-        user_id=current_user.id if current_user else None,
-        variations=request.variations,
+        user_id=current_user.id,
+        variations=len(request.model_variants),
     )
     
     # Schedule background orchestration
@@ -75,8 +80,8 @@ async def create_run(
         run_id=run_id,
         repo_url=str(request.github_url),
         prompt=request.prompt,
-        variations=request.variations,
-        agent_config=request.agent_config,
+        variations=len(request.model_variants),
+        agent_config=None,  # agent_config is stored in the run record
         agent_mode=request.agent_mode,
         db_session=db,
         use_batch_job=False,  # Use individual jobs for now
@@ -86,7 +91,7 @@ async def create_run(
         run_id=run_id,
         stream_url=f"{settings.api_v1_prefix}/runs/{run_id}/stream",
         status="accepted",
-        estimated_duration_seconds=request.variations * 40,  # Rough estimate
+        estimated_duration_seconds=len(request.model_variants) * 40,  # Rough estimate
     )
 
 
@@ -96,19 +101,18 @@ async def create_run(
     summary="List runs",
 )
 async def list_runs(
+    current_user: CurrentUserAPIKey,
+    db: AsyncSession = Depends(get_session),
     status: Optional[RunStatus] = Query(None, description="Filter by status"),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=100, description="Items per page"),
-    db: AsyncSession = Depends(get_session),
-    current_user: Optional[User] = Depends(get_current_user_from_api_key),
 ) -> PaginatedResponse:
     """List runs with optional filtering."""
     # Build query
     query = select(Run).order_by(Run.created_at.desc())
     
     # Apply filters
-    if current_user:
-        query = query.where(Run.user_id == current_user.id)
+    query = query.where(Run.user_id == current_user.id)
     if status:
         query = query.where(Run.status == status)
     
@@ -144,15 +148,14 @@ async def list_runs(
 )
 async def get_run(
     run_id: str,
+    current_user: CurrentUserAPIKey,
     db: AsyncSession = Depends(get_session),
-    current_user: Optional[User] = Depends(get_current_user_from_api_key),
 ) -> Run:
     """Get detailed information about a specific run."""
     query = select(Run).where(Run.id == run_id)
     
-    # Filter by user if authenticated
-    if current_user:
-        query = query.where(Run.user_id == current_user.id)
+    # Filter by user
+    query = query.where(Run.user_id == current_user.id)
     
     result = await db.execute(query)
     run = result.scalar_one_or_none()
@@ -174,15 +177,14 @@ async def get_run(
 async def select_winner(
     run_id: str,
     request: SelectWinnerRequest,
+    current_user: CurrentUserAPIKey,
     db: AsyncSession = Depends(get_session),
-    current_user: Optional[User] = Depends(get_current_user_from_api_key),
 ) -> Run:
     """Select the winning variation for a completed run."""
     query = select(Run).where(Run.id == run_id)
     
-    # Filter by user if authenticated
-    if current_user:
-        query = query.where(Run.user_id == current_user.id)
+    # Filter by user
+    query = query.where(Run.user_id == current_user.id)
     
     result = await db.execute(query)
     run = result.scalar_one_or_none()
@@ -226,15 +228,14 @@ async def select_winner(
 )
 async def cancel_run(
     run_id: str,
+    current_user: CurrentUserAPIKey,
     db: AsyncSession = Depends(get_session),
-    current_user: Optional[User] = Depends(get_current_user_from_api_key),
 ) -> None:
     """Cancel a pending or running run."""
     query = select(Run).where(Run.id == run_id)
     
-    # Filter by user if authenticated
-    if current_user:
-        query = query.where(Run.user_id == current_user.id)
+    # Filter by user
+    query = query.where(Run.user_id == current_user.id)
     
     result = await db.execute(query)
     run = result.scalar_one_or_none()

@@ -14,6 +14,7 @@ export function StreamingExample() {
     streams, 
     isStreaming, 
     connectionState,
+    currentRunId,
     startStream, 
     stopStream, 
     clearStreams,
@@ -140,6 +141,7 @@ export function StreamingExample() {
             content={content}
             isStreaming={isStreaming}
             onSelect={() => handleSelectAgent(variationId)}
+            runId={currentRunId}
           />
         ))}
         
@@ -151,6 +153,7 @@ export function StreamingExample() {
             content={[]}
             isStreaming={false}
             onSelect={() => {}}
+            runId={currentRunId}
           />
         ))}
       </div>

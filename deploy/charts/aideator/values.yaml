@@ -113,3 +113,159 @@ rbac:
     - apiGroups: ["batch"]
       resources: ["jobs"]
       verbs: ["create", "get", "list", "watch", "delete"]
+
+# LiteLLM Gateway configuration
+litellm:
+  enabled: true
+  replicas: 1
+  image:
+    repository: ghcr.io/berriai/litellm
+    tag: main-stable
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 4000
+    # nodePort: 30400  # Only used if type is NodePort
+  
+  masterKey: "sk-1234"  # Change this in production
+  verbose: false
+  timeout: 600  # Request timeout in seconds
+  workers: 1
+  
+  # Database configuration for LiteLLM
+  database:
+    enabled: true
+    # Will use PostgreSQL if enabled, otherwise SQLite
+    url: "postgresql://aideator:aideator123@aideator-postgresql:5432/aideator"
+  
+  # Redis cache configuration
+  cache:
+    enabled: true
+    ttl: 3600  # 1 hour
+  
+  # OpenTelemetry callbacks
+  callbacks:
+    - "prometheus"
+    # - "langfuse"  # Optional: external observability
+  
+  # Custom models (in addition to default OpenAI/Anthropic)
+  models: []
+    # - name: "custom-model"
+    #   model: "provider/model-name"
+    #   api_key: "os.environ/CUSTOM_API_KEY"
+    #   api_base: "https://api.custom.com"
+  
+  # Environment variables
+  env: {}
+    # CUSTOM_VAR: "value"
+  
+  # Health check probes
+  probes:
+    liveness:
+      initialDelaySeconds: 120
+      periodSeconds: 15
+      timeoutSeconds: 10
+      failureThreshold: 3
+      successThreshold: 1
+    readiness:
+      initialDelaySeconds: 60
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+      successThreshold: 1
+  
+  # Resources
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+
+# Redis configuration
+redis:
+  image:
+    repository: redis
+    tag: 7-alpine
+    pullPolicy: IfNotPresent
+  
+  # Authentication
+  auth:
+    enabled: false
+    # password: "redis-password"
+  
+  # Persistence
+  persistence:
+    enabled: true
+    accessMode: ReadWriteOnce
+    size: 1Gi
+    # storageClass: ""
+  
+  # Resources
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+# PostgreSQL configuration
+postgresql:
+  enabled: true
+  image:
+    repository: postgres
+    tag: 15-alpine
+    pullPolicy: IfNotPresent
+  
+  # Database configuration
+  database: "aideator"
+  username: "aideator"
+  password: "aideator123"  # Change this in production
+  
+  # Persistence
+  persistence:
+    enabled: true
+    accessMode: ReadWriteOnce
+    size: 5Gi
+    # storageClass: ""
+  
+  # Init database scripts
+  initdb:
+    enabled: false
+    # scripts: |
+    #   CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+  
+  # Resources
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+
+# OpenTelemetry configuration
+otel:
+  enabled: true
+  scrapeInterval: 30s
+  scrapeTimeout: 10s
+  
+  # Optional: Deploy OTEL Collector
+  collector:
+    enabled: false
+    image:
+      repository: otel/opentelemetry-collector-contrib
+      tag: latest
+      pullPolicy: IfNotPresent
+    
+    # Resources
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"

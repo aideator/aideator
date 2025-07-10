@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, CheckCircle, AlertCircle, Clock } from "lucide-react"
-import { selectWinner } from "@/lib/api"
+import { selectWinner } from "@/lib/api-client"
 
 interface AgentOutput {
   variation_id: number
@@ -210,7 +210,7 @@ function StatusBadge({ status }: { status: string }) {
       icon = <Clock className="h-3 w-3 mr-1" />
       break
     case "running":
-      color = "bg-yellow-100 text-yellow-800"
+      color = "bg-amber-100 text-amber-800"
       icon = <Loader2 className="h-3 w-3 mr-1 animate-spin" />
       break
     case "completed":

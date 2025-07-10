@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-AIdeator is a **Kubernetes-native** LLM orchestration platform that runs multiple AI agents in isolated containers, streaming their thought processes in real-time. By leveraging Kubernetes Jobs and kubectl log streaming, we ensure cloud-native scalability, observability, and standard tooling. As the primary coding assistant, I help build a sophisticated FastAPI + Kubernetes backend and Next.js 15 frontend that orchestrates containerized Claude agents, captures their reasoning, and delivers insights through Server-Sent Events.
+AIdeator is a **Multi-Model Prompt Comparison Platform** that leverages Kubernetes for parallel model execution and LiteLLM Gateway for unified API access and analytics. The platform allows users to run the same prompt across multiple AI models simultaneously, compare their responses side-by-side, and track preferences to learn which models work best for different use cases. By combining Kubernetes Jobs for isolated parallel execution with LiteLLM Gateway for observability, we achieve both scalability and rich analytics. As the primary coding assistant, I help build a sophisticated FastAPI + Kubernetes backend and Next.js 15 frontend that orchestrates containerized model comparisons and delivers real-time insights through Server-Sent Events.
 
 ## 🎯 My Role & Capabilities
 
@@ -24,78 +24,140 @@ I am the **primary development assistant** for AIdeator full-stack development. 
 - **FastAPI Backend** - Async web framework running as a Kubernetes deployment
 - **Next.js 15.2.4 Frontend** - Modern React 19.0.0 frontend with TypeScript 5 and real-time streaming
 - **Tailwind CSS v4.1.11** - Utility-first CSS framework with @tailwindcss/postcss v4
-- **Kubernetes Jobs** - Isolated agent execution with automatic cleanup (TTL)
+- **Kubernetes Jobs** - Isolated parallel model execution with automatic cleanup (TTL)
+- **LiteLLM Gateway** - Unified API interface for 100+ LLMs with built-in analytics
 - **kubectl Logs** - Native log streaming from agent containers
-- **Server-Sent Events (SSE)** - Real-time streaming of agent thought processes
-- **SQLite + SQLModel** - Async database with Pydantic integration
-- **Anthropic Claude API** - LLM agent for code generation tasks
+- **Server-Sent Events (SSE)** - Real-time streaming of model responses
+- **PostgreSQL + SQLModel** - Production database with async ORM for sessions and preferences
+- **LiteLLM Library** - Unified interface for OpenAI, Anthropic, and other model providers
 - **Helm Charts** - Declarative deployment and configuration management
 - **AIdeator Design System** - Cohesive UI components and styling patterns using Tailwind CSS v4
 
-### Kubernetes-Native Architecture
+### Hybrid Architecture: Kubernetes + LiteLLM Gateway
 
-The architecture leverages native Kubernetes features:
-- **Pods & Jobs**: Each agent runs as a Kubernetes Job
+The architecture combines Kubernetes orchestration with LiteLLM Gateway analytics:
+
+#### Kubernetes Layer (Orchestration)
+- **Pods & Jobs**: Each model comparison runs as parallel Kubernetes Jobs
 - **Service Accounts**: RBAC for kubectl operations
-- **ConfigMaps & Secrets**: Configuration and API key management
+- **ConfigMaps & Secrets**: Configuration and encrypted API key management
 - **Local Registry**: Development with localhost:5005
 - **Tilt**: Streamlined local development workflow
 
+#### LiteLLM Gateway Layer (Analytics & API)
+- **Unified API**: Single interface for 100+ model providers
+- **Built-in Analytics**: Response times, token usage, cost tracking
+- **Prometheus Metrics**: Production-grade observability
+- **Rate Limiting**: Per-user and per-model controls
+- **Caching**: Redis-backed response caching
+- **Automatic Retries**: Resilient model calls with fallbacks
+
 ### Key Workflows
 
-1. **Job Submission** → Create Kubernetes Job → Agent container execution
-2. **Log Streaming** → kubectl logs -f → SSE to client → Real-time output
-   - KubernetesService streams logs via `kubectl logs -f job/{job_name}`
-   - Logs are parsed and forwarded as SSE events
-   - Each log line becomes a `data:` event with variation_id
-3. **Job Management** → Status tracking → TTL cleanup → Resource limits
+1. **Multi-Model Comparison Flow**
+   - User submits prompt → API creates N Kubernetes Jobs (one per model)
+   - Each Job calls LiteLLM Gateway → Gateway routes to appropriate provider
+   - Gateway collects metrics → Streams responses back through Jobs
+   - Jobs stream logs via kubectl → SSE aggregates to client
+   - Client displays side-by-side comparison → User selects preference
+
+2. **Parallel Execution Architecture**
+   ```
+   User Request → FastAPI → Kubernetes Jobs (Parallel)
+                               ├── Job 1: GPT-4 → LiteLLM Gateway → OpenAI
+                               ├── Job 2: Claude → LiteLLM Gateway → Anthropic
+                               └── Job 3: Gemini → LiteLLM Gateway → Google
+   ```
+
+3. **Analytics Pipeline**
+   - LiteLLM Gateway tracks: latency, tokens, costs, errors
+   - Prometheus exports metrics → Grafana dashboards
+   - PostgreSQL stores: preferences, sessions, user choices
+   - Real-time metrics displayed during comparison
+
 4. **Development** → Tilt up → Hot reload → Port forwarding (automatic)
 
-### Kubernetes Integration Architecture
+### Hybrid Integration Architecture
 
 ```python
-# FastAPI service runs in a pod with kubectl access
-class KubernetesService:
-    async def create_agent_job(self, run_id: str, variation_id: int, repo_url: str, prompt: str):
-        # Create Job from template
-        job_manifest = self.render_job_template(
-            run_id=run_id,
-            variation_id=variation_id,
-            repo_url=repo_url,
-            prompt=prompt
-        )
+# FastAPI service orchestrates parallel model comparisons
+class ModelComparisonService:
+    def __init__(self, k8s_service: KubernetesService):
+        self.k8s = k8s_service
         
-        # Apply via kubectl
-        subprocess.run(["kubectl", "apply", "-f", "-"], input=job_manifest)
+    async def compare_models(
+        self,
+        run_id: str,
+        prompt: str,
+        models: List[str] = ["gpt-4", "claude-3", "gemini-pro"]
+    ):
+        # Create parallel jobs for each model
+        jobs = []
+        for idx, model in enumerate(models):
+            job_name = await self.k8s.create_model_job(
+                run_id=run_id,
+                model_id=idx,
+                model_name=model,
+                prompt=prompt
+            )
+            jobs.append((job_name, idx, model))
         
-    async def stream_job_logs(self, job_name: str) -> AsyncGenerator[str, None]:
-        # Stream logs via kubectl
-        process = await asyncio.create_subprocess_exec(
-            "kubectl", "logs", "-f", f"job/{job_name}",
-            stdout=asyncio.subprocess.PIPE
-        )
-        
-        async for line in process.stdout:
-            yield line.decode().strip()
+        # Stream all outputs in parallel
+        tasks = [
+            self._stream_model_output(run_id, job_name, model_id, model)
+            for job_name, model_id, model in jobs
+        ]
+        await asyncio.gather(*tasks)
 
-# Agent runs in a Kubernetes Job
-# Container entrypoint: python /agent/main.py
-# Logs streamed via kubectl logs -f
+# Agent container calls LiteLLM Gateway
+async def call_model_via_gateway(prompt: str, model: str):
+    # Point to internal LiteLLM Gateway service
+    response = await litellm.acompletion(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        api_base="http://litellm-gateway:4000",  # Kubernetes service
+        api_key=os.environ["LITELLM_API_KEY"],
+        stream=True
+    )
+    
+    # Stream response and let gateway handle analytics
+    async for chunk in response:
+        if chunk.choices and chunk.choices[0].delta.content:
+            print(chunk.choices[0].delta.content, end='', flush=True)
 ```
 
-### LiteLLM Streaming Architecture
+### LiteLLM Gateway Configuration
 
-```python
-# Agent uses LiteLLM with streaming for real-time output
-async for chunk in await acompletion(
-    model="openai/gpt-4o-mini",
-    messages=[{"role": "user", "content": prompt}],
-    stream=True  # Enable streaming
-):
-    if chunk.choices and chunk.choices[0].delta.content:
-        chunk_text = chunk.choices[0].delta.content
-        # This gets logged and streamed via kubectl logs
-        print(chunk_text, end='', flush=True)
+```yaml
+# LiteLLM Gateway config.yaml
+model_list:
+  - model_name: gpt-4
+    litellm_params:
+      model: openai/gpt-4
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: claude-3
+    litellm_params:
+      model: anthropic/claude-3-opus-20240229
+      api_key: os.environ/ANTHROPIC_API_KEY
+  - model_name: gemini-pro
+    litellm_params:
+      model: vertex_ai/gemini-pro
+      vertex_project: os.environ/GCP_PROJECT_ID
+      vertex_location: us-central1
+
+litellm_settings:
+  callbacks: ["prometheus"]  # Enable metrics export
+  cache: true
+  cache_params:
+    type: redis
+    host: redis-service
+    port: 6379
+  success_callback: ["langfuse"]  # Optional: external observability
+  
+general_settings:
+  completion_model: gpt-4  # Default model
+  disable_spend_logs: false  # Track costs
+  master_key: os.environ/LITELLM_MASTER_KEY
 ```
 
 ## 🚀 Development Commands
@@ -1125,7 +1187,9 @@ helm upgrade --install aideator ./deploy/charts/aideator \
 - **Helm** - Package manager for Kubernetes applications
 - **Tilt** - Local Kubernetes development environment
 - **k3d** - Lightweight local Kubernetes clusters
-- **SQLite + SQLModel** - Lightweight database with async ORM
+- **PostgreSQL + SQLModel** - Production database with async ORM
+- **LiteLLM Gateway** - Unified LLM API with analytics
+- **Redis** - Caching layer for LiteLLM Gateway
 - **Pydantic** - Data validation and serialization
 
 ### Frontend Libraries
@@ -1155,24 +1219,36 @@ helm upgrade --install aideator ./deploy/charts/aideator \
 
 ## 🎯 MVP Success Criteria
 
-The Kubernetes-native backend successfully:
+The Multi-Model Comparison Platform successfully:
 
-1. Creates Kubernetes Jobs for each agent variation
-2. Streams logs via kubectl to SSE endpoints
-3. Manages Job lifecycle with TTL and cleanup
-4. Provides RBAC-secured kubectl operations
-5. Deploys via Helm with environment-specific values
-6. Enables rapid development with Tilt
+1. **Parallel Execution**: Creates Kubernetes Jobs for each model in parallel
+2. **Unified API Access**: Routes all model calls through LiteLLM Gateway
+3. **Rich Analytics**: Captures response times, token usage, costs via Gateway
+4. **Real-time Streaming**: Streams model responses via kubectl logs to SSE
+5. **Preference Tracking**: Records user choices with optional feedback
+6. **Session Management**: Maintains conversation context across turns
+7. **Production Deployment**: Deploys via Helm with LiteLLM Gateway included
 
-## 🌟 Key Advantages of Kubernetes Approach
+## 🌟 Key Advantages of Hybrid Approach
 
-1. **Native Integration**: Uses standard Kubernetes APIs and tooling
-2. **Observability**: Full visibility through kubectl and Kubernetes events
-3. **Scalability**: Leverages Kubernetes scheduling and resource management
-4. **Portability**: Runs on any Kubernetes cluster (local, cloud, on-prem)
-5. **Security**: Built-in RBAC, network policies, and secrets management
-6. **Developer Experience**: Tilt provides excellent local development workflow
+### Kubernetes Advantages
+1. **True Parallel Execution**: Multiple models process simultaneously
+2. **Resource Isolation**: Each model runs in its own container
+3. **Scalability**: Leverages Kubernetes scheduling
+4. **Security**: RBAC, secrets management, network policies
+
+### LiteLLM Gateway Advantages
+1. **Unified Interface**: Single API for 100+ model providers
+2. **Built-in Analytics**: Prometheus metrics, cost tracking
+3. **Operational Features**: Caching, rate limiting, retries
+4. **Zero Development**: Analytics come out-of-the-box
+
+### Combined Benefits
+1. **Best of Both Worlds**: Parallel execution + comprehensive analytics
+2. **Future Flexibility**: Ready for code analysis and long-running tasks
+3. **Rich Data Collection**: Every interaction tracked for insights
+4. **Production Ready**: Battle-tested components
 
 ______________________________________________________________________
 
-**I am your primary coding assistant for AIdeator. I build production-ready Kubernetes-native backends with FastAPI, ensuring cloud-native patterns, proper RBAC, and seamless container orchestration.**
+**I am your primary coding assistant for AIdeator. I build production-ready multi-model comparison platforms using Kubernetes for orchestration and LiteLLM Gateway for analytics, ensuring scalability, observability, and rich user insights.**

@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     agent_cpu_limit: float = Field(default=0.5, ge=0.1, le=2.0)
     agent_timeout: int = 300  # 5 minutes
     default_agent_model: str = "gpt-4o-mini"
+    debug_agent_container: bool = False  # Enable debug logs for agent containers
 
     # Repository Configuration
     clone_timeout: int = 300  # 5 minutes

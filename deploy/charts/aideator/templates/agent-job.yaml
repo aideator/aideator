@@ -27,7 +27,17 @@ spec:
           image: "{{ .Values.agentImage.repository }}:{{ .Values.agentImage.tag }}"
           imagePullPolicy: {{ .Values.agentImage.pullPolicy }}
           env:
-            # OpenRouter removed - using LiteLLM with direct OpenAI SDK
+            # LiteLLM Gateway configuration
+            - name: LITELLM_GATEWAY_URL
+              value: "http://{{ include "aideator.fullname" . }}-litellm:{{ .Values.litellm.service.port | default 4000 }}"
+            - name: LITELLM_GATEWAY_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "aideator.fullname" . }}-litellm-secret
+                  key: master-key
+            - name: MODEL
+              value: "{{ .Values.model | default "gpt-4o-mini" }}"
+            # Direct API keys (for fallback if needed)
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -40,6 +50,7 @@ spec:
                   name: {{ .Values.secrets.anthropic.name }}
                   key: {{ .Values.secrets.anthropic.key }}
                   optional: {{ .Values.secrets.anthropic.optional | default false }}
+            # Job configuration
             - name: REPO_URL
               value: "{{ .Values.repoUrl | default "https://github.com/octocat/Hello-World" }}"
             - name: PROMPT

@@ -10,6 +10,7 @@ interface StreamGridProps {
   connectionState: 'disconnected' | 'connecting' | 'connected' | 'error';
   error: string | null;
   onSelectAgent: (variationId: number) => void;
+  runId?: string;
   maxVariations?: number;
 }
 
@@ -19,6 +20,7 @@ export function StreamGrid({
   connectionState,
   error,
   onSelectAgent,
+  runId,
   maxVariations = 5 
 }: StreamGridProps) {
   
@@ -29,7 +31,7 @@ export function StreamGrid({
   const getConnectionStatus = () => {
     switch (connectionState) {
       case 'connecting':
-        return { icon: Wifi, colorClass: 'text-yellow-600 bg-yellow-50', text: 'Connecting...' };
+        return { icon: Wifi, colorClass: 'text-amber-700 bg-amber-50', text: 'Connecting...' };
       case 'error':
         return { icon: WifiOff, colorClass: 'text-red-600 bg-red-50', text: 'Connection Error' };
       default:
@@ -89,6 +91,7 @@ export function StreamGrid({
                 content={content}
                 isStreaming={isThisAgentStreaming}
                 onSelect={() => onSelectAgent(variationId)}
+                runId={runId}
                 className="h-full"
               />
             </div>

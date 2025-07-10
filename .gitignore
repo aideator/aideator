@@ -138,3 +138,5 @@ grafana_data/
 
 # Specstory
 .specstory/
+
+BACKGROUND.txt

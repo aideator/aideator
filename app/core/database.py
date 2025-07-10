@@ -7,6 +7,9 @@ from sqlmodel import SQLModel
 from app.core.config import get_settings
 from app.core.logging import get_logger
 
+# Import models to ensure they're registered with SQLModel
+from app.models import User, APIKey, Run, Session, Turn, Preference
+
 settings = get_settings()
 logger = get_logger(__name__)
 
@@ -42,6 +45,18 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
         try:
             yield session
             await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+
+async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+    """Get async database session (alias for get_session)."""
+    async with async_session_maker() as session:
+        try:
+            yield session
         except Exception:
             await session.rollback()
             raise

@@ -17,6 +17,7 @@ export interface AgentStreamState {
 }
 
 export interface AgentStreamHook extends AgentStreamState {
+  currentRunId: string | null;
   startStream: (runId: string) => void;
   stopStream: () => void;
   clearStreams: () => void;
@@ -30,6 +31,7 @@ export function useAgentStream(): AgentStreamHook {
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [connectionState, setConnectionState] = useState<AgentStreamState['connectionState']>('disconnected');
+  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   
   const eventSourceRef = useRef<EventSource | null>(null);
   const currentRunIdRef = useRef<string | null>(null);
@@ -47,6 +49,7 @@ export function useAgentStream(): AgentStreamHook {
     setIsStreaming(false);
     setConnectionState('disconnected');
     currentRunIdRef.current = null;
+    setCurrentRunId(null);
   }, []);
 
   const pauseStream = useCallback((variationId?: number) => {
@@ -117,6 +120,7 @@ export function useAgentStream(): AgentStreamHook {
     setConnectionState('connecting');
     setIsStreaming(true);
     currentRunIdRef.current = runId;
+    setCurrentRunId(runId);
 
     const streamUrl = `http://localhost:8000/api/v1/runs/${runId}/stream`;
     console.log('Starting SSE stream to:', streamUrl);
@@ -286,6 +290,7 @@ export function useAgentStream(): AgentStreamHook {
     isStreaming,
     error,
     connectionState,
+    currentRunId,
     startStream,
     stopStream,
     clearStreams,

@@ -1,36 +1,97 @@
 @import "tailwindcss";
-@import "../styles/streaming.css";
+@import "../force-colors.css";
 
-/* Custom CSS variables for theming */
-:root {
-  /* Colors */
-  --primary: 224 71% 50%;
-  --primary-foreground: 0 0% 100%;
-  --background: 0 0% 100%;
-  --foreground: 222 84% 10%;
-  --card: 0 0% 100%;
-  --card-foreground: 222 84% 10%;
-  --secondary: 210 40% 96%;
-  --secondary-foreground: 222 47% 20%;
-  --muted: 210 40% 96%;
-  --muted-foreground: 215 16% 47%;
-  --accent: 210 40% 96%;
-  --accent-foreground: 222 47% 20%;
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 224 71% 50%;
+/* AIdeator "Prism" Design System - Tailwind CSS v4 Theme Configuration */
+@theme {
+  /* Primary Brand Colors - Prism */
+  --color-ai-primary: 29 78 216;            /* Royal Blue - professional, trustworthy */
+  --color-ai-secondary: 124 58 237;         /* Violet - innovative, sophisticated */
+  --color-ai-accent: 52 211 153;            /* Mint Green - fresh, harmonious */
+
+  /* Agent Stream Colors - Distinctive Model Identities */
+  --color-agent-1: 251 113 133;             /* Coral - warm, approachable */
+  --color-agent-2: 125 211 252;             /* Sky Blue - clear, intelligent */
+  --color-agent-3: 52 211 153;              /* Mint - balanced, accurate */
+  --color-agent-4: 196 181 253;             /* Lavender - creative, thoughtful */
+  --color-agent-5: 251 207 232;             /* Peach - gentle, friendly */
+
+  /* Neutral Palette - Clean & Professional */
+  --color-neutral-white: 255 255 255;       /* Pure White - clean canvas */
+  --color-neutral-paper: 249 250 251;       /* Soft Gray - subtle backgrounds */
+  --color-neutral-fog: 229 231 235;         /* Light Gray - gentle borders */
+  --color-neutral-shadow: 107 114 128;      /* Medium Gray - secondary text */
+  --color-neutral-charcoal: 31 41 55;       /* Dark Gray - primary text */
+
+  /* Semantic States - Clear Status Communication */
+  --color-semantic-success: 34 197 94;      /* Success Green - achievements */
+  --color-semantic-warning: 251 146 60;     /* Warning Orange - attention */
+  --color-semantic-error: 239 68 68;        /* Error Red - problems */
+  --color-semantic-info: 59 130 246;        /* Info Blue - information */
+
+  /* Typography sizes */
+  --font-size-display: 3rem;               /* 48px - Hero titles */
+  --font-size-h1: 2.25rem;                /* 36px - Page titles */
+  --font-size-h2: 1.5rem;                 /* 24px - Section titles */
+  --font-size-h3: 1.25rem;                /* 20px - Card titles */
+  --font-size-body-lg: 1.125rem;          /* 18px - Important content */
+  --font-size-body: 1rem;                 /* 16px - Default body */
+  --font-size-body-sm: 0.875rem;          /* 14px - Secondary content */
+  --font-size-label: 0.875rem;            /* 14px - Form labels */
+  --font-size-caption: 0.75rem;           /* 12px - Metadata */
+
+  /* Spacing scale */
+  --spacing-xs: 0.25rem;   /* 4px */
+  --spacing-sm: 0.5rem;    /* 8px */
+  --spacing-md: 1rem;      /* 16px */
+  --spacing-lg: 1.5rem;    /* 24px */
+  --spacing-xl: 3rem;      /* 48px */
+
+  /* Legacy compatibility colors */
+  --color-primary: var(--color-ai-primary);
+  --color-primary-foreground: var(--color-neutral-white);
+  --color-background: var(--color-neutral-white);
+  --color-foreground: var(--color-neutral-charcoal);
+  --color-card: var(--color-neutral-paper);
+  --color-card-foreground: var(--color-neutral-charcoal);
+  --color-secondary: var(--color-ai-secondary);
+  --color-secondary-foreground: var(--color-neutral-white);
+  --color-muted: var(--color-neutral-fog);
+  --color-muted-foreground: var(--color-neutral-shadow);
+  --color-accent: var(--color-ai-accent);
+  --color-accent-foreground: var(--color-neutral-white);
+  --color-destructive: var(--color-semantic-error);
+  --color-destructive-foreground: var(--color-neutral-white);
+  --color-border: var(--color-neutral-fog);
+  --color-input: var(--color-neutral-fog);
+  --color-ring: var(--color-ai-primary);
+  
+  /* Border radius */
   --radius: 0.5rem;
 }
 
 /* Base styles */
 * {
-  border-color: hsl(var(--border));
+  border-color: hsl(var(--color-border));
 }
 
 body {
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
+  background-color: hsl(var(--color-background));
+  color: hsl(var(--color-foreground));
   font-feature-settings: "rlig" 1, "calt" 1;
+}
+
+/* Smooth gradient rendering - Static, Professional */
+.bg-gradient-neural-twilight,
+.bg-gradient-quantum-aurora,
+.bg-gradient-neural-ocean,
+.bg-gradient-ai-spectrum,
+.bg-gradient-neural-slate {
+  background-attachment: fixed;
+  /* Use image-rendering for better gradient quality */
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  /* Prevent color banding on high-DPI displays */
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }

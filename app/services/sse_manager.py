@@ -125,6 +125,8 @@ class SSEManager:
         if not connections:
             logger.debug("no_sse_connections", run_id=run_id)
             return
+            
+        logger.info(f"🔥 BROADCASTING {event.event_type.value} to {len(connections)} connections for run {run_id}")
 
         # Send to all connected clients
         disconnected = []
@@ -145,6 +147,7 @@ class SSEManager:
         self, run_id: str, variation_id: int, content: str
     ) -> None:
         """Send agent output event."""
+        logger.info(f"🔥 SENDING AGENT OUTPUT: run_id={run_id}, variation_id={variation_id}, content={content[:50]}...")
         event = SSEEvent(
             event_type=EventType.AGENT_OUTPUT,
             data={

@@ -152,6 +152,30 @@ k8s_resource(
     resource_deps=['create-secrets']
 )
 
+# LiteLLM Gateway port forwarding
+k8s_resource(
+    'aideator-litellm',
+    port_forwards=['4000:4000'],
+    labels=['gateway'],
+    resource_deps=['create-secrets']
+)
+
+# PostgreSQL port forwarding (optional for development)
+k8s_resource(
+    'aideator-postgresql',
+    port_forwards=['5432:5432'],
+    labels=['database'],
+    resource_deps=['create-secrets']
+)
+
+# Redis port forwarding (optional for development)
+k8s_resource(
+    'aideator-redis',
+    port_forwards=['6379:6379'],
+    labels=['cache'],
+    resource_deps=['create-secrets']
+)
+
 # Phase 7: Find an available port for frontend
 # Check if user specified a port, otherwise find an available one
 user_specified_port = os.getenv('FRONTEND_PORT', '')
@@ -201,5 +225,8 @@ print("🚀 AIdeator development environment ready!")
 print("🔗 Frontend: http://localhost:" + frontend_port)
 print("🔗 FastAPI: http://localhost:8000")
 print("📊 Docs: http://localhost:8000/docs")
+print("🔗 LiteLLM Gateway: http://localhost:4000")
+print("🗃️  PostgreSQL: localhost:5432")
+print("🗄️  Redis: localhost:6379")
 if frontend_port != '3000':
     print("ℹ️  Using custom frontend port: " + frontend_port)

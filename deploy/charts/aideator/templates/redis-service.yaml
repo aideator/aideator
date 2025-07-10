@@ -1,0 +1,20 @@
+{{- if .Values.litellm.cache.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "aideator.fullname" . }}-redis
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "aideator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      targetPort: redis
+      protocol: TCP
+      name: redis
+  selector:
+    {{- include "aideator.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+{{- end }}

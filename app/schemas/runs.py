@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
 
 from app.core.config import get_settings
 from app.models.run import RunStatus
+from app.schemas.models import ModelVariantCreate, ModelVariantResponse
 
 settings = get_settings()
 
@@ -64,15 +65,13 @@ class CreateRunRequest(BaseModel):
         description="Prompt for the LLM agents",
         examples=["Add comprehensive error handling to all API endpoints"],
     )
-    variations: int = Field(
-        default=3,
-        ge=1,
-        le=settings.max_variations,
-        description="Number of agent variations to run",
-    )
-    agent_config: Optional[AgentConfig] = Field(
-        None,
-        description="Optional agent configuration",
+    
+    # Model selection system
+    model_variants: List[ModelVariantCreate] = Field(
+        ...,
+        description="List of model variants to run in parallel",
+        min_length=1,
+        max_length=settings.max_variations,
     )
     use_claude_code: bool = Field(
         default=False,
@@ -114,17 +113,30 @@ class CreateRunRequest(BaseModel):
         if v not in ["litellm", "claude-cli", None]:
             raise ValueError("Agent mode must be 'litellm' or 'claude-cli'")
         return v or "litellm"
+    
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "github_url": "https://github.com/fastapi/fastapi",
                 "prompt": "Add comprehensive error handling to all API endpoints",
-                "variations": 3,
-                "agent_config": {
-                    "model": "claude-3-opus-20240229",
-                    "temperature": 0.7,
-                },
+                "model_variants": [
+                    {
+                        "model_definition_id": "model_gpt4_openai",
+                        "provider_credential_id": "cred_openai_123",
+                        "model_parameters": {"temperature": 0.7}
+                    },
+                    {
+                        "model_definition_id": "model_claude_3_5_sonnet_anthropic",
+                        "provider_credential_id": "cred_anthropic_456",
+                        "model_parameters": {"temperature": 0.5}
+                    },
+                    {
+                        "model_definition_id": "model_gpt4_openai",
+                        "provider_credential_id": "cred_openai_123",
+                        "model_parameters": {"temperature": 0.9}
+                    }
+                ]
             }
         }
     }
@@ -158,7 +170,7 @@ class RunDetails(BaseModel):
     id: str = Field(..., description="Unique identifier")
     github_url: str = Field(..., description="Repository URL")
     prompt: str = Field(..., description="Agent prompt")
-    variations: int = Field(..., description="Number of variations")
+    model_variants: List[ModelVariantResponse] = Field(..., description="Model variants in this run")
     status: RunStatus = Field(..., description="Current status")
     winning_variation_id: Optional[int] = Field(
         None, description="ID of selected variation"
@@ -166,7 +178,6 @@ class RunDetails(BaseModel):
     created_at: datetime = Field(..., description="Creation timestamp")
     started_at: Optional[datetime] = Field(None, description="Start timestamp")
     completed_at: Optional[datetime] = Field(None, description="Completion timestamp")
-    agent_config: Dict[str, Any] = Field(..., description="Agent configuration")
     results: Dict[str, Any] = Field(default_factory=dict, description="Run results")
     total_tokens_used: Optional[int] = Field(None, description="Total tokens consumed")
     total_cost_usd: Optional[float] = Field(None, description="Total cost in USD")
@@ -178,13 +189,23 @@ class RunDetails(BaseModel):
                 "id": "run_1234567890abcdef",
                 "github_url": "https://github.com/fastapi/fastapi",
                 "prompt": "Add error handling",
-                "variations": 3,
+                "model_variants": [
+                    {
+                        "id": "variant_123",
+                        "run_id": "run_1234567890abcdef",
+                        "variation_id": 0,
+                        "model_definition_id": "model_gpt4_openai",
+                        "status": "completed",
+                        "tokens_used": 150,
+                        "cost_usd": 0.004,
+                        "response_time_ms": 2500
+                    }
+                ],
                 "status": "completed",
                 "winning_variation_id": 1,
                 "created_at": "2024-01-01T00:00:00Z",
                 "started_at": "2024-01-01T00:00:10Z",
                 "completed_at": "2024-01-01T00:02:00Z",
-                "agent_config": {"model": "claude-3-opus-20240229"},
                 "results": {"outputs": []},
                 "total_tokens_used": 12500,
                 "total_cost_usd": 0.25,
@@ -199,7 +220,7 @@ class RunListItem(BaseModel):
     id: str
     github_url: str
     prompt: str
-    variations: int
+    model_count: int = Field(..., description="Number of model variants")
     status: RunStatus
     created_at: datetime
     completed_at: Optional[datetime] = None

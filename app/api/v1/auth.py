@@ -3,14 +3,13 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import verify_password, get_password_hash
 from app.core.config import get_settings
 from app.core.database import get_session
+from app.core.dependencies import CurrentUser
 from app.core.logging import get_logger
 from app.models.user import APIKey, User
 from app.schemas.auth import (
@@ -27,25 +26,11 @@ settings = get_settings()
 logger = get_logger(__name__)
 router = APIRouter()
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-# Security
-security = HTTPBearer()
-
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify password against hash."""
-    return pwd_context.verify(plain_password, hashed_password)
-
-
-def get_password_hash(password: str) -> str:
-    """Hash password."""
-    return pwd_context.hash(password)
-
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Create JWT access token."""
+    from jose import jwt
+    
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
@@ -55,33 +40,6 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
     return encoded_jwt
-
-
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: AsyncSession = Depends(get_session),
-) -> User:
-    """Get current user from JWT token."""
-    token = credentials.credentials
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    
-    try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
-        user_id: str = payload.get("sub")
-        if user_id is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-    
-    user = await db.get(User, user_id)
-    if user is None:
-        raise credentials_exception
-    
-    return user
 
 
 def generate_api_key() -> str:
@@ -161,7 +119,7 @@ async def login(
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_me(current_user: User = Depends(get_current_user)) -> User:
+async def get_me(current_user: CurrentUser) -> User:
     """Get current user information."""
     return current_user
 
@@ -169,7 +127,7 @@ async def get_me(current_user: User = Depends(get_current_user)) -> User:
 @router.post("/api-keys", response_model=CreateAPIKeyResponse, status_code=status.HTTP_201_CREATED)
 async def create_api_key(
     request: CreateAPIKeyRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_session),
 ) -> CreateAPIKeyResponse:
     """Create a new API key."""
@@ -206,7 +164,7 @@ async def create_api_key(
 
 @router.get("/api-keys", response_model=list[APIKeyResponse])
 async def list_api_keys(
-    current_user: User = Depends(get_current_user),
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_session),
 ) -> list[APIKey]:
     """List user's API keys."""
@@ -222,7 +180,7 @@ async def list_api_keys(
 @router.delete("/api-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_api_key(
     key_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_session),
 ) -> None:
     """Delete an API key."""
@@ -244,3 +202,89 @@ async def delete_api_key(
     await db.commit()
     
     logger.info("api_key_deleted", user_id=current_user.id, key_id=key_id)
+
+
+@router.get("/dev/test-login", include_in_schema=False)
+async def dev_test_login(
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Development endpoint for automatic test user login.
+    WARNING: This endpoint is only available in development mode.
+    """
+    # Only allow in development mode
+    if not settings.debug:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Not found",
+        )
+    
+    # Find or create test user
+    result = await db.execute(select(User).where(User.email == "test@aideator.local"))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        # Create test user
+        user = User(
+            id=f"user_test_{secrets.token_urlsafe(12)}",
+            email="test@aideator.local",
+            hashed_password=get_password_hash("testpass123"),
+            full_name="Test User",
+            company="AIdeator Development",
+            is_active=True,
+            is_superuser=False
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+    
+    # Create access token
+    access_token_expires = timedelta(days=30)  # Long-lived for development
+    access_token = create_access_token(
+        data={"sub": user.id}, expires_delta=access_token_expires
+    )
+    
+    # Always create a fresh API key for development
+    api_key = f"aid_sk_test_{secrets.token_urlsafe(32)}"
+    key_hash = get_password_hash(api_key)
+    
+    # Remove old development key if exists
+    await db.execute(
+        select(APIKey).where(
+            APIKey.user_id == user.id,
+            APIKey.name == "Development Test Key"
+        )
+    )
+    old_keys = await db.execute(
+        select(APIKey).where(
+            APIKey.user_id == user.id,
+            APIKey.name == "Development Test Key"
+        )
+    )
+    for old_key in old_keys.scalars().all():
+        await db.delete(old_key)
+    
+    # Create new API key
+    api_key_record = APIKey(
+        id=f"key_test_{secrets.token_urlsafe(12)}",
+        user_id=user.id,
+        key_hash=key_hash,
+        name="Development Test Key",
+        scopes=["runs:create", "runs:read"],
+    )
+    
+    db.add(api_key_record)
+    await db.commit()
+    
+    return {
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "full_name": user.full_name,
+            "company": user.company,
+        },
+        "access_token": access_token,
+        "token_type": "bearer",
+        "api_key": api_key,  # Always returns fresh API key in development
+        "message": "Development test user login successful",
+    }

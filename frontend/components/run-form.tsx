@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2 } from "lucide-react"
-import { createRun } from "@/lib/api"
+import { createRun } from "@/lib/api-client"
 
 export function RunForm() {
   const router = useRouter()

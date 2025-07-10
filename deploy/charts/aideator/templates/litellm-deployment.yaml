@@ -1,0 +1,118 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "aideator.fullname" . }}-litellm
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "aideator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: litellm-gateway
+spec:
+  replicas: {{ .Values.litellm.replicas | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "aideator.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: litellm-gateway
+  template:
+    metadata:
+      labels:
+        {{- include "aideator.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: litellm-gateway
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/litellm-configmap.yaml") . | sha256sum }}
+    spec:
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ include "aideator.serviceAccountName" . }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      containers:
+        - name: litellm-gateway
+          image: {{ .Values.litellm.image.repository }}:{{ .Values.litellm.image.tag | default "main-stable" }}
+          imagePullPolicy: {{ .Values.litellm.image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - name: http
+              containerPort: 4000
+              protocol: TCP
+          env:
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "aideator.fullname" . }}-litellm-secret
+                  key: master-key
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.openai.name }}
+                  key: {{ .Values.secrets.openai.key }}
+                  optional: {{ .Values.secrets.openai.optional }}
+            {{- if .Values.secrets.anthropic }}
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.anthropic.name }}
+                  key: {{ .Values.secrets.anthropic.key }}
+                  optional: {{ .Values.secrets.anthropic.optional }}
+            {{- end }}
+            {{- if .Values.litellm.database.enabled }}
+            - name: DATABASE_URL
+              value: {{ .Values.litellm.database.url | quote }}
+            {{- end }}
+            {{- if .Values.litellm.env }}
+            {{- range $key, $value := .Values.litellm.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- end }}
+          args:
+            - "--config"
+            - "/app/config.yaml"
+            - "--port"
+            - "4000"
+            {{- if .Values.litellm.workers }}
+            - "--num_workers"
+            - "{{ .Values.litellm.workers }}"
+            {{- end }}
+            {{- if .Values.config.debug }}
+            - "--detailed_debug"
+            {{- end }}
+          volumeMounts:
+            - name: config-volume
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health/liveliness
+              port: http
+            initialDelaySeconds: {{ .Values.litellm.probes.liveness.initialDelaySeconds | default 120 }}
+            periodSeconds: {{ .Values.litellm.probes.liveness.periodSeconds | default 15 }}
+            timeoutSeconds: {{ .Values.litellm.probes.liveness.timeoutSeconds | default 10 }}
+            failureThreshold: {{ .Values.litellm.probes.liveness.failureThreshold | default 3 }}
+            successThreshold: {{ .Values.litellm.probes.liveness.successThreshold | default 1 }}
+          readinessProbe:
+            httpGet:
+              path: /health/readiness
+              port: http
+            initialDelaySeconds: {{ .Values.litellm.probes.readiness.initialDelaySeconds | default 60 }}
+            periodSeconds: {{ .Values.litellm.probes.readiness.periodSeconds | default 10 }}
+            timeoutSeconds: {{ .Values.litellm.probes.readiness.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.litellm.probes.readiness.failureThreshold | default 3 }}
+            successThreshold: {{ .Values.litellm.probes.readiness.successThreshold | default 1 }}
+          resources:
+            {{- toYaml .Values.litellm.resources | nindent 12 }}
+      volumes:
+        - name: config-volume
+          configMap:
+            name: {{ include "aideator.fullname" . }}-litellm-config
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

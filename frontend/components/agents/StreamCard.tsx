@@ -5,12 +5,15 @@ import { useAgentColor } from '@/hooks/useAgentStream';
 import { Clock, Zap, CheckCircle, Loader2 } from 'lucide-react';
 import { MemoizedMarkdown } from './MemoizedMarkdown';
 import { motion, AnimatePresence } from 'framer-motion';
+import { DebugButton } from '@/components/ui/debug-button';
+import { getAgentColorClasses } from '@/lib/utils';
 
 interface StreamCardProps {
   variationId: number;
   content: string[];
   isStreaming: boolean;
   onSelect: () => void;
+  runId?: string;
   className?: string;
 }
 
@@ -19,6 +22,7 @@ export function StreamCard({
   content, 
   isStreaming, 
   onSelect,
+  runId,
   className = '' 
 }: StreamCardProps) {
   const agentColor = useAgentColor(variationId);
@@ -56,46 +60,30 @@ export function StreamCard({
     }
   }, [content, isStreaming, autoScroll]);
   
-  // Agent color mappings
-  const agentColorMap = {
-    'agent-1': {
-      bg: 'bg-red-500',
-      light: 'bg-red-50',
-      text: 'text-red-600',
-      border: 'border-red-200',
-      hover: 'hover:bg-red-600'
-    },
-    'agent-2': {
-      bg: 'bg-amber-500',
-      light: 'bg-amber-50',
-      text: 'text-amber-600',
-      border: 'border-amber-200',
-      hover: 'hover:bg-amber-600'
-    },
-    'agent-3': {
-      bg: 'bg-emerald-500',
-      light: 'bg-emerald-50',
-      text: 'text-emerald-600',
-      border: 'border-emerald-200',
-      hover: 'hover:bg-emerald-600'
-    },
-    'agent-4': {
-      bg: 'bg-blue-500',
-      light: 'bg-blue-50',
-      text: 'text-blue-600',
-      border: 'border-blue-200',
-      hover: 'hover:bg-blue-600'
-    },
-    'agent-5': {
-      bg: 'bg-purple-500',
-      light: 'bg-purple-50',
-      text: 'text-purple-600',
-      border: 'border-purple-200',
-      hover: 'hover:bg-purple-600'
-    },
+  // Use design system colors
+  const colors = getAgentColorClasses(agentColor);
+  
+  // Create light background variants for card sections
+  const lightVariants = {
+    'agent-1': 'bg-red-50',
+    'agent-2': 'bg-amber-50', 
+    'agent-3': 'bg-emerald-50',
+    'agent-4': 'bg-blue-50',
+    'agent-5': 'bg-purple-50'
   };
   
-  const colors = agentColorMap[agentColor as keyof typeof agentColorMap] || agentColorMap['agent-1'];
+  const lightBg = lightVariants[agentColor as keyof typeof lightVariants] || lightVariants['agent-1'];
+  
+  // Create border variants for cards
+  const borderVariants = {
+    'agent-1': 'border-red-200',
+    'agent-2': 'border-amber-200',
+    'agent-3': 'border-emerald-200', 
+    'agent-4': 'border-blue-200',
+    'agent-5': 'border-purple-200'
+  };
+  
+  const borderColor = borderVariants[agentColor as keyof typeof borderVariants] || borderVariants['agent-1'];
   
   return (
     <div className={`bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300 overflow-hidden flex flex-col h-full ${className}`}>
@@ -132,11 +120,20 @@ export function StreamCard({
               </div>
             </div>
           </div>
+          
+          {/* Debug Button */}
+          {runId && (
+            <DebugButton 
+              runId={runId} 
+              variationId={variationId} 
+              className="bg-white/20 hover:bg-white/30 text-white border-white/30"
+            />
+          )}
         </div>
       </div>
 
       {/* Content Area */}
-      <div className={`flex-1 p-4 ${colors.light} ${colors.border} border overflow-hidden relative`}>
+      <div className={`flex-1 p-4 ${lightBg} ${borderColor} border overflow-hidden relative`}>
         <AnimatePresence mode="wait">
           {hasContent ? (
             <motion.div
@@ -212,7 +209,7 @@ export function StreamCard({
         <button
           onClick={onSelect}
           disabled={!hasContent && !isStreaming}
-          className={`w-full px-4 py-2 ${colors.bg} ${colors.hover} text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
+          className={`w-full px-4 py-2 ${colors.bg} ${colors.hoverBg90} text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
         >
           I prefer this response
         </button>

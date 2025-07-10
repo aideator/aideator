@@ -48,6 +48,12 @@ class AgentOrchestrator:
             repo_url=repo_url,
         )
         
+        # Log that we're starting - this will help debug if the task is running
+        logger.info(f"🚀 ORCHESTRATOR STARTING: run_id={run_id}, variations={variations}")
+        
+        # Wait for SSE connections to be established
+        await self._wait_for_sse_connections(run_id, max_wait_seconds=10)
+        
         # Update run status
         if db_session:
             await self._update_run_status(
@@ -217,6 +223,8 @@ class AgentOrchestrator:
         """Stream logs from an individual job."""
         try:
             async for log_line in self.kubernetes.stream_job_logs(job_name, run_id, variation_id):
+                logger.debug(f"Raw log line: {log_line[:100]}...")  # Debug: Log first 100 chars
+                
                 try:
                     log_entry = json.loads(log_line)
                     # Skip JSON log entries - only process non-log content
@@ -225,9 +233,11 @@ class AgentOrchestrator:
                         logger.debug(f"Agent log: {log_entry.get('message', log_entry)}")
                         continue
                     # If it's JSON but not a log, send it
+                    logger.info(f"Sending JSON content via SSE: {json.dumps(log_entry)[:50]}...")
                     await self.sse.send_agent_output(run_id, variation_id, json.dumps(log_entry))
                 except json.JSONDecodeError:
                     # This is plain text content (markdown), send it
+                    logger.info(f"Sending plain text via SSE: {log_line[:50]}...")
                     await self.sse.send_agent_output(run_id, variation_id, log_line)
             
             # Send job completion event
@@ -334,3 +344,18 @@ class AgentOrchestrator:
         except Exception as e:
             logger.error(f"Failed to update run status: {e}")
             await db_session.rollback()
+    
+    async def _wait_for_sse_connections(self, run_id: str, max_wait_seconds: int = 10) -> None:
+        """Wait for SSE connections to be established before starting orchestration."""
+        logger.info(f"Waiting for SSE connections for run {run_id}...")
+        
+        for i in range(max_wait_seconds * 10):  # Check every 100ms
+            if run_id in self.sse._connections and self.sse._connections[run_id]:
+                logger.info(f"SSE connection established for run {run_id} after {i/10:.1f}s")
+                await self.sse.send_agent_output(run_id, 0, f"🔗 Connected! Starting agent variations...")
+                return
+            
+            await asyncio.sleep(0.1)  # 100ms check interval
+        
+        logger.warning(f"No SSE connections found for run {run_id} after {max_wait_seconds}s, proceeding anyway")
+        # Continue without SSE - jobs will still run, just no streaming

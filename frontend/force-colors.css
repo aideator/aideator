@@ -1,0 +1,196 @@
+/* AIdeator "Neural Spectrum" Design System - Force generation of custom utility classes */
+
+/* Primary Brand Colors - Neural Spectrum */
+.bg-ai-primary { background-color: #3B82F6; } /* Neural Blue */
+.bg-ai-secondary { background-color: #A855F7; } /* Quantum Purple */
+.bg-ai-accent { background-color: #06B6D4; } /* Synthesis Teal */
+
+.text-ai-primary { color: #3B82F6; }
+.text-ai-secondary { color: #A855F7; }
+.text-ai-accent { color: #06B6D4; }
+
+.border-ai-primary { border-color: #3B82F6; }
+.border-ai-secondary { border-color: #A855F7; }
+.border-ai-accent { border-color: #06B6D4; }
+
+/* Agent Colors - Distinctive Model Identities */
+.bg-agent-1 { background-color: #DC2626; } /* Crimson Edge */
+.bg-agent-2 { background-color: #D97706; } /* Amber Insight - Better contrast */
+.bg-agent-3 { background-color: #10B981; } /* Emerald Logic */
+.bg-agent-4 { background-color: #3B82F6; } /* Sapphire Depth */
+.bg-agent-5 { background-color: #8B5CF6; } /* Violet Innovation */
+
+.text-agent-1 { color: #DC2626; }
+.text-agent-2 { color: #D97706; }
+.text-agent-3 { color: #10B981; }
+.text-agent-4 { color: #3B82F6; }
+.text-agent-5 { color: #8B5CF6; }
+
+.border-agent-1 { border-color: #DC2626; }
+.border-agent-2 { border-color: #D97706; }
+.border-agent-3 { border-color: #10B981; }
+.border-agent-4 { border-color: #3B82F6; }
+.border-agent-5 { border-color: #8B5CF6; }
+
+.border-l-agent-1 { border-left-color: #DC2626; }
+.border-l-agent-2 { border-left-color: #D97706; }
+.border-l-agent-3 { border-left-color: #10B981; }
+.border-l-agent-4 { border-left-color: #3B82F6; }
+.border-l-agent-5 { border-left-color: #8B5CF6; }
+
+/* Neutral Palette - Clean & Professional */
+.bg-neutral-white { background-color: #FFFFFF; } /* Quantum White */
+.bg-neutral-paper { background-color: #F8FAFC; } /* Neural Mist */
+.bg-neutral-fog { background-color: #E2E8F0; } /* Data Fog */
+.bg-neutral-charcoal { background-color: #1E293B; } /* Deep Matter */
+
+.text-neutral-charcoal { color: #1E293B; }
+.text-neutral-shadow { color: #64748B; } /* Logic Gray */
+.text-neutral-white { color: #FFFFFF; }
+
+.border-neutral-fog { border-color: #E2E8F0; }
+.border-neutral-charcoal { border-color: #1E293B; }
+
+/* Semantic States - Clear Status Communication */
+.bg-semantic-success { background-color: #22C55E; } /* Success Pulse */
+.bg-semantic-warning { background-color: #F59E0B; } /* Warning Flux */
+.bg-semantic-error { background-color: #EF4444; } /* Error Signal */
+.bg-semantic-info { background-color: #3B82F6; } /* Info Stream */
+
+.text-semantic-success { color: #22C55E; }
+.text-semantic-warning { color: #F59E0B; }
+.text-semantic-error { color: #EF4444; }
+.text-semantic-info { color: #3B82F6; }
+
+/* Gradient Backgrounds for Premium Feel */
+.bg-gradient-neural { background: linear-gradient(135deg, #3B82F6 0%, #A855F7 100%); }
+.bg-gradient-quantum { background: linear-gradient(135deg, #A855F7 0%, #06B6D4 100%); }
+.bg-gradient-synthesis { background: linear-gradient(135deg, #06B6D4 0%, #10B981 100%); }
+
+/* Rich Page Background Gradients - Smooth, No White */
+.bg-gradient-neural-twilight { 
+  background: 
+    /* Layer 1: Base gradient with many stops */
+    linear-gradient(135deg, 
+      #1E293B 0%, 
+      #202B3D 5%,
+      #232D3F 10%,
+      #253041 15%,
+      #273243 20%,
+      #2A3545 25%,
+      #2C3747 30%,
+      #2F3A49 35%,
+      #313C4B 40%,
+      #343F4D 45%,
+      #36414F 50%,
+      #394451 55%,
+      #3B4653 60%,
+      #3E4955 65%,
+      #404B57 70%,
+      #434E59 75%,
+      #45505B 80%,
+      #40495A 85%,
+      #3A4358 90%,
+      #343C56 95%,
+      #2E3554 97%,
+      #1E293B 100%
+    ),
+    /* Layer 2: Noise-like dithering overlay */
+    radial-gradient(circle at 25% 25%, rgba(255,255,255,0.01) 0%, transparent 50%),
+    radial-gradient(circle at 75% 75%, rgba(255,255,255,0.005) 0%, transparent 50%),
+    radial-gradient(circle at 90% 10%, rgba(0,0,0,0.01) 0%, transparent 50%),
+    radial-gradient(circle at 10% 90%, rgba(0,0,0,0.005) 0%, transparent 50%),
+    /* Layer 3: Solid fallback */
+    #334155;
+}
+.bg-gradient-quantum-aurora { 
+  background: 
+    linear-gradient(135deg, 
+      rgba(59, 130, 246, 0.15) 0%, 
+      rgba(100, 116, 248, 0.13) 12.5%,
+      rgba(168, 85, 247, 0.12) 25%, 
+      rgba(137, 100, 248, 0.13) 37.5%,
+      rgba(6, 182, 212, 0.15) 50%, 
+      rgba(87, 134, 230, 0.13) 62.5%,
+      rgba(168, 85, 247, 0.12) 75%, 
+      rgba(114, 108, 249, 0.13) 87.5%,
+      rgba(59, 130, 246, 0.15) 100%
+    ), 
+    #0F172A; 
+}
+.bg-gradient-neural-ocean { 
+  background: linear-gradient(135deg, 
+    #0F172A 0%, 
+    #14202E 10%,
+    #1A2332 20%,
+    rgba(6, 182, 212, 0.1) 30%,
+    rgba(6, 182, 212, 0.2) 40%,
+    rgba(32, 156, 234, 0.15) 50%,
+    rgba(59, 130, 246, 0.15) 60%,
+    rgba(6, 182, 212, 0.2) 70%,
+    rgba(6, 182, 212, 0.1) 80%,
+    #1A2332 90%,
+    #0F172A 100%
+  ); 
+}
+.bg-gradient-ai-spectrum { 
+  background: linear-gradient(135deg, 
+    rgba(59, 130, 246, 0.2) 0%, 
+    rgba(95, 121, 246, 0.17) 10%,
+    rgba(168, 85, 247, 0.15) 20%, 
+    rgba(137, 120, 248, 0.16) 30%,
+    rgba(6, 182, 212, 0.2) 40%, 
+    rgba(33, 183, 171, 0.17) 50%,
+    rgba(16, 185, 129, 0.15) 60%, 
+    rgba(92, 170, 188, 0.16) 70%,
+    rgba(168, 85, 247, 0.15) 80%, 
+    rgba(114, 108, 249, 0.17) 90%,
+    rgba(59, 130, 246, 0.2) 100%
+  ), #1E293B; 
+}
+.bg-gradient-neural-slate { 
+  background: linear-gradient(135deg, 
+    #475569 0%, 
+    #516070 12.5%,
+    #5B6A77 25%, 
+    #64748B 37.5%,
+    #7C8B9F 50%, 
+    #8A99AC 62.5%,
+    #94A3B8 75%, 
+    #7C8B9F 87.5%,
+    #475569 100%
+  ); 
+}
+
+/* Tailwind gradient utilities */
+.bg-gradient-to-br { background-image: linear-gradient(to bottom right, var(--tw-gradient-stops)); }
+.bg-gradient-to-r { background-image: linear-gradient(to right, var(--tw-gradient-stops)); }
+.from-ai-primary { --tw-gradient-from: #3B82F6; --tw-gradient-to: rgba(59, 130, 246, 0); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to); }
+.from-ai-secondary { --tw-gradient-from: #A855F7; --tw-gradient-to: rgba(168, 85, 247, 0); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to); }
+.to-ai-primary { --tw-gradient-to: #3B82F6; }
+.to-ai-secondary { --tw-gradient-to: #A855F7; }
+
+/* Hover States for Interactive Elements */
+.hover\:bg-ai-primary\/90:hover { background-color: rgba(59, 130, 246, 0.9); }
+.hover\:bg-ai-secondary\/90:hover { background-color: rgba(168, 85, 247, 0.9); }
+.hover\:bg-ai-accent\/90:hover { background-color: rgba(6, 182, 212, 0.9); }
+
+.hover\:bg-agent-1\/90:hover { background-color: rgba(220, 38, 38, 0.9); }
+.hover\:bg-agent-2\/90:hover { background-color: rgba(217, 119, 6, 0.9); }
+.hover\:bg-agent-3\/90:hover { background-color: rgba(16, 185, 129, 0.9); }
+.hover\:bg-agent-4\/90:hover { background-color: rgba(59, 130, 246, 0.9); }
+.hover\:bg-agent-5\/90:hover { background-color: rgba(139, 92, 246, 0.9); }
+
+/* Opacity Variants for Layering */
+.bg-ai-primary\/10 { background-color: rgba(59, 130, 246, 0.1); }
+.bg-ai-secondary\/10 { background-color: rgba(168, 85, 247, 0.1); }
+.bg-agent-1\/10 { background-color: rgba(220, 38, 38, 0.1); }
+.bg-agent-2\/10 { background-color: rgba(217, 119, 6, 0.1); }
+.bg-agent-3\/10 { background-color: rgba(16, 185, 129, 0.1); }
+.bg-agent-4\/10 { background-color: rgba(59, 130, 246, 0.1); }
+.bg-agent-5\/10 { background-color: rgba(139, 92, 246, 0.1); }
+
+/* Text Opacity Variants */
+.text-neutral-white\/80 { color: rgba(255, 255, 255, 0.8); }
+.text-neutral-white\/90 { color: rgba(255, 255, 255, 0.9); }
+.text-neutral-white\/70 { color: rgba(255, 255, 255, 0.7); }

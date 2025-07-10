@@ -1,0 +1,23 @@
+/* Test if CSS is loading */
+@import "tailwindcss";
+
+/* Test theme variables */
+@theme {
+  --color-ai-primary: 239 79% 59%;
+  --color-ai-secondary: 258 90% 67%;
+  --color-agent-1: 0 84% 60%;
+  --color-agent-2: 39 96% 51%;
+  --color-agent-3: 160 84% 39%;
+  --color-neutral-white: 0 0% 100%;
+  --color-neutral-paper: 210 40% 98%;
+  --color-neutral-charcoal: 222 84% 16%;
+}
+
+/* Manual utility classes for testing */
+.bg-ai-primary { background-color: hsl(var(--color-ai-primary)); }
+.bg-ai-secondary { background-color: hsl(var(--color-ai-secondary)); }
+.bg-agent-1 { background-color: hsl(var(--color-agent-1)); }
+.bg-agent-2 { background-color: hsl(var(--color-agent-2)); }
+.bg-agent-3 { background-color: hsl(var(--color-agent-3)); }
+.bg-neutral-paper { background-color: hsl(var(--color-neutral-paper)); }
+.text-neutral-charcoal { color: hsl(var(--color-neutral-charcoal)); }

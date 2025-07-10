@@ -361,6 +361,67 @@ class KubernetesService:
                 })
         return logs
     
+    async def stream_raw_debug_logs(
+        self,
+        job_name: str,
+    ) -> AsyncGenerator[str, None]:
+        """Stream raw debug logs from a job for debugging purposes."""
+        # Get the pod name for the job
+        pods = await self._get_job_pods(job_name)
+        
+        if not pods:
+            # If no pods found, try to wait for them
+            try:
+                await self._wait_for_job_pods(job_name, timeout=30)
+                pods = await self._get_job_pods(job_name)
+            except RuntimeError:
+                pass
+        
+        if not pods:
+            yield f"[DEBUG] No pods found for job {job_name}"
+            return
+        
+        # Use the first pod (jobs typically have one pod)
+        pod_name = pods[0]
+        yield f"[DEBUG] Streaming from pod: {pod_name}"
+        
+        cmd = [
+            "kubectl", "logs", "-f", pod_name,
+            "--namespace", self.namespace,
+            "--all-containers=true",  # Get logs from all containers
+            "--timestamps=true"       # Include timestamps
+        ]
+        
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+                
+                log_line = line.decode().rstrip('\n')
+                if log_line:
+                    # Yield raw log line with all debug info
+                    yield log_line
+            
+            # Wait for process to complete
+            await process.wait()
+            
+            if process.returncode != 0:
+                stderr = await process.stderr.read()
+                error_msg = stderr.decode() if stderr else "Unknown error"
+                yield f"[DEBUG] kubectl logs failed: {error_msg}"
+            else:
+                yield f"[DEBUG] Streaming completed for job {job_name}"
+            
+        except Exception as e:
+            yield f"[DEBUG] Error streaming logs: {str(e)}"
+    
     def _extract_variation_id(self, pod_name: str) -> Optional[int]:
         """Extract variation ID from pod name."""
         # Pod names follow pattern: agent-{run_id}-{variation_id}-{suffix}
