@@ -127,6 +127,7 @@ class CreateRunRequest(BaseModel):
     
 
     model_config = {
+        "protected_namespaces": (),  # Allow model_ prefixed fields
         "json_schema_extra": {
             "example": {
                 "github_url": "https://github.com/fastapi/fastapi",
@@ -166,6 +167,7 @@ class CreateRunResponse(BaseModel):
     turn_id: str = Field(..., description="Turn ID for this run")
 
     model_config = {
+        "protected_namespaces": (),  # Allow model_ prefixed fields
         "json_schema_extra": {
             "example": {
                 "run_id": "run_1234567890abcdef",
@@ -197,6 +199,7 @@ class RunDetails(BaseModel):
 
     model_config = {
         "from_attributes": True,
+        "protected_namespaces": (),  # Allow model_ prefixed fields
         "json_schema_extra": {
             "example": {
                 "id": "run_1234567890abcdef",
@@ -240,6 +243,7 @@ class RunListItem(BaseModel):
 
     model_config = {
         "from_attributes": True,
+        "protected_namespaces": (),  # Allow model_ prefixed fields
     }
 
 

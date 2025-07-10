@@ -25,11 +25,11 @@ class Settings(BaseSettings):
     secret_key: str
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
-    openai_api_key: str  # Required for LiteLLM
+    openai_api_key: Optional[str] = None  # Required for LiteLLM
     openai_api_key_env_var: str = "OPENAI_API_KEY"  # Environment variable name for containers
-    anthropic_api_key: str  # Required for Claude Code CLI
+    anthropic_api_key: Optional[str] = None  # Required for Claude Code CLI
     anthropic_api_key_env_var: str = "ANTHROPIC_API_KEY"  # Environment variable name for containers
-    gemini_api_key: str  # Required for Gemini CLI
+    gemini_api_key: Optional[str] = None  # Required for Gemini CLI
     gemini_api_key_env_var: str = "GEMINI_API_KEY"  # Environment variable name for containers
     api_key_header: str = "X-API-Key"
     allowed_origins: list[str] = ["*"]
@@ -118,25 +118,25 @@ class Settings(BaseSettings):
 
     @field_validator("openai_api_key")
     @classmethod
-    def validate_openai_key(cls, v: str) -> str:
+    def validate_openai_key(cls, v: Optional[str]) -> Optional[str]:
         """Validate OpenAI API key format."""
-        if not v.startswith("sk-"):
+        if v is not None and not v.startswith("sk-"):
             raise ValueError("Invalid OpenAI API key format")
         return v
 
     @field_validator("anthropic_api_key")
     @classmethod
-    def validate_anthropic_key(cls, v: str) -> str:
+    def validate_anthropic_key(cls, v: Optional[str]) -> Optional[str]:
         """Validate Anthropic API key format."""
-        if not v.startswith("sk-ant-"):
+        if v is not None and not v.startswith("sk-ant-"):
             raise ValueError("Invalid Anthropic API key format")
         return v
 
     @field_validator("gemini_api_key")
     @classmethod
-    def validate_gemini_key(cls, v: str) -> str:
+    def validate_gemini_key(cls, v: Optional[str]) -> Optional[str]:
         """Validate Gemini API key format."""
-        if not v.startswith("AIza"):
+        if v is not None and not v.startswith("AIza"):
             raise ValueError("Invalid Gemini API key format")
         return v
 

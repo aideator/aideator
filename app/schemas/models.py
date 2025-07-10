@@ -178,8 +178,9 @@ class ModelSelectionRequest(BaseModel):
         description="List of model variants to run"
     )
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "protected_namespaces": (),  # Allow model_ prefixed fields
+        "json_schema_extra": {
             "example": {
                 "model_variants": [
                     {
@@ -200,6 +201,7 @@ class ModelSelectionRequest(BaseModel):
                 ]
             }
         }
+    }
 
 
 class ProviderSummary(BaseModel):
@@ -212,8 +214,9 @@ class ProviderSummary(BaseModel):
     model_count: int
     user_has_credentials: bool
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "protected_namespaces": (),  # Allow model_ prefixed fields
+        "json_schema_extra": {
             "example": {
                 "provider": "openai",
                 "display_name": "OpenAI",
@@ -223,6 +226,7 @@ class ProviderSummary(BaseModel):
                 "user_has_credentials": True
             }
         }
+    }
 
 
 class ModelCatalogResponse(BaseModel):
@@ -266,14 +270,16 @@ class ModelRecommendation(BaseModel):
     confidence_score: float = Field(ge=0.0, le=1.0)
     reasoning: str
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "protected_namespaces": (),  # Allow model_ prefixed fields
+        "json_schema_extra": {
             "example": {
                 "model_definition_id": "model_gpt4_openai",
                 "confidence_score": 0.85,
                 "reasoning": "GPT-4 is excellent for code analysis and complex reasoning tasks"
             }
         }
+    }
 
 
 class ModelRecommendationRequest(BaseModel):

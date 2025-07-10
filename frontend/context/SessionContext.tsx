@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
 import { Session } from '@/components/sessions/SessionSidebar';
+import * as api from '@/lib/api';
 
 // Session Turn interface for conversation history
 export interface SessionTurn {
@@ -180,6 +181,7 @@ interface SessionContextType {
     updateSessionTurn: (sessionId: string, turnId: string, updates: Partial<SessionTurn>) => void;
     saveToStorage: () => void;
     loadFromStorage: () => void;
+    clearAllSessions: () => void;
   };
 }
 
@@ -192,41 +194,82 @@ const STORAGE_KEYS = {
   SESSION_TURNS: 'aideator_session_turns',
 };
 
-// Mock API functions (replace with actual API calls)
-const mockAPI = {
+// Real API functions using backend
+const sessionAPI = {
   getSessions: async (): Promise<Session[]> => {
-    // TODO: Replace with actual API call
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return [];
+    try {
+      const backendSessions = await api.getSessions();
+      // Transform backend session format to frontend format
+      return backendSessions.map(session => ({
+        id: session.id,
+        title: session.title,
+        description: session.description,
+        createdAt: session.created_at,
+        updatedAt: session.updated_at,
+        turnCount: session.total_turns,
+        lastActivityAt: session.last_activity_at,
+        isActive: session.is_active,
+        isArchived: session.is_archived,
+      }));
+    } catch (error) {
+      console.error('Failed to fetch sessions:', error);
+      throw error;
+    }
   },
   
   createSession: async (title: string): Promise<Session> => {
-    // TODO: Replace with actual API call
-    await new Promise(resolve => setTimeout(resolve, 300));
-    return {
-      id: `session-${Date.now()}`,
-      title,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      turnCount: 0,
-    };
+    try {
+      const response = await api.createSession({ title });
+      return {
+        id: response.id,
+        title: response.title,
+        description: response.description,
+        createdAt: response.created_at,
+        updatedAt: response.created_at,
+        turnCount: 0,
+        lastActivityAt: response.created_at,
+        isActive: true,
+        isArchived: false,
+      };
+    } catch (error) {
+      console.error('Failed to create session:', error);
+      throw error;
+    }
   },
   
   updateSession: async (id: string, updates: Partial<Session>): Promise<Session> => {
-    // TODO: Replace with actual API call
-    await new Promise(resolve => setTimeout(resolve, 200));
-    return { id, ...updates } as Session;
+    try {
+      await api.updateSession(id, { title: updates.title || '' });
+      // Return the updated session (API doesn't return it, so we construct it)
+      return { 
+        id, 
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      } as Session;
+    } catch (error) {
+      console.error('Failed to update session:', error);
+      throw error;
+    }
   },
   
   deleteSession: async (id: string): Promise<void> => {
-    // TODO: Replace with actual API call
-    await new Promise(resolve => setTimeout(resolve, 200));
+    try {
+      await api.deleteSession(id);
+    } catch (error) {
+      console.error('Failed to delete session:', error);
+      throw error;
+    }
   },
   
   getSessionTurns: async (sessionId: string): Promise<SessionTurn[]> => {
-    // TODO: Replace with actual API call
-    await new Promise(resolve => setTimeout(resolve, 300));
-    return [];
+    try {
+      // For now, return empty array as the backend doesn't have a direct turns endpoint
+      // This would need to be implemented based on the actual backend API
+      return [];
+    } catch (error) {
+      console.error('Failed to fetch session turns:', error);
+      throw error;
+    }
   },
 };
 
@@ -237,6 +280,33 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // Load from localStorage on mount
   useEffect(() => {
     loadFromStorage();
+    // Also load fresh sessions from backend to validate localStorage data
+    // We need to ensure loadSessions is defined before calling it
+    const loadSessionsOnMount = async () => {
+      try {
+        const sessions = await sessionAPI.getSessions();
+        dispatch({ type: 'SET_SESSIONS', payload: sessions });
+        
+        // Validate active session from localStorage
+        const savedActiveSessionId = localStorage.getItem(STORAGE_KEYS.ACTIVE_SESSION);
+        if (savedActiveSessionId) {
+          const activeSessionExists = sessions.some(s => s.id === savedActiveSessionId);
+          if (!activeSessionExists) {
+            console.warn('Active session from localStorage not found in backend, clearing...');
+            dispatch({ type: 'SET_ACTIVE_SESSION', payload: null });
+            localStorage.removeItem(STORAGE_KEYS.ACTIVE_SESSION);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load sessions on mount:', error);
+        // Clear invalid localStorage data on error
+        localStorage.removeItem(STORAGE_KEYS.SESSIONS);
+        localStorage.removeItem(STORAGE_KEYS.ACTIVE_SESSION);
+        localStorage.removeItem(STORAGE_KEYS.SESSION_TURNS);
+      }
+    };
+    
+    loadSessionsOnMount();
   }, []);
 
   // Save to localStorage whenever sessions or active session changes
@@ -259,11 +329,27 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'SET_LOADING', payload: true });
       dispatch({ type: 'SET_ERROR', payload: null });
       
-      const sessions = await mockAPI.getSessions();
+      const sessions = await sessionAPI.getSessions();
       dispatch({ type: 'SET_SESSIONS', payload: sessions });
       
+      // Validate active session - if it doesn't exist in the backend, clear it
+      if (state.activeSessionId) {
+        const activeSessionExists = sessions.some(s => s.id === state.activeSessionId);
+        if (!activeSessionExists) {
+          console.warn('Active session from localStorage not found in backend, clearing...');
+          dispatch({ type: 'SET_ACTIVE_SESSION', payload: null });
+        }
+      }
+      
     } catch (error) {
+      console.error('Failed to load sessions:', error);
       dispatch({ type: 'SET_ERROR', payload: 'Failed to load sessions' });
+      // Clear localStorage if we can't load sessions (likely auth issue)
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(STORAGE_KEYS.SESSIONS);
+        localStorage.removeItem(STORAGE_KEYS.ACTIVE_SESSION);
+        localStorage.removeItem(STORAGE_KEYS.SESSION_TURNS);
+      }
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
@@ -273,7 +359,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       dispatch({ type: 'SET_ERROR', payload: null });
       
-      const newSession = await mockAPI.createSession(title);
+      const newSession = await sessionAPI.createSession(title);
       dispatch({ type: 'ADD_SESSION', payload: newSession });
       dispatch({ type: 'SET_ACTIVE_SESSION', payload: newSession.id });
       
@@ -286,7 +372,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       dispatch({ type: 'SET_ERROR', payload: null });
       
-      await mockAPI.updateSession(id, updates);
+      await sessionAPI.updateSession(id, updates);
       dispatch({ type: 'UPDATE_SESSION', payload: { id, updates } });
       
     } catch (error) {
@@ -298,7 +384,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       dispatch({ type: 'SET_ERROR', payload: null });
       
-      await mockAPI.deleteSession(id);
+      await sessionAPI.deleteSession(id);
       dispatch({ type: 'DELETE_SESSION', payload: id });
       
     } catch (error) {
@@ -314,7 +400,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       dispatch({ type: 'SET_ERROR', payload: null });
       
-      const turns = await mockAPI.getSessionTurns(sessionId);
+      const turns = await sessionAPI.getSessionTurns(sessionId);
       dispatch({ type: 'SET_SESSION_TURNS', payload: { sessionId, turns } });
       
     } catch (error) {
@@ -379,6 +465,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const clearAllSessions = () => {
+    // Clear all session data from state and localStorage
+    dispatch({ type: 'SET_SESSIONS', payload: [] });
+    dispatch({ type: 'SET_ACTIVE_SESSION', payload: null });
+    
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEYS.SESSIONS);
+      localStorage.removeItem(STORAGE_KEYS.ACTIVE_SESSION);
+      localStorage.removeItem(STORAGE_KEYS.SESSION_TURNS);
+    }
+  };
+
   const contextValue: SessionContextType = {
     state,
     actions: {
@@ -392,6 +490,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       updateSessionTurn,
       saveToStorage,
       loadFromStorage,
+      clearAllSessions,
     },
   };
 

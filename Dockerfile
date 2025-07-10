@@ -40,6 +40,9 @@ FROM base AS api
 # Copy application code
 COPY app/ ./app/
 COPY k8s/ ./k8s/
+COPY alembic/ ./alembic/
+COPY alembic.ini ./
+COPY scripts/ ./scripts/
 
 # Create non-root user
 RUN useradd -m -u 1000 apiuser && chown -R apiuser:apiuser /app

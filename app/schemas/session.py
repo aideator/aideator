@@ -127,6 +127,10 @@ class SessionAnalytics(BaseModel):
     average_turns_per_session: float
     most_used_models: List[Dict[str, Any]]
     model_preference_stats: Dict[str, Dict[str, Any]]
+    
+    model_config = {
+        "protected_namespaces": (),  # Allow model_ prefixed fields
+    }
 
 
 class ModelPerformanceMetrics(BaseModel):
@@ -138,6 +142,10 @@ class ModelPerformanceMetrics(BaseModel):
     preference_win_rate: float
     average_quality_score: float
     usage_percentage: float
+    
+    model_config = {
+        "protected_namespaces": (),  # Allow model_ prefixed fields
+    }
 
 
 class SessionExport(BaseModel):

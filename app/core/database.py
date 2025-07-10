@@ -34,6 +34,9 @@ async_session_maker = sessionmaker(
     autocommit=False,
 )
 
+# Alias for backward compatibility with migration scripts
+AsyncSessionFactory = async_session_maker
+
 
 async def create_db_and_tables() -> None:
     """Create database tables."""

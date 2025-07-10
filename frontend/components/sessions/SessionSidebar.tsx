@@ -42,12 +42,15 @@ import { cn } from '@/lib/utils';
 export interface Session {
   id: string;
   title: string;
+  description?: string;
   createdAt: string;
   updatedAt: string;
   turnCount: number;
+  lastActivityAt: string;
+  isActive: boolean;
+  isArchived: boolean;
   lastPrompt?: string;
   modelPreferences?: Record<string, number>;
-  isActive?: boolean;
 }
 
 interface SessionSidebarProps {

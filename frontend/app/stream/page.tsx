@@ -162,10 +162,18 @@ function StreamPageContent() {
       })));
       
       // Start actual model comparison via API
-      const sessionId = currentSessionId || state.activeSession?.id || `temp-${Date.now()}`;
+      // Only pass sessionId if we have a real session from the backend
+      // If we don't have a valid session, let the backend create one
+      const sessionId = currentSessionId || state.activeSession?.id;
+      
+      // Clear invalid session ID if it exists in localStorage but not in backend
+      if (sessionId && state.sessions.length > 0 && !state.sessions.some(s => s.id === sessionId)) {
+        console.warn('Session ID not found in sessions list, clearing...');
+        actions.setActiveSession(null);
+      }
       
       const response = await apiIntegration.startModelComparison({
-        sessionId: sessionId,
+        sessionId: sessionId && sessionId.trim() !== '' && state.sessions.some(s => s.id === sessionId) ? sessionId : undefined, // Will be undefined if no session exists, backend will auto-create
         prompt: prompt,
         modelIds: modelIds,
         instanceIds: instanceIds,
@@ -188,6 +196,12 @@ function StreamPageContent() {
       
       // Reset model responses on error
       setModelResponses([]);
+      
+      // Clear session state if session-related error
+      if (errorMessage.includes('Session not found') || errorMessage.includes('not accessible')) {
+        setCurrentSessionId(null);
+        setCurrentTurnId(null);
+      }
     }
   };
   
@@ -265,22 +279,24 @@ function StreamPageContent() {
           })),
         });
         
-        // Add turn to session
-        actions.addSessionTurn({
-          id: turnId,
-          sessionId: state.activeSession.id,
-          prompt: prompt,
-          modelResponses: modelResponses.map(r => ({
-            modelId: r.id,
-            modelName: r.name,
-            response: r.content,
-            responseTime: r.responseTime,
-            tokenCount: r.tokenCount,
-            isSelected: r.id === modelId,
-          })),
-          preferredModelId: modelId,
-          createdAt: new Date().toISOString(),
-        });
+        // Add turn to session - only if we have a valid session that exists in the sessions list
+        if (state.activeSession && state.sessions.some(s => s.id === state.activeSession!.id)) {
+          actions.addSessionTurn({
+            id: turnId,
+            sessionId: state.activeSession.id,
+            prompt: prompt,
+            modelResponses: modelResponses.map(r => ({
+              modelId: r.id,
+              modelName: r.name,
+              response: r.content,
+              responseTime: r.responseTime,
+              tokenCount: r.tokenCount,
+              isSelected: r.id === modelId,
+            })),
+            preferredModelId: modelId,
+            createdAt: new Date().toISOString(),
+          });
+        }
       } catch (error) {
         console.error('Failed to record preference:', error);
       }

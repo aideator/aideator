@@ -5,7 +5,7 @@ import { SessionTurn } from '@/context/SessionContext';
 import { PreferenceRecord } from './usePreferenceStore';
 
 export interface ModelComparisonRequest {
-  sessionId: string;
+  sessionId?: string; // Optional - backend will auto-create if not provided
   prompt: string;
   modelIds: string[];
   instanceIds?: string[]; // Frontend instance IDs for state management
@@ -110,9 +110,18 @@ export function useAPIIntegration() {
         model_variants: modelVariants,
         use_claude_code: false,
         agent_mode: request.agentMode || 'litellm',
-        session_id: request.sessionId,
-        turn_id: request.turnId,
       };
+      
+      // Only include session_id if we have a real session
+      // Let the backend auto-create a session if none is provided
+      if (request.sessionId && request.sessionId.trim() !== '') {
+        requestBody.session_id = request.sessionId;
+      }
+      
+      // Only include turn_id if we have a real turn
+      if (request.turnId) {
+        requestBody.turn_id = request.turnId;
+      }
 
       // Include github_url - required by backend schema
       if (request.repositoryUrl) {
@@ -183,8 +192,8 @@ export function useAPIIntegration() {
       
       const initialResponse: ModelComparisonResponse = {
         runId,
-        sessionId: request.sessionId,
-        turnId: `turn-${Date.now()}`, // Generate turn ID client-side for now
+        sessionId: sessionId, // Use the session ID returned from backend
+        turnId: turnId, // Use the turn ID returned from backend
         modelResponses: request.modelIds.map((modelId, index) => {
           const finalModelId = request.instanceIds?.[index] || modelId;
           console.log(`🔥 BACKEND: Mapping index ${index}: ${modelId} -> ${finalModelId}`);

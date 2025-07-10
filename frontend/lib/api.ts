@@ -75,21 +75,26 @@ interface PromptDetails {
 // Session management interfaces
 interface CreateSessionRequest {
   title?: string
+  description?: string
 }
 
 interface CreateSessionResponse {
-  session_id: string
+  id: string
   title: string
+  description?: string
   created_at: string
 }
 
 interface Session {
-  session_id: string
+  id: string
   title: string
+  description?: string
   created_at: string
   updated_at: string
-  turn_count: number
-  last_prompt?: string
+  total_turns: number
+  last_activity_at: string
+  is_active: boolean
+  is_archived: boolean
 }
 
 interface SessionDetails extends Session {
@@ -261,11 +266,18 @@ export async function getPromptDetails(promptId: string): Promise<PromptDetails>
 // Session management functions
 export async function createSession(data: CreateSessionRequest = {}): Promise<CreateSessionResponse> {
   try {
+    const apiKey = localStorage.getItem('api_key');
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    
+    if (apiKey) {
+      headers["X-API-Key"] = apiKey;
+    }
+    
     const response = await fetch(`${API_BASE_URL}/api/v1/sessions`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify(data),
     })
 
@@ -289,7 +301,16 @@ export async function createSession(data: CreateSessionRequest = {}): Promise<Cr
 
 export async function getSessions(): Promise<Session[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/sessions`)
+    const apiKey = localStorage.getItem('api_key');
+    const headers: Record<string, string> = {};
+    
+    if (apiKey) {
+      headers["X-API-Key"] = apiKey;
+    }
+    
+    const response = await fetch(`${API_BASE_URL}/api/v1/sessions`, {
+      headers,
+    })
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: "Unknown error" }))
@@ -311,7 +332,16 @@ export async function getSessions(): Promise<Session[]> {
 
 export async function getSessionDetails(sessionId: string): Promise<SessionDetails> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/sessions/${sessionId}`)
+    const apiKey = localStorage.getItem('api_key');
+    const headers: Record<string, string> = {};
+    
+    if (apiKey) {
+      headers["X-API-Key"] = apiKey;
+    }
+    
+    const response = await fetch(`${API_BASE_URL}/api/v1/sessions/${sessionId}`, {
+      headers,
+    })
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: "Unknown error" }))
@@ -333,11 +363,18 @@ export async function getSessionDetails(sessionId: string): Promise<SessionDetai
 
 export async function updateSession(sessionId: string, data: { title: string }): Promise<void> {
   try {
+    const apiKey = localStorage.getItem('api_key');
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    
+    if (apiKey) {
+      headers["X-API-Key"] = apiKey;
+    }
+    
     const response = await fetch(`${API_BASE_URL}/api/v1/sessions/${sessionId}`, {
       method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify(data),
     })
 
@@ -359,8 +396,16 @@ export async function updateSession(sessionId: string, data: { title: string }):
 
 export async function deleteSession(sessionId: string): Promise<void> {
   try {
+    const apiKey = localStorage.getItem('api_key');
+    const headers: Record<string, string> = {};
+    
+    if (apiKey) {
+      headers["X-API-Key"] = apiKey;
+    }
+    
     const response = await fetch(`${API_BASE_URL}/api/v1/sessions/${sessionId}`, {
       method: "DELETE",
+      headers,
     })
 
     if (!response.ok) {

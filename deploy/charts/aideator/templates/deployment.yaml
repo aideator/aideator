@@ -17,6 +17,58 @@ spec:
       serviceAccountName: {{ include "aideator.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.securityContext | nindent 8 }}
+      initContainers:
+        - name: migration
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /bin/bash
+            - -c
+            - |
+              echo "Running database migrations..."
+              # Check if alembic_version table exists
+              if python -c "
+              import asyncio
+              import sys
+              sys.path.insert(0, '/app')
+              from app.core.database import AsyncSessionFactory
+              from sqlalchemy import text
+              
+              async def check_alembic_version():
+                  async with AsyncSessionFactory() as session:
+                      try:
+                          result = await session.execute(text('SELECT version_num FROM alembic_version LIMIT 1'))
+                          version = result.scalar()
+                          print(f'Database is at version: {version}')
+                          return True
+                      except Exception as e:
+                          print(f'alembic_version table not found: {e}')
+                          return False
+              
+              asyncio.run(check_alembic_version())
+              "; then
+                echo "Database migration state found, running upgrade..."
+                python -m alembic upgrade head
+              else
+                echo "Database migration state not found, stamping existing database..."
+                python -m alembic stamp head
+              fi
+              echo "Migrations completed successfully!"
+          env:
+            - name: DATABASE_URL
+              value: {{ .Values.database.url }}
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aideator-secret
+                  key: secret-key
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
