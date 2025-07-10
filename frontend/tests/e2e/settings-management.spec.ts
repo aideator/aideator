@@ -121,6 +121,24 @@ test.describe('Settings Management - Comprehensive E2E Tests', () => {
     });
   });
 
+  test('should navigate to settings page via settings button', async ({ page }) => {
+    await page.goto('/stream');
+
+    // Wait for page to load
+    await page.waitForSelector('[data-testid="auth-status"]', { timeout: 10000 });
+
+    // Find and click the settings button in the header
+    await page.locator('button[title="Settings"]').click();
+
+    // Verify we're on the settings page
+    await expect(page).toHaveURL(/.*\/settings/);
+    await expect(page.locator('h1')).toContainText('Settings');
+    
+    // Verify the settings page has loaded with expected sections
+    await expect(page.locator('text=Manage your account, API keys, and AIdeator preferences')).toBeVisible();
+    await expect(page.locator('[data-testid="tabs-list"]')).toBeVisible();
+  });
+
   test('should display settings panel when opened', async ({ page }) => {
     await page.goto('/stream');
 

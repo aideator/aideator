@@ -220,15 +220,9 @@ else
     echo "✅ gemini-secret already exists"
 fi
 
-if ! kubectl get secret aideator-secret -n aideator &> /dev/null; then
-    echo "🔧 Creating aideator-secret..."
-    kubectl create secret generic aideator-secret \
-        --from-literal=secret-key="$(openssl rand -hex 32)" \
-        --from-literal=encryption-key="$(openssl rand -base64 32)" \
-        -n aideator
-else
-    echo "✅ aideator-secret already exists"
-fi
+# Note: aideator-secret is now created by Helm chart (see deploy/charts/aideator/templates/aideator-secret.yaml)
+# For production, override the values in deploy/charts/aideator/values.yaml:
+# app.secretKey and app.encryptionKey
 
 # Install frontend dependencies (only if needed)
 echo "📦 Checking frontend dependencies..."

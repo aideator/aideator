@@ -29,16 +29,25 @@
   --color-semantic-error: 239 68 68;        /* Error Red - problems */
   --color-semantic-info: 59 130 246;        /* Info Blue - information */
 
-  /* Typography sizes */
+  /* Typography sizes and line heights */
   --font-size-display: 3rem;               /* 48px - Hero titles */
+  --line-height-display: 1.2;              /* Tight for large text */
   --font-size-h1: 2.25rem;                /* 36px - Page titles */
+  --line-height-h1: 1.25;                 /* Comfortable for headings */
   --font-size-h2: 1.5rem;                 /* 24px - Section titles */
+  --line-height-h2: 1.33;                 /* Balanced for sections */
   --font-size-h3: 1.25rem;                /* 20px - Card titles */
+  --line-height-h3: 1.4;                  /* Readable for cards */
   --font-size-body-lg: 1.125rem;          /* 18px - Important content */
+  --line-height-body-lg: 1.5;             /* Comfortable reading */
   --font-size-body: 1rem;                 /* 16px - Default body */
+  --line-height-body: 1.5;                /* Standard body text */
   --font-size-body-sm: 0.875rem;          /* 14px - Secondary content */
+  --line-height-body-sm: 1.43;            /* Prevents overflow */
   --font-size-label: 0.875rem;            /* 14px - Form labels */
+  --line-height-label: 1.43;              /* Consistent with body-sm */
   --font-size-caption: 0.75rem;           /* 12px - Metadata */
+  --line-height-caption: 1.33;            /* Compact but readable */
 
   /* Spacing scale */
   --spacing-xs: 0.25rem;   /* 4px */

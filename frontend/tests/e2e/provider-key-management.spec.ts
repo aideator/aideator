@@ -352,6 +352,40 @@ test.describe('Provider Key Management', () => {
     await expect(page.locator('text=gpt-4')).toBeVisible();
   });
 
+  test('should handle model override select with "use for all models" option', async ({ page }) => {
+    await page.goto('http://localhost:3001/settings');
+    
+    // Open add dialog
+    await page.click('[data-testid="add-provider-key-btn"]');
+    
+    // Select provider first
+    await page.click('[data-testid="provider-select"]');
+    await page.click('text=OpenAI');
+    
+    // Fill required fields
+    await page.fill('[data-testid="api-key-input"]', 'sk-test-all-models');
+    await page.fill('[data-testid="name-input"]', 'All Models Key');
+    
+    // Test the model override select dropdown
+    await page.click('[data-testid="model-select"]');
+    
+    // Verify the "Use for all models" option is available and has a non-empty value
+    const allModelsOption = page.locator('text=Use for all models (recommended)');
+    await expect(allModelsOption).toBeVisible();
+    
+    // Select "Use for all models" option
+    await allModelsOption.click();
+    
+    // Verify the select doesn't throw an error and the form can be submitted
+    await expect(page.locator('[data-testid="add-key-submit"]')).toBeEnabled();
+    
+    // Submit form - should work without Select component errors
+    await page.click('[data-testid="add-key-submit"]');
+    
+    // Verify the dialog closed successfully (no Select errors)
+    await expect(page.locator('[data-testid="add-provider-dialog"]')).not.toBeVisible();
+  });
+
   test('should handle unauthorized access', async ({ page }) => {
     // Clear any existing authentication
     await page.goto('http://localhost:3001/settings');

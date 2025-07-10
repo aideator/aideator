@@ -671,6 +671,109 @@ test.describe('Session Management - Comprehensive E2E Tests', () => {
     await expect(page.locator('text=Sessions')).toHaveCSS('color', /rgb/);
   });
 
+  test('should have proper padding for session list container', async ({ page }) => {
+    await page.goto('/stream');
+    await page.locator('text=Show Settings').click();
+    await page.waitForTimeout(1000);
+
+    // Check that sessions list container has proper padding classes
+    const sessionsContainer = page.locator('.flex-1.overflow-y-auto > div').filter({ hasText: 'Code Review Session' }).first().locator('..');
+    
+    // Verify the container has the updated padding classes
+    await expect(sessionsContainer).toHaveClass(/p-lg/);
+    await expect(sessionsContainer).toHaveClass(/pt-md/);
+    await expect(sessionsContainer).toHaveClass(/pb-lg/);
+    
+    // Check that individual sessions have proper spacing
+    const sessionItems = page.locator('[class*="cursor-pointer"]');
+    const firstSession = sessionItems.first();
+    const secondSession = sessionItems.nth(1);
+    
+    // Verify sessions are not snapped to the top
+    const containerBox = await sessionsContainer.boundingBox();
+    const firstSessionBox = await firstSession.boundingBox();
+    
+    if (containerBox && firstSessionBox) {
+      // Check there's adequate top padding
+      const topSpacing = firstSessionBox.y - containerBox.y;
+      expect(topSpacing).toBeGreaterThan(10); // Should have at least 10px of top spacing
+    }
+
+    // Verify vertical spacing between sessions
+    const secondSessionBox = await secondSession.boundingBox();
+    if (firstSessionBox && secondSessionBox) {
+      const spacing = secondSessionBox.y - (firstSessionBox.y + firstSessionBox.height);
+      expect(spacing).toBeGreaterThan(5); // Should have space between sessions
+    }
+  });
+
+  test('should have proper padding for empty state', async ({ page }) => {
+    // Mock empty sessions response
+    await page.route('**/api/v1/sessions', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ sessions: [] })
+      });
+    });
+
+    await page.goto('/stream');
+    await page.locator('text=Show Settings').click();
+    await page.waitForTimeout(1000);
+
+    // Check empty state container has proper padding
+    const emptyStateContainer = page.locator('.flex-1.overflow-y-auto > div').filter({ hasText: 'No sessions yet' }).first();
+    
+    // Verify the container has generous padding
+    await expect(emptyStateContainer).toHaveClass(/p-lg/);
+    await expect(emptyStateContainer).toHaveClass(/py-xl/);
+    
+    // Check visual centering
+    const containerBox = await emptyStateContainer.boundingBox();
+    const parentBox = await page.locator('.flex-1.overflow-y-auto').boundingBox();
+    
+    if (containerBox && parentBox) {
+      // Verify there's adequate padding from top
+      const topPadding = containerBox.y - parentBox.y;
+      expect(topPadding).toBeGreaterThan(20); // Should have substantial top padding
+    }
+  });
+
+  test('should have proper padding for loading state', async ({ page }) => {
+    // Mock slow loading
+    await page.route('**/api/v1/sessions', async route => {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ sessions: mockSessions })
+      });
+    });
+
+    await page.goto('/stream');
+    await page.locator('text=Show Settings').click();
+
+    // Check loading state container has proper padding
+    const loadingContainer = page.locator('.flex-1.overflow-y-auto > div').filter({ has: page.locator('.animate-pulse') }).first();
+    
+    // Verify the container has updated padding classes
+    await expect(loadingContainer).toHaveClass(/p-lg/);
+    await expect(loadingContainer).toHaveClass(/pt-md/);
+    
+    // Check that skeleton items are properly spaced
+    const skeletons = page.locator('.animate-pulse');
+    const firstSkeleton = skeletons.first();
+    
+    const containerBox = await loadingContainer.boundingBox();
+    const firstSkeletonBox = await firstSkeleton.boundingBox();
+    
+    if (containerBox && firstSkeletonBox) {
+      // Check there's adequate top padding
+      const topSpacing = firstSkeletonBox.y - containerBox.y;
+      expect(topSpacing).toBeGreaterThan(10); // Should have proper top spacing
+    }
+  });
+
   test('should handle session persistence across page reloads', async ({ page }) => {
     await page.goto('/stream');
     await page.locator('text=Show Settings').click();

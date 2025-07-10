@@ -235,7 +235,7 @@ export function SessionSidebar({
       {/* Sessions List */}
       <div className="flex-1 overflow-y-auto rounded-b-xl">
         {isLoading ? (
-          <div className="p-md space-y-sm">
+          <div className="p-lg pt-md space-y-sm">
             {[...Array(3)].map((_, i) => (
               <div key={i} className="animate-pulse">
                 <div className="bg-neutral-fog rounded-lg p-md">
@@ -246,7 +246,7 @@ export function SessionSidebar({
             ))}
           </div>
         ) : filteredAndSortedSessions.length === 0 ? (
-          <div className="p-md text-center text-neutral-shadow">
+          <div className="p-lg py-xl text-center text-neutral-shadow">
             {searchQuery ? (
               <div>
                 <Search className="w-12 h-12 mx-auto mb-2 text-neutral-fog" />
@@ -261,7 +261,7 @@ export function SessionSidebar({
             )}
           </div>
         ) : (
-          <div className="p-md space-y-sm">
+          <div className="p-lg pt-md pb-lg space-y-sm">
             {filteredAndSortedSessions.map((session) => (
               <div
                 key={session.id}

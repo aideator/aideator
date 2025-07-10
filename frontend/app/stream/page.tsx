@@ -610,6 +610,16 @@ function StreamPageContent() {
             </div>
             <div className="flex items-center gap-2">
               <Button
+                onClick={() => window.location.href = '/settings'}
+                variant="ghost"
+                size="sm"
+                className="text-neutral-shadow hover:text-ai-primary"
+                title="Settings"
+              >
+                <Settings className="w-4 h-4" />
+              </Button>
+              
+              <Button
                 onClick={() => window.location.href = '/analytics'}
                 variant="ghost"
                 size="sm"
@@ -752,14 +762,6 @@ function StreamPageContent() {
                     </div>
                   )}
 
-                  {/* Debug Info */}
-                  {process.env.NODE_ENV === 'development' && (
-                    <div className="p-2 bg-blue-50 border border-blue-200 text-xs rounded space-y-1">
-                      <div><strong>Auth Debug:</strong> Authenticated: {isAuthenticated.toString()}, API Key: {apiKey ? 'SET' : 'NOT SET'}</div>
-                      <div><strong>Models:</strong> Selected: {modelInstances.selectedInstances.length}</div>
-                      <div><strong>Mode:</strong> {agentMode.agentMode}, RequiresRepo: {agentMode.requiresRepo.toString()}</div>
-                    </div>
-                  )}
 
                   {/* Error Display */}
                   {displayError && (

@@ -61,6 +61,15 @@ persistence:
   size: 1Gi
   accessMode: ReadWriteOnce
 
+# Application secret configuration
+app:
+  # Development values - CHANGE IN PRODUCTION!
+  # To generate production values:
+  # secretKey: $(openssl rand -hex 32)
+  # encryptionKey: $(openssl rand -base64 32)
+  secretKey: "dev-secret-key-32-chars-minimum!!"
+  encryptionKey: "VGhpc0lzQURldmVsb3BtZW50S2V5T25seUZvclRlc3Rpbmc="  # Base64 encoded dev key
+
 # Secrets
 secrets:
   # OpenRouter removed - using LiteLLM with direct OpenAI SDK

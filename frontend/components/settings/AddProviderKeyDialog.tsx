@@ -96,7 +96,7 @@ export function AddProviderKeyDialog({ onAdd, trigger, className }: AddProviderK
         provider: formData.provider,
         api_key: formData.api_key,
         name: formData.name || undefined,
-        model_name: formData.model_name || undefined
+        model_name: formData.model_name === "__all__" ? undefined : (formData.model_name || undefined)
       });
       
       // Reset form and close dialog
@@ -240,7 +240,7 @@ export function AddProviderKeyDialog({ onAdd, trigger, className }: AddProviderK
                 <SelectValue placeholder="Use for all models (recommended)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Use for all models (recommended)</SelectItem>
+                <SelectItem value="__all__">Use for all models (recommended)</SelectItem>
                 {selectedProvider?.models.map((model) => (
                   <SelectItem key={model} value={model}>
                     {model}

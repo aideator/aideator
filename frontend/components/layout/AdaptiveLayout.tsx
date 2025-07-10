@@ -137,8 +137,9 @@ export function AdaptiveLayout({
                   size="sm"
                   onClick={() => onSessionSelect(session.id)}
                   className={cn(
-                    "w-full p-3 hover:bg-neutral-fog",
-                    activeSessionId === session.id && "bg-ai-primary/10 text-ai-primary"
+                    "w-full p-3 hover:bg-neutral-fog rounded transition-all",
+                    "border-2 border-transparent",
+                    activeSessionId === session.id && "bg-ai-primary/10 text-ai-primary border-ai-primary/30"
                   )}
                   title={session.title}
                 >
@@ -190,9 +191,10 @@ export function AdaptiveLayout({
                             variant="ghost"
                             onClick={() => onSessionSelect(session.id)}
                             className={cn(
-                              "w-full p-3 text-left hover:bg-neutral-fog rounded-lg",
-                              "flex flex-col items-start gap-1",
-                              activeSessionId === session.id && "bg-ai-primary/10 text-ai-primary"
+                              "w-full p-4 text-left hover:bg-neutral-fog rounded-lg transition-all",
+                              "flex flex-col items-start gap-2",
+                              "border-2 border-transparent",
+                              activeSessionId === session.id && "bg-ai-primary/10 text-ai-primary border-ai-primary/30"
                             )}
                           >
                             <div className="flex items-center gap-2 w-full">
