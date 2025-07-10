@@ -462,6 +462,9 @@ curl http://localhost:9090/api/v1/query \
 - ❌ Hardcode model lists (use config)
 - ❌ Mix Gateway and direct API calls
 - ❌ Run E2E tests without realistic data
+- ❌ Apply fixes directly to running state (kubectl apply, database updates, etc.)
+- ❌ Modify Kubernetes manifests after deployment (change source code instead)
+- ❌ Update PostgreSQL tables directly (modify SQLModel/migrations instead)
 
 ### What I Always Do
 
@@ -479,6 +482,9 @@ curl http://localhost:9090/api/v1/query \
 - ✅ Encrypt API keys in PostgreSQL
 - ✅ Show real-time streaming progress
 - ✅ Test with multiple models simultaneously
+- ✅ Modify source code only (Helm charts, Python code, TypeScript, etc.)
+- ✅ Let deployment tools (Tilt, Helm) apply changes to running state
+- ✅ Use database migrations for schema changes
 
 ## 📚 Key Technologies
 

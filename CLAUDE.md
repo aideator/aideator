@@ -1234,6 +1234,9 @@ npm run test:e2e                               # All 211 E2E tests must pass
 - ❌ Forget to create required secrets before deployment
 - ❌ Use OpenRouter references (we use LiteLLM with OpenAI)
 - ❌ Assume Tilt will instantly rebuild (wait 10+ seconds)
+- ❌ Apply fixes directly to running state (kubectl apply, database updates, etc.)
+- ❌ Modify Kubernetes manifests after deployment (change source code instead)
+- ❌ Update PostgreSQL tables directly (modify SQLModel/migrations instead)
 
 ### What I Always Do
 
@@ -1256,6 +1259,9 @@ npm run test:e2e                               # All 211 E2E tests must pass
 - ✅ Create openai-secret before deployment: `kubectl create secret generic openai-secret --from-literal=api-key=$OPENAI_API_KEY -n aideator`
 - ✅ Use agent-job-dev-test for testing agent changes
 - ✅ Touch files to trigger Tilt rebuilds when needed
+- ✅ Modify source code only (Helm charts, Python code, TypeScript, etc.)
+- ✅ Let deployment tools (Tilt, Helm) apply changes to running state
+- ✅ Use database migrations for schema changes
 
 ## 🔄 Development Workflow
 
