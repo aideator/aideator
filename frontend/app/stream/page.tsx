@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { SessionSidebar } from "@/components/sessions/SessionSidebar";
+import { AdaptiveLayout } from "@/components/layout/AdaptiveLayout";
 import { SessionTranscript } from "@/components/sessions/SessionTranscript";
 import { SessionProvider, useSession } from "@/context/SessionContext";
 import { ComparisonGrid } from "@/components/models/ComparisonGrid";
@@ -460,22 +460,21 @@ function StreamPageContent() {
         <AuthStatus />
       </div>
       
-      {/* Session Sidebar */}
-      <div className="p-4 pl-6 h-screen">
-        <SessionSidebar
+      <AdaptiveLayout
         sessions={state.sessions}
         activeSessionId={state.activeSessionId || undefined}
         onSessionSelect={actions.setActiveSession}
-        onSessionCreate={actions.createSession}
-        onSessionUpdate={actions.updateSession}
+        onSessionCreate={() => actions.createSession('New Session')}
         onSessionDelete={actions.deleteSession}
-        isLoading={state.isLoading}
-        />
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col">
-        <div className="container mx-auto px-lg pt-16 pb-xl max-w-6xl flex-1">
+        currentMode={modelResponses.length > 0 ? 'compare' : (state.activeSession ? 'chat' : 'welcome')}
+        onModeChange={(mode) => {
+          if (mode === 'welcome') {
+            actions.setActiveSession(null);
+            setModelResponses([]);
+          }
+        }}
+      >
+        <div className="container mx-auto px-lg pt-16 pb-xl max-w-none flex-1">
         {/* Header - Compact when comparing */}
         <motion.header
           layout
@@ -939,7 +938,7 @@ function StreamPageContent() {
           )}
         </AnimatePresence>
         </div>
-      </div>
+      </AdaptiveLayout>
     </div>
   );
 }
