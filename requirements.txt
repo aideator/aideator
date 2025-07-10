@@ -30,6 +30,7 @@ cryptography>=41.0.0
 # Async utilities
 anyio>=4.0.0
 tenacity>=8.2.0
+aiofiles>=23.0.0
 
 # Caching & Queuing
 redis>=5.0.0

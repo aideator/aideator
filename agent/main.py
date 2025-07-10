@@ -497,68 +497,145 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
         return await self._generate_litellm_response(codebase_summary)
 
     async def _generate_claude_cli_response(self) -> str:
-        """Generate response using Claude CLI."""
+        """Generate response using Claude CLI with real-time streaming."""
         self.log_progress("Generating response using Claude CLI",
-                         "Executing claude command with JSON output")
+                         "Executing claude command with streaming output")
 
         try:
             # Change to repository directory for context
             original_dir = os.getcwd()
             os.chdir(self.repo_dir)
 
-            # Execute Claude CLI
+            # Execute Claude CLI with streaming arguments (matching TypeScript version)
             self.log_progress("Executing Claude CLI", f"Working directory: {self.repo_dir}")
 
-            result = await asyncio.create_subprocess_exec(
+            # Use the same arguments as the working TypeScript version
+            args = [
                 "claude",
-                "-p",
-                self.prompt,
+                "--verbose",
                 "--output-format",
-                "json",
+                "stream-json",
+                "--dangerously-skip-permissions",
+                "-p",
+                self.prompt
+            ]
+
+            self.log_progress("Spawning Claude CLI", f"Args: {' '.join(args)}")
+
+            process = await asyncio.create_subprocess_exec(
+                *args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                stdin=asyncio.subprocess.PIPE,
                 env=os.environ  # Includes ANTHROPIC_API_KEY
             )
 
-            # Wait for completion with timeout
+            # Close stdin immediately since we're using -p flag (like TypeScript version)
+            process.stdin.close()
+
+            # Stream processing variables
+            collected_output = []
+            buffer = ""
+            data_chunks = 0
+            total_bytes = 0
+            has_received_data = False
+
+            self.log_progress("Claude CLI process started", f"PID: {process.pid}")
+
             try:
-                stdout, stderr = await asyncio.wait_for(
-                    result.communicate(),
-                    timeout=30.0
-                )
-            except TimeoutError:
-                result.terminate()
-                await result.wait()
-                raise RuntimeError("Claude CLI execution timed out after 30 seconds")
+                # Read stdout in real-time chunks (like TypeScript version)
+                while True:
+                    # Read a chunk of data
+                    chunk = await process.stdout.read(1024)
+                    if not chunk:
+                        break
+                    
+                    has_received_data = True
+                    data_chunks += 1
+                    total_bytes += len(chunk)
+                    
+                    chunk_text = chunk.decode('utf-8', errors='ignore')
+                    self.log_progress(f"Received stdout chunk #{data_chunks}", 
+                                    f"({len(chunk)} bytes) - {chunk_text[:100]}{'...' if len(chunk_text) > 100 else ''}")
+                    
+                    # Process the chunk immediately (streaming approach)
+                    buffer += chunk_text
+                    lines = buffer.split('\n')
+                    buffer = lines.pop()  # Keep incomplete line in buffer
 
-            # Change back to original directory
-            os.chdir(original_dir)
+                    for line in lines:
+                        if line.strip():
+                            try:
+                                # Try to parse as JSON first (Claude CLI stream format)
+                                json_data = json.loads(line)
+                                self.log_progress("Parsed JSON message", f"Type: {json_data.get('type', 'unknown')}")
+                                
+                                # Extract content from JSON message
+                                if json_data.get('type') == 'assistant' and json_data.get('message', {}).get('content'):
+                                    for content_item in json_data['message']['content']:
+                                        if content_item.get('type') == 'text' and content_item.get('text'):
+                                            text_content = content_item['text']
+                                            # Output immediately for streaming (like TypeScript)
+                                            print(text_content, end='', flush=True)
+                                            collected_output.append(text_content)
+                                        elif content_item.get('type') == 'tool_use':
+                                            tool_info = f"🔧 Using tool: {content_item.get('name', 'unknown')}"
+                                            print(tool_info, flush=True)
+                                            collected_output.append(tool_info + '\n')
+                                
+                            except json.JSONDecodeError:
+                                # If not JSON, treat as plain text output (like TypeScript fallback)
+                                self.log_progress("Plain text output", f"{line[:50]}{'...' if len(line) > 50 else ''}")
+                                print(line, flush=True)
+                                collected_output.append(line + '\n')
 
-            if result.returncode == 0:
-                # Parse JSON output
-                try:
-                    response_data = json.loads(stdout.decode())
-                    # Extract content from JSON structure
-                    # The exact structure may vary, so we'll handle different possibilities
-                    if isinstance(response_data, dict):
-                        content = response_data.get("content", response_data.get("text", str(response_data)))
+                # Handle any remaining buffer content
+                if buffer.strip():
+                    self.log_progress("Processing remaining buffer", f"{buffer[:50]}{'...' if len(buffer) > 50 else ''}")
+                    print(buffer, flush=True)
+                    collected_output.append(buffer)
+
+                # Wait for process to complete
+                await process.wait()
+
+                # Change back to original directory
+                os.chdir(original_dir)
+
+                # Handle stderr if there were errors
+                if process.returncode != 0:
+                    stderr_output = await process.stderr.read()
+                    error_msg = stderr_output.decode() if stderr_output else "Unknown error"
+                    self.log_error("Claude CLI process failed", f"Exit code: {process.returncode}, Error: {error_msg}")
+                    
+                    # Still return collected output if we got some
+                    if collected_output:
+                        self.log_progress("Returning partial output despite error", f"Collected {len(collected_output)} chunks")
+                        return ''.join(collected_output)
                     else:
-                        content = str(response_data)
+                        raise RuntimeError(f"Claude CLI failed with exit code {process.returncode}: {error_msg}")
 
-                    self.log_progress("Claude CLI completed successfully",
-                                    f"Response length: {len(content)} characters")
-                    return content
+                # Success case
+                response = ''.join(collected_output)
+                self.log_progress("Claude CLI streaming completed successfully", 
+                                f"Total chunks: {data_chunks}, Total bytes: {total_bytes}, Response length: {len(response)} characters")
+                
+                return response if response else "No output received from Claude CLI"
 
-                except json.JSONDecodeError as e:
-                    self.log_error("Failed to parse Claude CLI JSON output", e)
-                    # Fall back to raw output if JSON parsing fails
-                    return stdout.decode()
-            else:
-                error_msg = stderr.decode() if stderr else "Unknown error"
-                raise RuntimeError(f"Claude CLI failed with exit code {result.returncode}: {error_msg}")
+            except Exception as stream_error:
+                # Clean up process if still running
+                if process.returncode is None:
+                    process.terminate()
+                    await process.wait()
+                raise stream_error
 
         except Exception as e:
-            self.log_error("Claude CLI execution failed", e)
+            # Change back to original directory in case of error
+            try:
+                os.chdir(original_dir)
+            except:
+                pass
+            
+            self.log_error("Claude CLI streaming execution failed", e)
             raise RuntimeError(f"Failed to generate Claude CLI response: {e}")
 
     async def _generate_gemini_cli_response(self) -> str:
