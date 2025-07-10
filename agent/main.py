@@ -56,6 +56,9 @@ class AIdeatorAgent:
         # Setup logging to file only (not stdout to avoid mixing with LLM output)
         self.log_file = self.work_dir / f"agent_{self.run_id}_{self.variation_id}.log"
         self._setup_file_logging()
+        
+        # Check available API keys for graceful error handling
+        self.available_api_keys = self._check_available_api_keys()
     
     def _setup_file_logging(self):
         """Setup file-only logging to avoid stdout pollution."""
@@ -75,6 +78,44 @@ class AIdeatorAgent:
         
         # Prevent propagation to root logger (which might log to stdout)
         self.file_logger.propagate = False
+    
+    def _check_available_api_keys(self) -> dict:
+        """Check which API keys are available for different providers."""
+        available_keys = {}
+        
+        # Check OpenAI API Key
+        openai_key = os.getenv("OPENAI_API_KEY")
+        if openai_key and openai_key.strip() and openai_key != "sk-" and len(openai_key) > 10:
+            available_keys["openai"] = True
+        else:
+            available_keys["openai"] = False
+            
+        # Check Anthropic API Key  
+        anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+        if anthropic_key and anthropic_key.strip() and anthropic_key.startswith("sk-ant-"):
+            available_keys["anthropic"] = True
+        else:
+            available_keys["anthropic"] = False
+            
+        # Check Gemini API Key
+        gemini_key = os.getenv("GEMINI_API_KEY") 
+        if gemini_key and gemini_key.strip() and gemini_key.startswith("AIza"):
+            available_keys["gemini"] = True
+        else:
+            available_keys["gemini"] = False
+            
+        # Check other provider keys
+        for provider, env_var in [
+            ("mistral", "MISTRAL_API_KEY"),
+            ("cohere", "COHERE_API_KEY"),
+            ("groq", "GROQ_API_KEY"),
+            ("perplexity", "PERPLEXITY_API_KEY"),
+            ("deepseek", "DEEPSEEK_API_KEY")
+        ]:
+            key = os.getenv(env_var)
+            available_keys[provider] = bool(key and key.strip() and len(key) > 5)
+            
+        return available_keys
     
     def log(self, message: str, level: str = "INFO", **kwargs):
         """
