@@ -170,7 +170,7 @@ export function ModelResponsePanel({
         className="overflow-y-auto smooth-scroll p-md"
         ref={contentRef}
         onScroll={handleScroll}
-        style={{ minHeight: '200px', maxHeight: '400px' }}
+        style={{ minHeight: '200px', maxHeight: 'calc(100vh - 400px)' }}
       >
         <SimpleMarkdown 
           content={content} 

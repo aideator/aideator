@@ -187,13 +187,14 @@ export const MemoizedMarkdown = memo(({ content, isStreaming = false, className 
         )}
       </motion.div>
       {/* Add blinking cursor for active streaming */}
-      {isStreaming && (
+      {isStreaming && displayedContent.length > 0 && (
         <motion.span 
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.8 }}
           transition={{ duration: 0.2 }}
-          className="streaming-cursor"
+          className="streaming-cursor inline-block align-middle"
+          style={{ marginLeft: '2px' }}
         />
       )}
     </div>

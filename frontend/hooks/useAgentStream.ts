@@ -92,11 +92,11 @@ export function useAgentStream(): AgentStreamHook {
         console.log(`Stream buffer for agent ${variationId} flushed`);
       }
     }, {
-      tokensPerSecond: 60, // Faster but still readable rate
-      minChunkSize: 1,     // Start streaming immediately
-      maxBufferSize: 200,  // Very small buffer for instant streaming
+      tokensPerSecond: 60,  // Faster, smoother rate (was 45)
+      minChunkSize: 3,      // Smaller buffer for more responsive streaming  
+      maxBufferSize: 200,   // Smaller buffer to reduce latency
       respectWordBoundaries: true,
-      respectMarkdownBlocks: false // Disable for smoother flow
+      respectMarkdownBlocks: true // Enable for proper formatting
     });
     
     streamBuffersRef.current.set(variationId, buffer);
@@ -142,7 +142,7 @@ export function useAgentStream(): AgentStreamHook {
         try {
           const data: StreamMessage = JSON.parse(event.data);
           
-          // Filter out JSON log entries - only show actual content
+          // Process content - filter out JSON log entries
           let shouldDisplay = true;
           let displayContent = data.content;
           
@@ -157,8 +157,8 @@ export function useAgentStream(): AgentStreamHook {
               displayContent = JSON.stringify(logEntry, null, 2);
             }
           } catch {
-            // It's plain text markdown content, display as-is
-            displayContent = data.content;
+            // It's plain text content - clean up any emoji prefixes that might remain
+            displayContent = data.content.replace(/^🔸\s*/, '');
           }
           
           if (shouldDisplay) {

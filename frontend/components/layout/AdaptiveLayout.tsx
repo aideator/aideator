@@ -94,7 +94,7 @@ export function AdaptiveLayout({
                 className="flex items-center gap-2"
               >
                 <BrainCircuit className="h-6 w-6 text-ai-primary" />
-                <h1 className="text-h3 font-bold text-ai-primary">AIdeator</h1>
+                <h1 className="text-h3 font-bold text-ai-primary">aideator</h1>
               </motion.div>
             )}
             
@@ -267,7 +267,7 @@ export function AdaptiveLayout({
       </motion.div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Top Bar */}
         <div className="bg-neutral-white border-b border-neutral-fog p-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -298,7 +298,7 @@ export function AdaptiveLayout({
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden bg-neutral-white min-w-0 w-full max-w-none">
           {children}
         </div>
       </div>

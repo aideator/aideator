@@ -474,64 +474,119 @@ function StreamPageContent() {
           }
         }}
       >
-        <div className="container mx-auto px-lg pt-16 pb-xl max-w-none flex-1">
-        {/* Header - Compact when comparing */}
-        <motion.header
-          layout
-          className={`text-center ${isComparing && !isConfigExpanded ? "mb-6" : "mb-12"}`}
-        >
-          <motion.div
-            layout
-            className={`inline-flex items-center justify-center rounded-2xl bg-gradient-to-br from-ai-primary to-ai-secondary text-white shadow-xl ${
-              isComparing && !isConfigExpanded
-                ? "w-12 h-12 mb-3"
-                : "w-20 h-20 mb-6"
-            }`}
-          >
-            <BrainCircuit
-              className={`${
-                isComparing && !isConfigExpanded ? "h-6 w-6" : "h-10 w-10"
-              }`}
-            />
-          </motion.div>
-          <motion.h1
-            layout
-            className={`font-bold text-neutral-white ${
-              isComparing && !isConfigExpanded
-                ? "text-h1 mb-2"
-                : "text-display mb-3"
-            }`}
-          >
-            aideator
-          </motion.h1>
-          <AnimatePresence>
-            {(!isComparing || isConfigExpanded) && (
-              <motion.p
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="text-body-lg text-neutral-white/80"
-              >
-                Multi-Model Prompt Comparison Platform
-              </motion.p>
-            )}
-          </AnimatePresence>
-        </motion.header>
+        <div className="h-full w-full flex flex-col overflow-hidden max-w-none">
 
-        {/* Configuration Panel - Collapsible */}
+        {/* Conversation Container - Scrollable */}
         
-        <div className="bg-neutral-paper rounded-2xl shadow-xl mb-8 transition-all duration-300">
+
+        {/* Session Transcript Panel */}
+        {showTranscript && state.activeSession && (
+          <div className="mb-8">
+            <SessionTranscript
+              sessionId={state.activeSession.id}
+              sessionTitle={state.activeSession.title}
+              turns={currentSessionTurns}
+              onTurnUpdate={(turnId, updates) => 
+                actions.updateSessionTurn(state.activeSession!.id, turnId, updates)
+              }
+              onExport={(format) => {
+                // TODO: Implement export functionality
+                console.log('Export session as:', format);
+              }}
+            />
+          </div>
+        )}
+
+        {/* Conversation History */}
+        {conversationHistory.length > 0 && (
+          <div className="mb-8 space-y-4">
+            <h2 className="text-h2 font-bold text-neutral-white flex items-center gap-2">
+              <History className="h-6 w-6" />
+              Conversation History
+            </h2>
+            
+            {conversationHistory.map((turn, index) => (
+              <div key={index} className="bg-neutral-paper rounded-2xl shadow-lg p-lg">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-ai-primary to-ai-secondary text-white text-body-sm font-semibold">
+                    {turn.turnNumber + 1}
+                  </div>
+                  <div>
+                    <h3 className="text-h3 font-semibold text-neutral-charcoal">
+                      Turn {turn.turnNumber + 1}
+                    </h3>
+                    <p className="text-caption text-neutral-shadow">
+                      {new Date(turn.timestamp).toLocaleTimeString()}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="mb-4">
+                  <p className="text-body text-neutral-charcoal bg-neutral-fog p-md rounded-md">
+                    {turn.prompt}
+                  </p>
+                </div>
+                
+                {turn.selectedResponse && turn.modelResponses && (
+                  <div className="border-t border-neutral-fog pt-4">
+                    <p className="text-body-sm text-neutral-shadow mb-2">Selected Response:</p>
+                    {(() => {
+                      const selectedModel = turn.modelResponses.find((r: any) => r.id === turn.selectedResponse);
+                      return selectedModel ? (
+                        <div className="bg-agent-3/10 border border-agent-3/20 rounded-md p-md">
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className="w-3 h-3 bg-agent-3 rounded-full"></div>
+                            <span className="text-body-sm font-medium text-agent-3">
+                              {selectedModel.name}
+                            </span>
+                          </div>
+                          <p className="text-body-sm text-neutral-charcoal">
+                            {selectedModel.content.substring(0, 200)}...
+                          </p>
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Current Turn Header */}
+        {conversationHistory.length > 0 && modelResponses.length > 0 && (
+          <div className="mb-6">
+            <h2 className="text-h2 font-bold text-neutral-white flex items-center gap-2">
+              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-ai-secondary to-ai-accent text-white text-body-sm font-semibold">
+                {currentTurnNumber + 1}
+              </div>
+              Current Turn
+            </h2>
+          </div>
+        )}
+
+        {/* Model Comparison Grid */}
+        {modelResponses.length > 0 && (
+          <ComparisonGrid
+            responses={modelResponses}
+            onSelectResponse={handleSelectResponse}
+            onPreferenceFeedback={handlePreferenceFeedback}
+          />
+        )}
+
+        {/* Model Comparison Configuration */}
+        <div className="bg-neutral-paper rounded-2xl shadow-xl mb-2 transition-all duration-300 w-full max-w-none">
           {/* Header - Always visible */}
           <div
-            className="p-lg flex items-center justify-between cursor-pointer hover:bg-neutral-fog transition-colors"
+            className="p-4 flex items-center justify-between cursor-pointer hover:bg-neutral-fog transition-colors"
             onClick={() => setIsConfigExpanded(!isConfigExpanded)}
           >
             <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-gradient-to-br from-ai-primary to-ai-secondary text-white">
-                <Settings className="h-6 w-6" />
+              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-ai-primary to-ai-secondary text-white">
+                <Settings className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-h2 font-bold text-neutral-charcoal">
+                <h2 className="text-h3 font-bold text-neutral-charcoal">
                   Model Comparison Configuration
                 </h2>
                 {!isConfigExpanded && (
@@ -595,7 +650,7 @@ function StreamPageContent() {
                 transition={{ duration: 0.3, ease: "easeInOut" }}
                 style={{ overflow: 'visible' }}
               >
-                <div className="p-lg pt-0 space-y-6 relative">
+                <div className="p-4 pt-0 space-y-4 relative w-full min-w-0 flex-1">
                   {/* Mode Selector */}
                   <ModeSelector disabled={isComparing} />
                   
@@ -629,7 +684,7 @@ function StreamPageContent() {
                       onChange={(e) => setPrompt(e.target.value)}
                       disabled={isComparing}
                       rows={4}
-                      className="w-full bg-neutral-white border border-neutral-fog rounded-md px-md py-md text-body placeholder:text-neutral-shadow focus:border-ai-primary focus:ring-2 focus:ring-ai-primary/20 transition-colors resize-none"
+                      className="w-full min-w-0 bg-neutral-white border border-neutral-fog rounded-md px-md py-md text-body placeholder:text-neutral-shadow focus:border-ai-primary focus:ring-2 focus:ring-ai-primary/20 transition-colors resize-none"
                     />
                     <div className="mt-2 flex items-center justify-between">
                       <span className="text-caption text-neutral-shadow">
@@ -742,107 +797,12 @@ function StreamPageContent() {
           </AnimatePresence>
         </div>
 
-        {/* Session Transcript Panel */}
-        {showTranscript && state.activeSession && (
-          <div className="mb-8">
-            <SessionTranscript
-              sessionId={state.activeSession.id}
-              sessionTitle={state.activeSession.title}
-              turns={currentSessionTurns}
-              onTurnUpdate={(turnId, updates) => 
-                actions.updateSessionTurn(state.activeSession!.id, turnId, updates)
-              }
-              onExport={(format) => {
-                // TODO: Implement export functionality
-                console.log('Export session as:', format);
-              }}
-            />
-          </div>
-        )}
-
-        {/* Conversation History */}
-        {conversationHistory.length > 0 && (
-          <div className="mb-8 space-y-4">
-            <h2 className="text-h2 font-bold text-neutral-white flex items-center gap-2">
-              <History className="h-6 w-6" />
-              Conversation History
-            </h2>
-            
-            {conversationHistory.map((turn, index) => (
-              <div key={index} className="bg-neutral-paper rounded-2xl shadow-lg p-lg">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-ai-primary to-ai-secondary text-white text-body-sm font-semibold">
-                    {turn.turnNumber + 1}
-                  </div>
-                  <div>
-                    <h3 className="text-h3 font-semibold text-neutral-charcoal">
-                      Turn {turn.turnNumber + 1}
-                    </h3>
-                    <p className="text-caption text-neutral-shadow">
-                      {new Date(turn.timestamp).toLocaleTimeString()}
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="mb-4">
-                  <p className="text-body text-neutral-charcoal bg-neutral-fog p-md rounded-md">
-                    {turn.prompt}
-                  </p>
-                </div>
-                
-                {turn.selectedResponse && turn.modelResponses && (
-                  <div className="border-t border-neutral-fog pt-4">
-                    <p className="text-body-sm text-neutral-shadow mb-2">Selected Response:</p>
-                    {(() => {
-                      const selectedModel = turn.modelResponses.find((r: any) => r.id === turn.selectedResponse);
-                      return selectedModel ? (
-                        <div className="bg-agent-3/10 border border-agent-3/20 rounded-md p-md">
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className="w-3 h-3 bg-agent-3 rounded-full"></div>
-                            <span className="text-body-sm font-medium text-agent-3">
-                              {selectedModel.name}
-                            </span>
-                          </div>
-                          <p className="text-body-sm text-neutral-charcoal">
-                            {selectedModel.content.substring(0, 200)}...
-                          </p>
-                        </div>
-                      ) : null;
-                    })()}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Current Turn Header */}
-        {conversationHistory.length > 0 && modelResponses.length > 0 && (
-          <div className="mb-6">
-            <h2 className="text-h2 font-bold text-neutral-white flex items-center gap-2">
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-ai-secondary to-ai-accent text-white text-body-sm font-semibold">
-                {currentTurnNumber + 1}
-              </div>
-              Current Turn
-            </h2>
-          </div>
-        )}
-
-        {/* Model Comparison Grid */}
-        {modelResponses.length > 0 && (
-          <ComparisonGrid
-            responses={modelResponses}
-            onSelectResponse={handleSelectResponse}
-            onPreferenceFeedback={handlePreferenceFeedback}
-          />
-        )}
-
         {/* Follow-up Prompt Section */}
         {modelResponses.length > 0 && !isComparing && modelResponses.some(r => r.status === 'completed') && (
-          <div className="mt-8 bg-neutral-paper rounded-2xl shadow-xl p-lg">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-gradient-to-br from-ai-secondary to-ai-accent text-white">
-                <History className="h-6 w-6" />
+          <div className="mt-4 bg-neutral-paper rounded-2xl shadow-xl p-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-ai-secondary to-ai-accent text-white">
+                <History className="h-5 w-5" />
               </div>
               <div>
                 <h3 className="text-h3 font-bold text-neutral-charcoal">
@@ -937,6 +897,12 @@ function StreamPageContent() {
             </motion.div>
           )}
         </AnimatePresence>
+        
+        {/* Force full width expansion */}
+        <div className="w-full h-0 invisible" style={{minWidth: 'calc(100vw - 320px)'}}></div>
+        
+        {/* Spacer to fill remaining height */}
+        <div className="flex-1 min-h-0"></div>
         </div>
       </AdaptiveLayout>
     </div>

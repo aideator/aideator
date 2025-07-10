@@ -59,11 +59,13 @@ class Turn(SQLModel, table=True):
 
     id: str = Field(primary_key=True, default_factory=lambda: str(uuid4()))
     session_id: str = Field(foreign_key="sessions.id", index=True)
+    user_id: str = Field(foreign_key="users.id", index=True)
     turn_number: int = Field(index=True)
     
     # Turn content
     prompt: str = Field(sa_column=Column(Text))
     context: Optional[str] = Field(default=None, sa_column=Column(Text))
+    model: str = Field(default="multi-model")  # For backwards compatibility with original schema
     
     # Models and responses
     models_requested: List[str] = Field(default_factory=list, sa_column=Column(JSON))

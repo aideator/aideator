@@ -176,7 +176,10 @@ export async function getSessions(): Promise<api.Session[]> {
       throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`)
     }
 
-    return response.json()
+    const data = await response.json()
+    // The API returns a SessionListResponse with { sessions, total, limit, offset }
+    // We just need the sessions array
+    return data.sessions || []
   } catch (error) {
     console.error("Get sessions error:", error)
     if (error instanceof TypeError && error.message.includes("Failed to fetch")) {

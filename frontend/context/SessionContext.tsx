@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
 import { Session } from '@/components/sessions/SessionSidebar';
-import * as api from '@/lib/api';
+import * as api from '@/lib/api-client';
 
 // Session Turn interface for conversation history
 export interface SessionTurn {

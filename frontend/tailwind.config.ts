@@ -9,7 +9,7 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // AIdeator Brand Colors
+        // aideator Brand Colors
         'ai-primary': 'hsl(var(--color-ai-primary))',
         'ai-secondary': 'hsl(var(--color-ai-secondary))',
         'ai-accent': 'hsl(var(--color-ai-accent))',

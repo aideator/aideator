@@ -60,7 +60,7 @@ class SSEManager:
 
     async def connect(self, run_id: str) -> AsyncIterator[str]:
         """Connect a client to receive events for a run."""
-        queue: asyncio.Queue[Optional[SSEEvent]] = asyncio.Queue(maxsize=100)
+        queue: asyncio.Queue[Optional[SSEEvent]] = asyncio.Queue(maxsize=200)  # Increased for faster streaming
 
         async with self._lock:
             self._connections[run_id].add(queue)
@@ -93,7 +93,7 @@ class SSEManager:
             while True:
                 try:
                     event = await asyncio.wait_for(
-                        queue.get(), timeout=settings.sse_ping_interval * 2
+                        queue.get(), timeout=settings.sse_ping_interval
                     )
 
                     if event is None:  # Disconnect signal

@@ -528,20 +528,32 @@ Be thorough but concise in your response.
                     # Add to buffer
                     buffer += chunk_text
                     
-                    # Stream output line by line
-                    while '\n' in buffer:
-                        line, buffer = buffer.split('\n', 1)
-                        if line.strip():  # Only output non-empty lines
-                            print(f"🔸 {line}", flush=True)
+                    # Stream output more frequently for smoother experience
+                    # Output smaller chunks (10-20 chars) instead of waiting for lines
+                    while len(buffer) >= 15:
+                        # Take a chunk, preferring to break at word boundaries
+                        chunk_size = 15
+                        output_chunk = buffer[:chunk_size]
+                        
+                        # Adjust chunk to end at word boundary if possible
+                        space_pos = output_chunk.rfind(' ')
+                        if space_pos > 8:  # Only adjust if we have a reasonable word
+                            output_chunk = buffer[:space_pos + 1]
+                        
+                        # Output the chunk directly without emoji prefix for cleaner parsing
+                        print(output_chunk, end='', flush=True)
+                        buffer = buffer[len(output_chunk):]
                     
-                    # Also output partial lines periodically
-                    if len(buffer) > 100:
-                        print(f"🔸 {buffer}", flush=True)
-                        buffer = ""
+                    # Also check for newlines to maintain structure
+                    if '\n' in buffer:
+                        lines = buffer.split('\n')
+                        for line in lines[:-1]:  # All complete lines
+                            print(line, flush=True)
+                        buffer = lines[-1]  # Keep the incomplete line
             
             # Output any remaining buffer
             if buffer.strip():
-                print(f"🔸 {buffer}", flush=True)
+                print(buffer, end='', flush=True)
             
             self.log("Streaming LLM response complete", "INFO", 
                     step="streaming_complete",

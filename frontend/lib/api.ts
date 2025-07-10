@@ -266,13 +266,13 @@ export async function getPromptDetails(promptId: string): Promise<PromptDetails>
 // Session management functions
 export async function createSession(data: CreateSessionRequest = {}): Promise<CreateSessionResponse> {
   try {
-    const apiKey = localStorage.getItem('api_key');
+    const token = localStorage.getItem('auth_token');
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
     
-    if (apiKey) {
-      headers["X-API-Key"] = apiKey;
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
     }
     
     const response = await fetch(`${API_BASE_URL}/api/v1/sessions`, {
@@ -301,11 +301,11 @@ export async function createSession(data: CreateSessionRequest = {}): Promise<Cr
 
 export async function getSessions(): Promise<Session[]> {
   try {
-    const apiKey = localStorage.getItem('api_key');
+    const token = localStorage.getItem('auth_token');
     const headers: Record<string, string> = {};
     
-    if (apiKey) {
-      headers["X-API-Key"] = apiKey;
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
     }
     
     const response = await fetch(`${API_BASE_URL}/api/v1/sessions`, {
@@ -332,11 +332,11 @@ export async function getSessions(): Promise<Session[]> {
 
 export async function getSessionDetails(sessionId: string): Promise<SessionDetails> {
   try {
-    const apiKey = localStorage.getItem('api_key');
+    const token = localStorage.getItem('auth_token');
     const headers: Record<string, string> = {};
     
-    if (apiKey) {
-      headers["X-API-Key"] = apiKey;
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
     }
     
     const response = await fetch(`${API_BASE_URL}/api/v1/sessions/${sessionId}`, {
@@ -363,13 +363,13 @@ export async function getSessionDetails(sessionId: string): Promise<SessionDetai
 
 export async function updateSession(sessionId: string, data: { title: string }): Promise<void> {
   try {
-    const apiKey = localStorage.getItem('api_key');
+    const token = localStorage.getItem('auth_token');
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
     
-    if (apiKey) {
-      headers["X-API-Key"] = apiKey;
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
     }
     
     const response = await fetch(`${API_BASE_URL}/api/v1/sessions/${sessionId}`, {
@@ -396,11 +396,11 @@ export async function updateSession(sessionId: string, data: { title: string }):
 
 export async function deleteSession(sessionId: string): Promise<void> {
   try {
-    const apiKey = localStorage.getItem('api_key');
+    const token = localStorage.getItem('auth_token');
     const headers: Record<string, string> = {};
     
-    if (apiKey) {
-      headers["X-API-Key"] = apiKey;
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
     }
     
     const response = await fetch(`${API_BASE_URL}/api/v1/sessions/${sessionId}`, {

@@ -1,4 +1,4 @@
-/* Smooth streaming animations for AIdeator */
+/* Smooth streaming animations for aideator */
 
 /* Smooth scrolling behavior */
 .smooth-scroll {
@@ -175,17 +175,7 @@
   transition: opacity 0.2s ease-out;
 }
 
+/* Cursor is now handled by the React component in MemoizedMarkdown.tsx */
 .markdown-content.streaming > *:last-child {
   position: relative;
-}
-
-.markdown-content.streaming > *:last-child::after {
-  content: '';
-  display: inline-block;
-  width: 2px;
-  height: 1em;
-  background-color: currentColor;
-  margin-left: 2px;
-  animation: blink 1s infinite;
-  vertical-align: text-bottom;
 }

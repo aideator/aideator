@@ -28,42 +28,75 @@ export function StreamCard({
   const agentColor = useAgentColor(variationId);
   const contentRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
-  const [userScrolled, setUserScrolled] = useState(false);
+  const [userHasScrolled, setUserHasScrolled] = useState(false);
+  const isAutoScrollingRef = useRef(false);
   
   // Format the content for display
   const displayContent = content.join('');
   const hasContent = displayContent.length > 0;
   
-  // Check if user has scrolled up
+  // Check if user has scrolled up manually
   const handleScroll = useCallback(() => {
-    if (!contentRef.current) return;
+    if (!contentRef.current || isAutoScrollingRef.current) return;
     
     const { scrollTop, scrollHeight, clientHeight } = contentRef.current;
-    const isAtBottom = Math.abs(scrollHeight - scrollTop - clientHeight) < 50;
+    const isAtBottom = Math.abs(scrollHeight - scrollTop - clientHeight) < 10;
     
-    if (!isAtBottom && !userScrolled) {
-      setUserScrolled(true);
+    if (!isAtBottom) {
+      // User scrolled up
+      setUserHasScrolled(true);
       setAutoScroll(false);
-    } else if (isAtBottom && userScrolled) {
-      setUserScrolled(false);
+    } else if (userHasScrolled) {
+      // User scrolled back to bottom
+      setUserHasScrolled(false);
       setAutoScroll(true);
     }
-  }, [userScrolled]);
+  }, [userHasScrolled]);
   
-  // Auto-scroll to bottom when new content arrives (if enabled)
+  // Handle user interaction to break auto-scroll
+  const handleUserInteraction = useCallback((e: React.WheelEvent | React.TouchEvent) => {
+    // Only break auto-scroll if scrolling up or if there's significant interaction
+    if (e.type === 'wheel') {
+      const wheelEvent = e as React.WheelEvent;
+      if (wheelEvent.deltaY < 0) { // Scrolling up
+        setUserHasScrolled(true);
+        setAutoScroll(false);
+      }
+    } else if (e.type === 'touchstart') {
+      // Mark that user is interacting
+      setUserHasScrolled(true);
+      setAutoScroll(false);
+    }
+  }, []);
+  
+  // Auto-scroll to bottom when new content arrives (throttled for performance)
   useEffect(() => {
-    if (contentRef.current && isStreaming && autoScroll) {
-      // Use requestAnimationFrame to ensure DOM has updated before scrolling
+    if (contentRef.current && hasContent && autoScroll && isStreaming) {
+      // Set flag to prevent triggering user scroll detection
+      isAutoScrollingRef.current = true;
+      
+      // Use requestAnimationFrame for smoother scrolling
       requestAnimationFrame(() => {
-        if (contentRef.current) {
-          contentRef.current.scrollTo({
-            top: contentRef.current.scrollHeight,
-            behavior: 'smooth'
-          });
+        if (contentRef.current && autoScroll) {
+          // Use scrollTop instead of smooth scrolling to reduce lag
+          contentRef.current.scrollTop = contentRef.current.scrollHeight;
+          
+          // Reset flag quickly
+          setTimeout(() => {
+            isAutoScrollingRef.current = false;
+          }, 50);
         }
       });
     }
-  }, [content, isStreaming, autoScroll]);
+  }, [content.length, hasContent, isStreaming, autoScroll]); // Use content.length instead of content array for better performance
+  
+  // Reset auto-scroll when streaming starts fresh
+  useEffect(() => {
+    if (isStreaming && !hasContent) {
+      setAutoScroll(true);
+      setUserHasScrolled(false);
+    }
+  }, [isStreaming, hasContent]);
   
   // Use design system colors
   const colors = getAgentColorClasses(agentColor);
@@ -150,6 +183,8 @@ export function StreamCard({
               className="h-full overflow-y-auto smooth-scroll"
               ref={contentRef}
               onScroll={handleScroll}
+              onWheel={handleUserInteraction}
+              onTouchStart={handleUserInteraction}
               style={{ minHeight: '200px', maxHeight: '400px' }} // Fixed height bounds
             >
               <MemoizedMarkdown 

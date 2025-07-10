@@ -2,7 +2,7 @@
 @import "../force-colors.css";
 @import "../styles/streaming.css";
 
-/* AIdeator "Prism" Design System - Tailwind CSS v4 Theme Configuration */
+/* aideator "Prism" Design System - Tailwind CSS v4 Theme Configuration */
 @theme {
   /* Primary Brand Colors - Prism */
   --color-ai-primary: 29 78 216;            /* Royal Blue - professional, trustworthy */

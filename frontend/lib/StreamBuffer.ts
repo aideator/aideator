@@ -102,23 +102,35 @@ export class StreamBuffer {
    */
   destroy(): void {
     if (this.drainInterval) {
-      clearInterval(this.drainInterval);
+      cancelAnimationFrame(this.drainInterval as number);
       this.drainInterval = null;
     }
     this.flush();
   }
   
   /**
-   * Start the draining process
+   * Start the draining process using requestAnimationFrame for smooth rendering
    */
   private startDraining(): void {
     const msPerToken = 1000 / this.options.tokensPerSecond;
+    let lastDrainTime = 0;
     
-    this.drainInterval = setInterval(() => {
-      if (!this.isPaused && this.buffer.length > 0) {
-        this.drain();
+    const animationLoop = (currentTime: number) => {
+      if (this.drainInterval === null) return; // Stop if destroyed
+      
+      // Calculate if enough time has passed for next token
+      if (currentTime - lastDrainTime >= msPerToken) {
+        if (!this.isPaused && this.buffer.length > 0) {
+          this.drain();
+          lastDrainTime = currentTime;
+        }
       }
-    }, msPerToken);
+      
+      // Continue the loop
+      this.drainInterval = requestAnimationFrame(animationLoop) as any;
+    };
+    
+    this.drainInterval = requestAnimationFrame(animationLoop) as any;
   }
   
   /**
@@ -219,7 +231,10 @@ export class StreamBuffer {
    * Get the next token respecting word boundaries
    */
   private getNextWordBoundaryToken(): string {
-    // If buffer starts with whitespace, drain it
+    if (this.buffer.length === 0) return '';
+    
+    // Simplified approach for smoother streaming:
+    // 1. If buffer starts with whitespace, take all consecutive whitespace
     if (/^\s/.test(this.buffer)) {
       const match = this.buffer.match(/^\s+/);
       if (match) {
@@ -229,31 +244,22 @@ export class StreamBuffer {
       }
     }
     
-    // Find the next word boundary
-    const wordBoundary = this.buffer.search(/\s|[.,!?;:]|\n/);
+    // 2. For regular text, take 2-5 characters at a time for smoother appearance
+    let chunkSize = Math.min(3, this.buffer.length);
     
-    if (wordBoundary === -1) {
-      // No word boundary found
-      if (this.isComplete || this.buffer.length > 20) {
-        // If complete or word is too long, drain the whole buffer
-        const token = this.buffer;
-        this.buffer = '';
-        return token;
-      }
-      // Wait for more content
-      return '';
+    // Look for natural breaks within a reasonable distance
+    const nearbyBoundary = this.buffer.slice(0, 8).search(/[\s.,!?;:]/);
+    if (nearbyBoundary > 0 && nearbyBoundary <= 5) {
+      chunkSize = nearbyBoundary + 1; // Include the boundary character
     }
     
-    if (wordBoundary === 0) {
-      // Boundary is at the start (punctuation or space)
-      const token = this.buffer[0];
-      this.buffer = this.buffer.slice(1);
-      return token;
+    // If we're at the end and have a small buffer, just take it all
+    if (this.isComplete && this.buffer.length <= 8) {
+      chunkSize = this.buffer.length;
     }
     
-    // Drain up to and including the boundary
-    const token = this.buffer.slice(0, wordBoundary + 1);
-    this.buffer = this.buffer.slice(wordBoundary + 1);
+    const token = this.buffer.slice(0, chunkSize);
+    this.buffer = this.buffer.slice(chunkSize);
     return token;
   }
   

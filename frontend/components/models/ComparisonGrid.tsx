@@ -108,7 +108,7 @@ export function ComparisonGrid({
   }
 
   return (
-    <div className={`space-y-lg ${className}`}>
+    <div className={`space-y-4 ${className}`}>
       {/* Grid Controls */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -217,7 +217,7 @@ export function ComparisonGrid({
       )}
 
       {/* Model Response Grid */}
-      <div className={`grid gap-lg ${getGridLayout()}`}>
+      <div className={`grid gap-2 ${getGridLayout()}`}>
         {visibleResponses.map((response, index) => {
           const originalIndex = responses.findIndex(r => r.id === response.id);
           return (

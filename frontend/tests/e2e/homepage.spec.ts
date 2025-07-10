@@ -1,14 +1,14 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('AIdeator Homepage', () => {
+test.describe('aideator Homepage', () => {
   test('should load homepage with correct title and branding', async ({ page }) => {
     await page.goto('/');
 
     // Check page title
-    await expect(page).toHaveTitle(/AIdeator/);
+    await expect(page).toHaveTitle(/aideator/);
 
     // Check main heading
-    await expect(page.locator('h1')).toContainText('AIdeator');
+    await expect(page.locator('h1')).toContainText('aideator');
 
     // Check subtitle/description
     await expect(page.locator('text=Kubernetes-native LLM orchestration platform')).toBeVisible();

@@ -8,7 +8,7 @@ import {
   type Session,
   type SessionDetails,
   type CreateSessionRequest 
-} from '@/lib/api';
+} from '@/lib/api-client';
 
 export interface SessionManagerState {
   sessions: Session[];

@@ -58,9 +58,9 @@ spec:
                   optional: {{ .Values.secrets.gemini.optional | default false }}
             # Job configuration
             - name: REPO_URL
-              value: "{{ .Values.repoUrl | default "https://github.com/octocat/Hello-World" }}"
+              value: "{{ .Values.repoUrl }}"
             - name: PROMPT
-              value: "{{ .Values.prompt | default "Analyze this repository and describe what it does" }}"
+              value: "{{ .Values.prompt }}"
             - name: VARIATION_ID
               value: "{{ .Values.variationId | default "0" }}"
             - name: RUN_ID

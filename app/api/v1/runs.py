@@ -94,6 +94,7 @@ async def create_run(
         turn = Turn(
             id=turn_id,
             session_id=session_id,
+            user_id=current_user.id,
             turn_number=turn_number,
             prompt=request.prompt,
             models_requested=[variant.model_definition_id for variant in request.model_variants],

@@ -6,7 +6,7 @@ test.describe('Smoke Test - Basic Functionality', () => {
     await page.goto('http://localhost:3001');
     
     // Check that page loads
-    await expect(page.locator('h1')).toContainText('AIdeator');
+    await expect(page.locator('h1')).toContainText('aideator');
     
     // Check for main CTA button (be more flexible with text)
     const ctaButton = page.locator('button, a').filter({ hasText: /Start.*Generation|Start.*Multi.*Agent/ }).first();
@@ -46,7 +46,7 @@ test.describe('Smoke Test - Basic Functionality', () => {
   test('should have proper styling and design system', async ({ page }) => {
     await page.goto('http://localhost:3001');
     
-    // Check for AIdeator branding color (ai-primary)
+    // Check for aideator branding color (ai-primary)
     const brandedElements = page.locator('[class*="ai-primary"], [style*="#4f46e5"]');
     
     // Check for proper card styling

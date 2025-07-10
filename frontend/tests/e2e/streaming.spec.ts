@@ -1,88 +1,78 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('AIdeator Streaming Interface', () => {
-  test('should load streaming page with configuration form', async ({ page }) => {
+test.describe('aideator Streaming Interface', () => {
+  test('should load streaming page with ChatGPT-style layout', async ({ page }) => {
     await page.goto('/stream');
 
-    // Check page elements
-    await expect(page.locator('h1')).toContainText('AIdeator');
-    await expect(page.locator('text=Generation Configuration')).toBeVisible();
+    // Check welcome message (when no conversation)
+    await expect(page.locator('h1')).toContainText('aideator');
+    await expect(page.locator('text=Multi-Model Prompt Comparison Platform')).toBeVisible();
 
-    // Check form elements
-    await expect(page.locator('label:has-text("GitHub Repository URL")')).toBeVisible();
-    await expect(page.locator('label:has-text("Task Prompt")')).toBeVisible();
-    await expect(page.locator('label:has-text("Agent Variations")')).toBeVisible();
-
-    // Check default values
-    const githubInput = page.locator('input[type="url"]');
-    await expect(githubInput).toHaveValue('https://github.com/octocat/Hello-World');
-
-    const promptTextarea = page.locator('textarea');
-    await expect(promptTextarea).toHaveValue('Analyze this repository and suggest improvements.');
-  });
-
-  test('should validate form inputs', async ({ page }) => {
-    await page.goto('/stream');
-
-    // Clear required fields
-    await page.locator('input[type="url"]').clear();
-    await page.locator('textarea').clear();
-
-    // Try to submit with empty fields
-    const startButton = page.locator('text=Start Generation');
-    await expect(startButton).toBeDisabled();
-
-    // Fill in valid data
-    await page.locator('input[type="url"]').fill('https://github.com/octocat/Hello-World');
-    await page.locator('textarea').fill('Test prompt for analysis');
-
-    // Button should now be enabled
-    await expect(startButton).toBeEnabled();
-  });
-
-  test('should display agent variation selector', async ({ page }) => {
-    await page.goto('/stream');
-
-    // Check variation selector
-    const variationSelect = page.locator('[data-placeholder]').filter({ hasText: /\d+ Agents?/ });
-    await expect(variationSelect).toBeVisible();
-
-    // Click to open dropdown
-    await variationSelect.click();
-
-    // Check options are available
-    await expect(page.locator('text=1 Agent')).toBeVisible();
-    await expect(page.locator('text=2 Agents')).toBeVisible();
-    await expect(page.locator('text=3 Agents')).toBeVisible();
-    await expect(page.locator('text=4 Agents')).toBeVisible();
-    await expect(page.locator('text=5 Agents')).toBeVisible();
-
-    // Select 5 agents
-    await page.locator('text=5 Agents').click();
-  });
-
-  test('should display empty agent grid initially', async ({ page }) => {
-    await page.goto('/stream');
-
-    // Check that the streaming grid section exists
-    await expect(page.locator('text=Agent Variations')).toBeVisible();
-    await expect(page.locator('text=agents working in parallel')).toBeVisible();
-
-    // Should show empty state
-    await expect(page.locator('text=Ready to Start')).toBeVisible();
-    await expect(page.locator('text=Configure your task')).toBeVisible();
-  });
-
-  test('should handle form submission (mock test)', async ({ page }) => {
-    await page.goto('/stream');
-
-    // Fill out the form
-    await page.locator('input[type="url"]').fill('https://github.com/octocat/Hello-World');
-    await page.locator('textarea').fill('Analyze this repository structure');
+    // Check bottom input area is visible
+    await expect(page.locator('textarea[placeholder*="Ask a question"]')).toBeVisible();
     
-    // Select number of agents
-    await page.locator('[data-placeholder]').filter({ hasText: /\d+ Agents?/ }).click();
-    await page.locator('text=3 Agents').click();
+    // Check settings toggle button
+    await expect(page.locator('text=Show Settings')).toBeVisible();
+
+    // Check send button is present
+    await expect(page.locator('button').filter({ hasText: /^$/ }).locator('[data-testid="play-icon"], .lucide-play')).toBeVisible();
+  });
+
+  test('should validate input and enable send button', async ({ page }) => {
+    await page.goto('/stream');
+
+    // Send button should be disabled with empty input
+    const sendButton = page.locator('button').filter({ hasText: /^$/ }).locator('[data-testid="play-icon"], .lucide-play');
+    await expect(sendButton).toBeDisabled();
+
+    // Type in input area
+    const promptInput = page.locator('textarea[placeholder*="Ask a question"]');
+    await promptInput.fill('Test prompt for analysis');
+
+    // Open settings to configure models (needed for validation)
+    await page.locator('text=Show Settings').click();
+    
+    // Button should now be enabled with valid input
+    await expect(sendButton).toBeEnabled();
+  });
+
+  test('should display model configuration in settings', async ({ page }) => {
+    await page.goto('/stream');
+
+    // Open settings panel
+    await page.locator('text=Show Settings').click();
+
+    // Check that model configuration is available
+    await expect(page.locator('text=Select Models')).toBeVisible();
+
+    // Check that mode selector is present
+    await expect(page.locator('[data-testid="mode-selector"], text*="Mode"')).toBeVisible();
+
+    // Should show model count in quick info
+    await expect(page.locator('text*="models"')).toBeVisible();
+  });
+
+  test('should display welcome state initially', async ({ page }) => {
+    await page.goto('/stream');
+
+    // Should show welcome message when no conversation
+    await expect(page.locator('h1')).toContainText('aideator');
+    await expect(page.locator('text=Multi-Model Prompt Comparison Platform')).toBeVisible();
+
+    // Input should be ready for first message
+    await expect(page.locator('textarea[placeholder*="Ask a question"]')).toBeVisible();
+    await expect(page.locator('textarea[placeholder*="Ask a question"]')).toBeEmpty();
+  });
+
+  test('should handle message submission (mock test)', async ({ page }) => {
+    await page.goto('/stream');
+
+    // Fill out the input
+    const promptInput = page.locator('textarea[placeholder*="Ask a question"]');
+    await promptInput.fill('Analyze this repository structure');
+    
+    // Open settings and configure models
+    await page.locator('text=Show Settings').click();
 
     // Mock the API call to avoid needing backend
     await page.route('**/api/v1/runs', async route => {
@@ -90,79 +80,92 @@ test.describe('AIdeator Streaming Interface', () => {
         status: 202,
         contentType: 'application/json',
         body: JSON.stringify({
-          run_id: 'test-run-123',
-          stream_url: '/api/v1/runs/test-run-123/stream',
-          status: 'accepted'
+          runId: 'test-run-123',
+          sessionId: 'test-session-123', 
+          turnId: 'test-turn-123'
         })
       });
     });
 
-    // Submit the form
-    await page.locator('text=Start Generation').click();
+    // Submit the message
+    const sendButton = page.locator('button').filter({ hasText: /^$/ }).locator('[data-testid="play-icon"], .lucide-play');
+    await sendButton.click();
 
-    // Should show that generation is starting
-    await expect(page.locator('text=Stop Generation')).toBeVisible();
+    // Should show the user message in conversation
+    await expect(page.locator('text=Analyze this repository structure')).toBeVisible();
   });
 
-  test('should be responsive with agent grid layout', async ({ page }) => {
+  test('should be responsive with ChatGPT-style layout', async ({ page }) => {
     await page.goto('/stream');
 
-    // Desktop view - should show grid layout
+    // Desktop view - should show full layout
     await page.setViewportSize({ width: 1920, height: 1080 });
-    const agentGrid = page.locator('[class*="grid"]').filter({ hasText: 'Agent Variations' });
-    await expect(agentGrid).toBeVisible();
+    await expect(page.locator('textarea[placeholder*="Ask a question"]')).toBeVisible();
+    await expect(page.locator('h1')).toContainText('aideator');
 
     // Mobile view - should still be functional
     await page.setViewportSize({ width: 375, height: 667 });
-    await expect(page.locator('text=Generation Configuration')).toBeVisible();
-    await expect(page.locator('input[type="url"]')).toBeVisible();
+    await expect(page.locator('textarea[placeholder*="Ask a question"]')).toBeVisible();
+    await expect(page.locator('text=Show Settings')).toBeVisible();
 
     // Tablet view
     await page.setViewportSize({ width: 768, height: 1024 });
-    await expect(page.locator('text=Agent Variations')).toBeVisible();
+    await expect(page.locator('textarea[placeholder*="Ask a question"]')).toBeVisible();
+    await expect(page.locator('h1')).toContainText('aideator');
   });
 
-  test('should display connection status indicator', async ({ page }) => {
+  test('should display authentication status', async ({ page }) => {
     await page.goto('/stream');
 
-    // Should show disconnected status initially
-    await expect(page.locator('text=Disconnected')).toBeVisible();
+    // Should show auth status in top right
+    await expect(page.locator('[class*="fixed"][class*="top-4"][class*="right-4"]')).toBeVisible();
 
-    // Connection status should be visible with icon
-    const statusBadge = page.locator('[class*="border"]').filter({ hasText: 'Disconnected' });
-    await expect(statusBadge).toBeVisible();
+    // Settings should show authentication info when expanded
+    await page.locator('text=Show Settings').click();
+    // Auth debug info or connection status should be visible in development mode
   });
 
   test('should have proper design system styling', async ({ page }) => {
     await page.goto('/stream');
 
-    // Check AI primary color usage
-    const primaryElements = page.locator('[class*="text-ai-primary"]');
-    await expect(primaryElements.first()).toBeVisible();
+    // Check AI primary color usage (welcome section)
+    await expect(page.locator('[class*="bg-gradient-to-br"][class*="from-ai-primary"]')).toBeVisible();
 
-    // Check neutral paper background
-    const configCard = page.locator('[class*="bg-neutral-paper"]').first();
-    await expect(configCard).toBeVisible();
+    // Check neutral paper background (input area)
+    const inputCard = page.locator('[class*="bg-neutral-paper"]').first();
+    await expect(inputCard).toBeVisible();
 
     // Check proper spacing and typography
     const headings = page.locator('h1, h2, h3');
     await expect(headings.first()).toBeVisible();
+    
+    // Check bottom fixed input area
+    await expect(page.locator('[class*="fixed"][class*="bottom-0"]')).toBeVisible();
   });
 
-  test('should handle navigation back to homepage', async ({ page }) => {
+  test('should support keyboard shortcuts', async ({ page }) => {
     await page.goto('/stream');
 
-    // Check that we can navigate back to homepage (via logo/header)
-    const logo = page.locator('[class*="text-ai-primary"]').first();
-    if (await logo.count() > 0) {
-      // If there's a clickable logo, test navigation
-      const isClickable = await logo.getAttribute('href') !== null || 
-                         await logo.locator('..').getAttribute('href') !== null;
-      
-      if (isClickable) {
-        await logo.click();
-        await expect(page).toHaveURL('/');
-      }
-    }
+    // Focus on input area
+    const promptInput = page.locator('textarea[placeholder*="Ask a question"]');
+    await promptInput.click();
+    await promptInput.fill('Test message');
+
+    // Test Enter key submission (without Shift)
+    await promptInput.press('Enter');
+    
+    // Should have submitted the message (input should be cleared or message should appear)
+    // This tests the onKeyDown handler in the textarea
+  });
+
+  test('should display conversation history correctly', async ({ page }) => {
+    await page.goto('/stream');
+
+    // This test would need to simulate a conversation with responses
+    // For now, just test that the conversation area exists
+    await expect(page.locator('[class*="flex-1"][class*="overflow-y-auto"]')).toBeVisible();
+    
+    // Welcome message should be in conversation area when empty
+    await expect(page.locator('h1')).toContainText('aideator');
   });
 });

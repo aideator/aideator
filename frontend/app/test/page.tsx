@@ -195,7 +195,7 @@ export default function TestPage() {
               Check browser console (F12) for any CSS loading errors
             </div>
             <div className="text-sm text-neutral-shadow mt-4 p-4 bg-neutral-fog rounded-lg">
-              <strong>AIdeator Neural Spectrum:</strong> A sophisticated design system for multi-model AI comparison platforms. Colors reflect intelligence, innovation, and trust - perfect for professional yet approachable AI interfaces.
+              <strong>aideator Neural Spectrum:</strong> A sophisticated design system for multi-model AI comparison platforms. Colors reflect intelligence, innovation, and trust - perfect for professional yet approachable AI interfaces.
             </div>
           </div>
         </section>

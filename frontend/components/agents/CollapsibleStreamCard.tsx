@@ -212,7 +212,7 @@ export function CollapsibleStreamCard({
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.3 }}
               className={`${lightBg} ${borderColor} border overflow-hidden`}
-              style={{ maxHeight: isFullscreen ? 'calc(100vh - 200px)' : '500px' }}
+              style={{ maxHeight: isFullscreen ? 'calc(100vh - 200px)' : 'calc(100vh - 300px)' }}
             >
               {hasContent ? (
                 <div
