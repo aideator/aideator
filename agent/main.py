@@ -326,6 +326,8 @@ class AIdeatorAgent:
         
         if agent_mode == "claude-cli":
             return await self._generate_claude_cli_response()
+        elif agent_mode == "gemini-cli":
+            return await self._generate_gemini_cli_response()
         else:
             return await self._generate_litellm_response(codebase_summary)
     
@@ -393,6 +395,62 @@ class AIdeatorAgent:
         except Exception as e:
             self.log_error(f"Claude CLI execution failed", e)
             raise RuntimeError(f"Failed to generate Claude CLI response: {e}")
+    
+    async def _generate_gemini_cli_response(self) -> str:
+        """Generate response using Gemini CLI."""
+        self.log_progress("Generating response using Gemini CLI", 
+                         "Executing gemini command")
+        
+        try:
+            # Change to repository directory for context
+            original_dir = os.getcwd()
+            os.chdir(self.repo_dir)
+            
+            # Execute Gemini CLI
+            self.log_progress("Executing Gemini CLI", f"Working directory: {self.repo_dir}")
+            
+            result = await asyncio.create_subprocess_exec(
+                "gemini",
+                "prompt",
+                self.prompt,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=os.environ  # Includes GEMINI_API_KEY
+            )
+            
+            # Wait for completion with timeout
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    result.communicate(),
+                    timeout=30.0
+                )
+            except asyncio.TimeoutError:
+                result.terminate()
+                await result.wait()
+                raise RuntimeError("Gemini CLI execution timed out after 30 seconds")
+            
+            # Change back to original directory
+            os.chdir(original_dir)
+            
+            if result.returncode == 0:
+                # Gemini CLI returns plain text output
+                response = stdout.decode().strip()
+                self.log("Gemini CLI response received", "INFO", 
+                        response_length=len(response))
+                
+                # Stream the response line by line
+                for line in response.split('\n'):
+                    if line.strip():
+                        print(f"🔸 {line}", flush=True)
+                
+                return response
+            else:
+                error_msg = stderr.decode() if stderr else "Unknown error"
+                raise RuntimeError(f"Gemini CLI failed with exit code {result.returncode}: {error_msg}")
+                
+        except Exception as e:
+            self.log_error(f"Gemini CLI execution failed", e)
+            raise RuntimeError(f"Failed to generate Gemini CLI response: {e}")
     
     async def _generate_litellm_response(self, codebase_summary: str) -> str:
         """Generate response using LiteLLM (original implementation)."""

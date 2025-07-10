@@ -168,6 +168,12 @@ if [ -z "${ANTHROPIC_API_KEY:-}" ] || [ "${ANTHROPIC_API_KEY}" = "your-anthropic
     exit 1
 fi
 
+if [ -z "${GEMINI_API_KEY:-}" ] || [ "${GEMINI_API_KEY}" = "your-gemini-api-key-here" ]; then
+    echo "❌ GEMINI_API_KEY not set in .env file"
+    echo "   Please edit .env and add your Gemini API key"
+    exit 1
+fi
+
 # Create namespace if it doesn't exist
 if ! kubectl get namespace aideator &> /dev/null; then
     echo "🔧 Creating aideator namespace..."
@@ -199,6 +205,19 @@ if ! kubectl get secret anthropic-secret -n aideator &> /dev/null; then
     fi
 else
     echo "✅ anthropic-secret already exists"
+fi
+
+if ! kubectl get secret gemini-secret -n aideator &> /dev/null; then
+    if [ -n "${GEMINI_API_KEY:-}" ]; then
+        echo "🔧 Creating gemini-secret..."
+        kubectl create secret generic gemini-secret \
+            --from-literal=api-key="$GEMINI_API_KEY" \
+            -n aideator
+    else
+        echo "⚠️  Skipping gemini-secret creation (GEMINI_API_KEY not set)"
+    fi
+else
+    echo "✅ gemini-secret already exists"
 fi
 
 if ! kubectl get secret aideator-secret -n aideator &> /dev/null; then

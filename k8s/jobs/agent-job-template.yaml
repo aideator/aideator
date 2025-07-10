@@ -39,6 +39,11 @@ spec:
                 secretKeyRef:
                   name: anthropic-secret
                   key: api-key
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gemini-secret
+                  key: api-key
             - name: AGENT_MODE
               value: "{agent_mode}"
             - name: REPO_URL

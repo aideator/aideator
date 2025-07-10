@@ -72,6 +72,10 @@ secrets:
     name: anthropic-secret
     key: api-key
     optional: false
+  gemini:
+    name: gemini-secret
+    key: api-key
+    optional: false
 
 # Resources for FastAPI
 resources:

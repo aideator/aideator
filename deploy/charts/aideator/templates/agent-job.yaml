@@ -50,6 +50,12 @@ spec:
                   name: {{ .Values.secrets.anthropic.name }}
                   key: {{ .Values.secrets.anthropic.key }}
                   optional: {{ .Values.secrets.anthropic.optional | default false }}
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.gemini.name }}
+                  key: {{ .Values.secrets.gemini.key }}
+                  optional: {{ .Values.secrets.gemini.optional | default false }}
             # Job configuration
             - name: REPO_URL
               value: "{{ .Values.repoUrl | default "https://github.com/octocat/Hello-World" }}"

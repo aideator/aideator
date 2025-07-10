@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     openai_api_key_env_var: str = "OPENAI_API_KEY"  # Environment variable name for containers
     anthropic_api_key: str  # Required for Claude Code CLI
     anthropic_api_key_env_var: str = "ANTHROPIC_API_KEY"  # Environment variable name for containers
+    gemini_api_key: str  # Required for Gemini CLI
+    gemini_api_key_env_var: str = "GEMINI_API_KEY"  # Environment variable name for containers
     api_key_header: str = "X-API-Key"
     allowed_origins: list[str] = ["*"]
     allowed_hosts: list[str] = ["*"]
@@ -130,6 +132,14 @@ class Settings(BaseSettings):
             raise ValueError("Invalid Anthropic API key format")
         return v
 
+    @field_validator("gemini_api_key")
+    @classmethod
+    def validate_gemini_key(cls, v: str) -> str:
+        """Validate Gemini API key format."""
+        if not v.startswith("AIza"):
+            raise ValueError("Invalid Gemini API key format")
+        return v
+
     @model_validator(mode="after")
     def validate_settings(self) -> "Settings":
         """Validate settings combinations."""
@@ -146,6 +156,7 @@ class Settings(BaseSettings):
         return {
             "openai-api-key": self.openai_api_key,
             "anthropic-api-key": self.anthropic_api_key,
+            "gemini-api-key": self.gemini_api_key,
         }
 
     @property

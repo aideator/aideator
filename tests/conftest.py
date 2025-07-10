@@ -24,7 +24,9 @@ def test_settings() -> Settings:
     return Settings(
         database_url="postgresql+asyncpg://test:test@localhost:5432/test_aideator",
         secret_key="test-secret-key-for-testing-only-32chars",
+        openai_api_key="sk-test-openai-key",
         anthropic_api_key="sk-ant-test-key",
+        gemini_api_key="AIza-test-gemini-key",
         debug=True,
         rate_limit_enabled=False,
     )

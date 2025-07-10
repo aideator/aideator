@@ -130,6 +130,28 @@ local_resource(
     else
         echo "anthropic-secret already exists"
     fi
+    
+    if ! kubectl get secret gemini-secret -n aideator 2>/dev/null; then
+        if [ -z "$GEMINI_API_KEY" ]; then
+            echo "ERROR: GEMINI_API_KEY environment variable not set!"
+            echo "Please set it with: export GEMINI_API_KEY='your-api-key'"
+            echo "Creating gemini-secret with placeholder (Gemini CLI will fail)..."
+            kubectl create secret generic gemini-secret \
+                --from-literal=api-key="AIza-placeholder-please-set-GEMINI_API_KEY" \
+                -n aideator
+            echo ""
+            echo "⚠️  WARNING: Gemini CLI will not work without a valid GEMINI_API_KEY!"
+            echo "⚠️  Set the environment variable and run: tilt up"
+            echo ""
+        else
+            echo "Creating gemini-secret..."
+            kubectl create secret generic gemini-secret \
+                --from-literal=api-key="$GEMINI_API_KEY" \
+                -n aideator
+        fi
+    else
+        echo "gemini-secret already exists"
+    fi
     """,
     deps=["deploy/charts/aideator/values.yaml"],
     labels=["setup"],
