@@ -1,16 +1,27 @@
 """
 Model catalog service for managing LiteLLM supported models.
+
+This service dynamically discovers models from the LiteLLM proxy rather than
+maintaining a hardcoded list. This ensures we always have the latest models
+available without manual updates.
 """
 
 import logging
-from typing import Dict, List, Optional, Set
+import httpx
+import os
+from typing import Dict, List, Optional, Set, Any
 from dataclasses import dataclass
+import asyncio
+from datetime import datetime, timedelta
+from sqlmodel import Session, select
 
 from app.models.provider import (
     ModelCapability,
     ModelDefinition,
     ProviderType,
 )
+from app.models.model_definition import ModelDefinitionDB
+from app.core.database import get_sync_session
 
 logger = logging.getLogger(__name__)
 
@@ -39,14 +50,97 @@ class ModelInfo:
 
 
 class ModelCatalogService:
-    """Service for managing the model catalog."""
+    """Service for managing the model catalog.
+    
+    Dynamically discovers models from the LiteLLM proxy rather than maintaining
+    a static list. Includes caching to reduce API calls.
+    """
     
     def __init__(self):
         self._models: Dict[str, ModelInfo] = {}
-        self._initialize_model_catalog()
+        self._models_loaded = False
+        self._load_models_from_db()
+    
+    def _load_models_from_db(self):
+        """Load models from database instead of hardcoding them."""
+        try:
+            for session in get_sync_session():
+                # Query active models from database
+                db_models = session.exec(
+                    select(ModelDefinitionDB).where(
+                        ModelDefinitionDB.is_active == True
+                    )
+                ).all()
+                
+                # Convert to ModelInfo objects
+                for db_model in db_models:
+                    # Map capabilities from tags
+                    capabilities = []
+                    if db_model.supports_streaming:
+                        capabilities.append(ModelCapability.STREAMING)
+                    if db_model.supports_function_calling:
+                        capabilities.append(ModelCapability.FUNCTION_CALLING)
+                    if db_model.supports_vision:
+                        capabilities.append(ModelCapability.VISION)
+                    if "embedding" in db_model.category:
+                        capabilities.append(ModelCapability.EMBEDDINGS)
+                    else:
+                        capabilities.extend([
+                            ModelCapability.TEXT_COMPLETION,
+                            ModelCapability.CHAT_COMPLETION
+                        ])
+                    
+                    # Map provider string to enum
+                    provider_map = {
+                        "openai": ProviderType.OPENAI,
+                        "anthropic": ProviderType.ANTHROPIC,
+                        "gemini": ProviderType.GEMINI,
+                        "google": ProviderType.GEMINI,
+                        "vertex_ai": ProviderType.VERTEX_AI,
+                        "bedrock": ProviderType.BEDROCK,
+                        "azure": ProviderType.AZURE,
+                        "mistral": ProviderType.MISTRAL,
+                        "cohere": ProviderType.COHERE,
+                        "huggingface": ProviderType.HUGGING_FACE,
+                        "together": ProviderType.TOGETHER,
+                        "replicate": ProviderType.REPLICATE,
+                        "groq": ProviderType.GROQ,
+                        "deepseek": ProviderType.DEEPSEEK,
+                        "perplexity": ProviderType.PERPLEXITY,
+                        "ollama": ProviderType.OLLAMA,
+                    }
+                    
+                    provider = provider_map.get(
+                        db_model.litellm_provider.lower(), 
+                        ProviderType.OPENAI
+                    )
+                    
+                    model_info = ModelInfo(
+                        provider=provider,
+                        model_name=db_model.model_name,
+                        litellm_model_name=db_model.model_name,  # Use same name
+                        display_name=db_model.display_name,
+                        description=db_model.description,
+                        context_window=db_model.max_tokens,
+                        max_output_tokens=db_model.max_output_tokens,
+                        input_price_per_1m_tokens=db_model.input_cost_per_token * 1_000_000 if db_model.input_cost_per_token else None,
+                        output_price_per_1m_tokens=db_model.output_cost_per_token * 1_000_000 if db_model.output_cost_per_token else None,
+                        capabilities=capabilities,
+                        requires_api_key=db_model.requires_api_key
+                    )
+                    
+                    self._models[model_info.litellm_model_name] = model_info
+                
+                self._models_loaded = True
+                logger.info(f"Loaded {len(self._models)} models from database")
+                
+        except Exception as e:
+            logger.warning(f"Failed to load models from database: {str(e)}")
+            logger.info("Falling back to static model initialization")
+            self._initialize_model_catalog()
     
     def _initialize_model_catalog(self):
-        """Initialize the model catalog with known models."""
+        """Initialize the model catalog with all LiteLLM supported models."""
         
         # OpenAI Models
         self._add_openai_models()
@@ -54,28 +148,67 @@ class ModelCatalogService:
         # Anthropic Models
         self._add_anthropic_models()
         
-        # Google Models
+        # Google Models (Gemini)
         self._add_google_models()
         
         # Vertex AI Models
         self._add_vertex_ai_models()
         
-        # Mistral Models
+        # AWS Bedrock Models
+        self._add_bedrock_models()
+        
+        # Azure OpenAI Models
+        self._add_azure_models()
+        
+        # Mistral AI Models
         self._add_mistral_models()
         
         # Cohere Models
         self._add_cohere_models()
         
-        # AWS Bedrock Models
-        self._add_bedrock_models()
-        
-        # Azure Models
-        self._add_azure_models()
+        # Meta/Llama Models (via various providers)
+        self._add_meta_models()
         
         # Hugging Face Models
         self._add_huggingface_models()
         
-        # Other Popular Providers
+        # Together AI Models
+        self._add_together_models()
+        
+        # Replicate Models
+        self._add_replicate_models()
+        
+        # Anyscale Models
+        self._add_anyscale_models()
+        
+        # Perplexity Models
+        self._add_perplexity_models()
+        
+        # DeepSeek Models
+        self._add_deepseek_models()
+        
+        # Groq Models
+        self._add_groq_models()
+        
+        # DeepInfra Models
+        self._add_deepinfra_models()
+        
+        # AI21 Models
+        self._add_ai21_models()
+        
+        # NLP Cloud Models
+        self._add_nlp_cloud_models()
+        
+        # Voyage AI Models
+        self._add_voyage_models()
+        
+        # Xinference Models
+        self._add_xinference_models()
+        
+        # Ollama Models (Local)
+        self._add_ollama_models()
+        
+        # Other Providers
         self._add_other_providers()
     
     def _add_openai_models(self):
@@ -86,7 +219,7 @@ class ModelCatalogService:
             ModelInfo(
                 provider=ProviderType.OPENAI,
                 model_name="gpt-4",
-                litellm_model_name="openai/gpt-4",
+                litellm_model_name="gpt-4",
                 display_name="GPT-4",
                 description="Most capable GPT-4 model",
                 context_window=8192,
@@ -103,7 +236,7 @@ class ModelCatalogService:
             ModelInfo(
                 provider=ProviderType.OPENAI,
                 model_name="gpt-4-turbo",
-                litellm_model_name="openai/gpt-4-turbo",
+                litellm_model_name="gpt-4-turbo",
                 display_name="GPT-4 Turbo",
                 description="Faster, cheaper GPT-4 with 128k context",
                 context_window=128000,
@@ -121,7 +254,7 @@ class ModelCatalogService:
             ModelInfo(
                 provider=ProviderType.OPENAI,
                 model_name="gpt-4o",
-                litellm_model_name="openai/gpt-4o",
+                litellm_model_name="gpt-4o",
                 display_name="GPT-4o",
                 description="Latest GPT-4 optimized for speed and cost",
                 context_window=128000,
@@ -139,7 +272,7 @@ class ModelCatalogService:
             ModelInfo(
                 provider=ProviderType.OPENAI,
                 model_name="gpt-4o-mini",
-                litellm_model_name="openai/gpt-4o-mini",
+                litellm_model_name="gpt-4o-mini",
                 display_name="GPT-4o Mini",
                 description="Faster, cheaper GPT-4o for simple tasks",
                 context_window=128000,
@@ -158,7 +291,7 @@ class ModelCatalogService:
             ModelInfo(
                 provider=ProviderType.OPENAI,
                 model_name="gpt-3.5-turbo",
-                litellm_model_name="openai/gpt-3.5-turbo",
+                litellm_model_name="gpt-3.5-turbo",
                 display_name="GPT-3.5 Turbo",
                 description="Fast, cost-effective model for simple tasks",
                 context_window=16384,
@@ -176,7 +309,7 @@ class ModelCatalogService:
             ModelInfo(
                 provider=ProviderType.OPENAI,
                 model_name="o1-preview",
-                litellm_model_name="openai/o1-preview",
+                litellm_model_name="o1-preview",
                 display_name="O1 Preview",
                 description="Advanced reasoning model",
                 context_window=128000,
@@ -191,7 +324,7 @@ class ModelCatalogService:
             ModelInfo(
                 provider=ProviderType.OPENAI,
                 model_name="o1-mini",
-                litellm_model_name="openai/o1-mini",
+                litellm_model_name="o1-mini",
                 display_name="O1 Mini",
                 description="Faster reasoning model",
                 context_window=128000,
@@ -215,8 +348,8 @@ class ModelCatalogService:
             # Claude 4 models
             ModelInfo(
                 provider=ProviderType.ANTHROPIC,
-                model_name="claude-4-opus",
-                litellm_model_name="anthropic/claude-4-opus-20250514",
+                model_name="claude-4-opus-20250514",
+                litellm_model_name="claude-4-opus-20250514",
                 display_name="Claude 4 Opus",
                 description="Most capable Claude 4 model",
                 context_window=200000,
@@ -233,8 +366,8 @@ class ModelCatalogService:
             ),
             ModelInfo(
                 provider=ProviderType.ANTHROPIC,
-                model_name="claude-4-sonnet",
-                litellm_model_name="anthropic/claude-4-sonnet-20250514",
+                model_name="claude-4-sonnet-20250514",
+                litellm_model_name="claude-4-sonnet-20250514",
                 display_name="Claude 4 Sonnet",
                 description="Balanced Claude 4 model",
                 context_window=200000,
@@ -252,8 +385,8 @@ class ModelCatalogService:
             # Claude 3.5 models
             ModelInfo(
                 provider=ProviderType.ANTHROPIC,
-                model_name="claude-3-5-sonnet",
-                litellm_model_name="anthropic/claude-3-5-sonnet-20241022",
+                model_name="claude-3-5-sonnet-20241022",
+                litellm_model_name="claude-3-5-sonnet-20241022",
                 display_name="Claude 3.5 Sonnet",
                 description="Most capable Claude 3.5 model",
                 context_window=200000,
@@ -270,8 +403,8 @@ class ModelCatalogService:
             ),
             ModelInfo(
                 provider=ProviderType.ANTHROPIC,
-                model_name="claude-3-5-haiku",
-                litellm_model_name="anthropic/claude-3-5-haiku-20241022",
+                model_name="claude-3-5-haiku-20241022",
+                litellm_model_name="claude-3-5-haiku-20241022",
                 display_name="Claude 3.5 Haiku",
                 description="Fastest Claude 3.5 model",
                 context_window=200000,
@@ -289,8 +422,8 @@ class ModelCatalogService:
             # Claude 3 models
             ModelInfo(
                 provider=ProviderType.ANTHROPIC,
-                model_name="claude-3-opus",
-                litellm_model_name="anthropic/claude-3-opus-20240229",
+                model_name="claude-3-opus-20240229",
+                litellm_model_name="claude-3-opus-20240229",
                 display_name="Claude 3 Opus",
                 description="Most capable Claude 3 model",
                 context_window=200000,
@@ -307,8 +440,8 @@ class ModelCatalogService:
             ),
             ModelInfo(
                 provider=ProviderType.ANTHROPIC,
-                model_name="claude-3-sonnet",
-                litellm_model_name="anthropic/claude-3-sonnet-20240229",
+                model_name="claude-3-sonnet-20240229",
+                litellm_model_name="claude-3-sonnet-20240229",
                 display_name="Claude 3 Sonnet",
                 description="Balanced Claude 3 model",
                 context_window=200000,
@@ -325,8 +458,8 @@ class ModelCatalogService:
             ),
             ModelInfo(
                 provider=ProviderType.ANTHROPIC,
-                model_name="claude-3-haiku",
-                litellm_model_name="anthropic/claude-3-haiku-20240307",
+                model_name="claude-3-haiku-20240307",
+                litellm_model_name="claude-3-haiku-20240307",
                 display_name="Claude 3 Haiku",
                 description="Fastest Claude 3 model",
                 context_window=200000,
@@ -354,7 +487,7 @@ class ModelCatalogService:
             ModelInfo(
                 provider=ProviderType.GEMINI,
                 model_name="gemini-2.0-flash",
-                litellm_model_name="gemini/gemini-2.0-flash",
+                litellm_model_name="gemini-2.0-flash",
                 display_name="Gemini 2.0 Flash",
                 description="Latest Gemini model with multimodal capabilities",
                 context_window=2000000,
@@ -374,7 +507,7 @@ class ModelCatalogService:
             ModelInfo(
                 provider=ProviderType.GEMINI,
                 model_name="gemini-1.5-pro",
-                litellm_model_name="gemini/gemini-1.5-pro",
+                litellm_model_name="gemini-1.5-pro",
                 display_name="Gemini 1.5 Pro",
                 description="Most capable Gemini model",
                 context_window=2000000,
@@ -392,7 +525,7 @@ class ModelCatalogService:
             ModelInfo(
                 provider=ProviderType.GEMINI,
                 model_name="gemini-1.5-flash",
-                litellm_model_name="gemini/gemini-1.5-flash",
+                litellm_model_name="gemini-1.5-flash",
                 display_name="Gemini 1.5 Flash",
                 description="Fast, efficient Gemini model",
                 context_window=1000000,
@@ -411,7 +544,7 @@ class ModelCatalogService:
             ModelInfo(
                 provider=ProviderType.GEMINI,
                 model_name="gemini-pro",
-                litellm_model_name="gemini/gemini-pro",
+                litellm_model_name="gemini-pro",
                 display_name="Gemini Pro",
                 description="Original Gemini Pro model",
                 context_window=30720,
@@ -755,33 +888,223 @@ class ModelCatalogService:
             self._models[model.litellm_model_name] = model
     
     def _add_other_providers(self):
-        """Add models from other popular providers."""
-        
-        other_models = [
-            # Groq models
+        """Add models from other providers not covered by specific methods."""
+        # Most providers now have dedicated methods
+        # This is kept for any miscellaneous providers that might be added later
+        pass
+    
+    def _add_meta_models(self):
+        """Add Meta/Llama models available through various providers."""
+        # These are covered by individual provider methods
+        pass
+    
+    def _add_together_models(self):
+        """Add Together AI models."""
+        together_models = [
             ModelInfo(
-                provider=ProviderType.GROQ,
-                model_name="llama3-8b-8192",
-                litellm_model_name="groq/llama3-8b-8192",
-                display_name="Llama 3 8B (Groq)",
-                description="Ultra-fast Llama 3 8B on Groq",
+                provider=ProviderType.TOGETHER,
+                model_name="llama-3-70b-chat-hf",
+                litellm_model_name="together_ai/meta-llama/Llama-3-70b-chat-hf",
+                display_name="Llama 3 70B Chat",
+                description="Llama 3 70B on Together AI",
                 context_window=8192,
                 max_output_tokens=4096,
-                input_price_per_1m_tokens=0.05,
-                output_price_per_1m_tokens=0.08,
+                input_price_per_1m_tokens=0.9,
+                output_price_per_1m_tokens=0.9,
                 capabilities=[
                     ModelCapability.TEXT_COMPLETION,
                     ModelCapability.CHAT_COMPLETION,
                     ModelCapability.STREAMING,
                 ]
             ),
-            # Perplexity models
+            ModelInfo(
+                provider=ProviderType.TOGETHER,
+                model_name="mixtral-8x7b-instruct",
+                litellm_model_name="together_ai/mistralai/Mixtral-8x7B-Instruct-v0.1",
+                display_name="Mixtral 8x7B Instruct",
+                description="Mixtral 8x7B on Together AI",
+                context_window=32768,
+                max_output_tokens=4096,
+                input_price_per_1m_tokens=0.6,
+                output_price_per_1m_tokens=0.6,
+                capabilities=[
+                    ModelCapability.TEXT_COMPLETION,
+                    ModelCapability.CHAT_COMPLETION,
+                    ModelCapability.STREAMING,
+                ]
+            ),
+        ]
+        
+        for model in together_models:
+            self._models[model.litellm_model_name] = model
+    
+    def _add_replicate_models(self):
+        """Add Replicate models."""
+        # Replicate models typically require specific version hashes
+        # Users can add custom models via Replicate
+        pass
+    
+    def _add_anyscale_models(self):
+        """Add Anyscale models."""
+        anyscale_models = [
+            ModelInfo(
+                provider=ProviderType.ANYSCALE,
+                model_name="llama-2-70b-chat",
+                litellm_model_name="anyscale/meta-llama/Llama-2-70b-chat-hf",
+                display_name="Llama 2 70B Chat",
+                description="Llama 2 70B on Anyscale",
+                context_window=4096,
+                max_output_tokens=4096,
+                input_price_per_1m_tokens=1.0,
+                output_price_per_1m_tokens=1.0,
+                capabilities=[
+                    ModelCapability.TEXT_COMPLETION,
+                    ModelCapability.CHAT_COMPLETION,
+                    ModelCapability.STREAMING,
+                ]
+            ),
+        ]
+        
+        for model in anyscale_models:
+            self._models[model.litellm_model_name] = model
+    
+    def _add_deepinfra_models(self):
+        """Add DeepInfra models."""
+        deepinfra_models = [
+            ModelInfo(
+                provider=ProviderType.DEEPINFRA,
+                model_name="llama-3-70b-instruct",
+                litellm_model_name="deepinfra/meta-llama/Meta-Llama-3-70B-Instruct",
+                display_name="Llama 3 70B Instruct",
+                description="Llama 3 70B on DeepInfra",
+                context_window=8192,
+                max_output_tokens=4096,
+                input_price_per_1m_tokens=0.59,
+                output_price_per_1m_tokens=0.79,
+                capabilities=[
+                    ModelCapability.TEXT_COMPLETION,
+                    ModelCapability.CHAT_COMPLETION,
+                    ModelCapability.STREAMING,
+                ]
+            ),
+            ModelInfo(
+                provider=ProviderType.DEEPINFRA,
+                model_name="mixtral-8x7b-instruct",
+                litellm_model_name="deepinfra/mistralai/Mixtral-8x7B-Instruct-v0.1",
+                display_name="Mixtral 8x7B Instruct",
+                description="Mixtral 8x7B on DeepInfra",
+                context_window=32768,
+                max_output_tokens=4096,
+                input_price_per_1m_tokens=0.27,
+                output_price_per_1m_tokens=0.27,
+                capabilities=[
+                    ModelCapability.TEXT_COMPLETION,
+                    ModelCapability.CHAT_COMPLETION,
+                    ModelCapability.STREAMING,
+                ]
+            ),
+        ]
+        
+        for model in deepinfra_models:
+            self._models[model.litellm_model_name] = model
+    
+    def _add_ai21_models(self):
+        """Add AI21 models."""
+        ai21_models = [
+            ModelInfo(
+                provider=ProviderType.AI21,
+                model_name="j2-ultra",
+                litellm_model_name="ai21/j2-ultra",
+                display_name="Jurassic-2 Ultra",
+                description="AI21's most powerful model",
+                context_window=8192,
+                max_output_tokens=8192,
+                input_price_per_1m_tokens=15.0,
+                output_price_per_1m_tokens=15.0,
+                capabilities=[
+                    ModelCapability.TEXT_COMPLETION,
+                    ModelCapability.CHAT_COMPLETION,
+                ]
+            ),
+            ModelInfo(
+                provider=ProviderType.AI21,
+                model_name="j2-mid",
+                litellm_model_name="ai21/j2-mid",
+                display_name="Jurassic-2 Mid",
+                description="AI21's balanced model",
+                context_window=8192,
+                max_output_tokens=8192,
+                input_price_per_1m_tokens=10.0,
+                output_price_per_1m_tokens=10.0,
+                capabilities=[
+                    ModelCapability.TEXT_COMPLETION,
+                    ModelCapability.CHAT_COMPLETION,
+                ]
+            ),
+        ]
+        
+        for model in ai21_models:
+            self._models[model.litellm_model_name] = model
+    
+    def _add_nlp_cloud_models(self):
+        """Add NLP Cloud models."""
+        nlp_cloud_models = [
+            ModelInfo(
+                provider=ProviderType.NLP_CLOUD,
+                model_name="dolphin",
+                litellm_model_name="nlp_cloud/dolphin",
+                display_name="Dolphin",
+                description="NLP Cloud's Dolphin model",
+                context_window=2048,
+                max_output_tokens=2048,
+                input_price_per_1m_tokens=25.0,
+                output_price_per_1m_tokens=25.0,
+                capabilities=[
+                    ModelCapability.TEXT_COMPLETION,
+                    ModelCapability.CHAT_COMPLETION,
+                ]
+            ),
+        ]
+        
+        for model in nlp_cloud_models:
+            self._models[model.litellm_model_name] = model
+    
+    def _add_voyage_models(self):
+        """Add Voyage AI embedding models."""
+        voyage_models = [
+            ModelInfo(
+                provider=ProviderType.VOYAGE,
+                model_name="voyage-2",
+                litellm_model_name="voyage/voyage-2",
+                display_name="Voyage 2",
+                description="Voyage AI's latest embedding model",
+                context_window=4096,
+                max_output_tokens=None,
+                input_price_per_1m_tokens=0.1,
+                output_price_per_1m_tokens=0.0,
+                capabilities=[
+                    ModelCapability.EMBEDDINGS,
+                ]
+            ),
+        ]
+        
+        for model in voyage_models:
+            self._models[model.litellm_model_name] = model
+    
+    def _add_xinference_models(self):
+        """Add Xinference models."""
+        # Xinference is for local deployment - models vary by installation
+        pass
+    
+    def _add_perplexity_models(self):
+        """Add Perplexity models."""
+        perplexity_models = [
             ModelInfo(
                 provider=ProviderType.PERPLEXITY,
                 model_name="llama-3.1-sonar-small-128k-online",
                 litellm_model_name="perplexity/llama-3.1-sonar-small-128k-online",
-                display_name="Llama 3.1 Sonar Small (Online)",
-                description="Llama 3.1 with web search capabilities",
+                display_name="Llama 3.1 Sonar Small Online",
+                description="Small model with web search capabilities",
                 context_window=127072,
                 max_output_tokens=4096,
                 input_price_per_1m_tokens=0.2,
@@ -793,7 +1116,31 @@ class ModelCatalogService:
                     ModelCapability.WEB_SEARCH,
                 ]
             ),
-            # DeepSeek models
+            ModelInfo(
+                provider=ProviderType.PERPLEXITY,
+                model_name="llama-3.1-sonar-large-128k-online",
+                litellm_model_name="perplexity/llama-3.1-sonar-large-128k-online",
+                display_name="Llama 3.1 Sonar Large Online",
+                description="Large model with web search capabilities",
+                context_window=127072,
+                max_output_tokens=4096,
+                input_price_per_1m_tokens=1.0,
+                output_price_per_1m_tokens=1.0,
+                capabilities=[
+                    ModelCapability.TEXT_COMPLETION,
+                    ModelCapability.CHAT_COMPLETION,
+                    ModelCapability.STREAMING,
+                    ModelCapability.WEB_SEARCH,
+                ]
+            ),
+        ]
+        
+        for model in perplexity_models:
+            self._models[model.litellm_model_name] = model
+    
+    def _add_deepseek_models(self):
+        """Add DeepSeek models."""
+        deepseek_models = [
             ModelInfo(
                 provider=ProviderType.DEEPSEEK,
                 model_name="deepseek-chat",
@@ -811,24 +1158,86 @@ class ModelCatalogService:
                     ModelCapability.FUNCTION_CALLING,
                 ]
             ),
-            # Together models
             ModelInfo(
-                provider=ProviderType.TOGETHER,
-                model_name="llama-3-8b-chat",
-                litellm_model_name="together_ai/meta-llama/Llama-3-8b-chat-hf",
-                display_name="Llama 3 8B Chat (Together)",
-                description="Llama 3 8B on Together AI",
-                context_window=8192,
+                provider=ProviderType.DEEPSEEK,
+                model_name="deepseek-coder",
+                litellm_model_name="deepseek/deepseek-coder",
+                display_name="DeepSeek Coder",
+                description="DeepSeek's code generation model",
+                context_window=16384,
                 max_output_tokens=4096,
-                input_price_per_1m_tokens=0.2,
-                output_price_per_1m_tokens=0.2,
+                input_price_per_1m_tokens=0.14,
+                output_price_per_1m_tokens=0.28,
                 capabilities=[
                     ModelCapability.TEXT_COMPLETION,
                     ModelCapability.CHAT_COMPLETION,
                     ModelCapability.STREAMING,
                 ]
             ),
-            # Ollama models (local)
+        ]
+        
+        for model in deepseek_models:
+            self._models[model.litellm_model_name] = model
+    
+    def _add_groq_models(self):
+        """Add Groq models."""
+        groq_models = [
+            ModelInfo(
+                provider=ProviderType.GROQ,
+                model_name="llama3-8b-8192",
+                litellm_model_name="groq/llama3-8b-8192",
+                display_name="Llama 3 8B (Groq)",
+                description="Ultra-fast Llama 3 8B on Groq",
+                context_window=8192,
+                max_output_tokens=4096,
+                input_price_per_1m_tokens=0.05,
+                output_price_per_1m_tokens=0.08,
+                capabilities=[
+                    ModelCapability.TEXT_COMPLETION,
+                    ModelCapability.CHAT_COMPLETION,
+                    ModelCapability.STREAMING,
+                ]
+            ),
+            ModelInfo(
+                provider=ProviderType.GROQ,
+                model_name="llama3-70b-8192",
+                litellm_model_name="groq/llama3-70b-8192",
+                display_name="Llama 3 70B (Groq)",
+                description="Ultra-fast Llama 3 70B on Groq",
+                context_window=8192,
+                max_output_tokens=4096,
+                input_price_per_1m_tokens=0.59,
+                output_price_per_1m_tokens=0.79,
+                capabilities=[
+                    ModelCapability.TEXT_COMPLETION,
+                    ModelCapability.CHAT_COMPLETION,
+                    ModelCapability.STREAMING,
+                ]
+            ),
+            ModelInfo(
+                provider=ProviderType.GROQ,
+                model_name="mixtral-8x7b-32768",
+                litellm_model_name="groq/mixtral-8x7b-32768",
+                display_name="Mixtral 8x7B (Groq)",
+                description="Ultra-fast Mixtral on Groq",
+                context_window=32768,
+                max_output_tokens=4096,
+                input_price_per_1m_tokens=0.27,
+                output_price_per_1m_tokens=0.27,
+                capabilities=[
+                    ModelCapability.TEXT_COMPLETION,
+                    ModelCapability.CHAT_COMPLETION,
+                    ModelCapability.STREAMING,
+                ]
+            ),
+        ]
+        
+        for model in groq_models:
+            self._models[model.litellm_model_name] = model
+    
+    def _add_ollama_models(self):
+        """Add Ollama models (for local deployment)."""
+        ollama_models = [
             ModelInfo(
                 provider=ProviderType.OLLAMA,
                 model_name="llama3",
@@ -846,9 +1255,60 @@ class ModelCatalogService:
                     ModelCapability.STREAMING,
                 ]
             ),
+            ModelInfo(
+                provider=ProviderType.OLLAMA,
+                model_name="llama2",
+                litellm_model_name="ollama/llama2",
+                display_name="Llama 2 (Local)",
+                description="Local Llama 2 via Ollama",
+                context_window=4096,
+                max_output_tokens=4096,
+                input_price_per_1m_tokens=0.0,
+                output_price_per_1m_tokens=0.0,
+                requires_api_key=False,
+                capabilities=[
+                    ModelCapability.TEXT_COMPLETION,
+                    ModelCapability.CHAT_COMPLETION,
+                    ModelCapability.STREAMING,
+                ]
+            ),
+            ModelInfo(
+                provider=ProviderType.OLLAMA,
+                model_name="mistral",
+                litellm_model_name="ollama/mistral",
+                display_name="Mistral (Local)",
+                description="Local Mistral via Ollama",
+                context_window=8192,
+                max_output_tokens=4096,
+                input_price_per_1m_tokens=0.0,
+                output_price_per_1m_tokens=0.0,
+                requires_api_key=False,
+                capabilities=[
+                    ModelCapability.TEXT_COMPLETION,
+                    ModelCapability.CHAT_COMPLETION,
+                    ModelCapability.STREAMING,
+                ]
+            ),
+            ModelInfo(
+                provider=ProviderType.OLLAMA,
+                model_name="codellama",
+                litellm_model_name="ollama/codellama",
+                display_name="Code Llama (Local)",
+                description="Local Code Llama via Ollama",
+                context_window=4096,
+                max_output_tokens=4096,
+                input_price_per_1m_tokens=0.0,
+                output_price_per_1m_tokens=0.0,
+                requires_api_key=False,
+                capabilities=[
+                    ModelCapability.TEXT_COMPLETION,
+                    ModelCapability.CHAT_COMPLETION,
+                    ModelCapability.STREAMING,
+                ]
+            ),
         ]
         
-        for model in other_models:
+        for model in ollama_models:
             self._models[model.litellm_model_name] = model
     
     def get_all_models(self) -> List[ModelInfo]:
@@ -878,7 +1338,7 @@ class ModelCatalogService:
         """Validate that a model can be accessed with available API keys.
         
         Args:
-            model_name: The model name to validate
+            model_name: The model name to validate (can be model_name, litellm_model_name, display_name, or model_definition_id)
             available_keys: Dict of provider -> bool indicating available API keys
             
         Returns:
@@ -886,12 +1346,21 @@ class ModelCatalogService:
         """
         # Find the model
         model_info = None
-        for model in self._models.values():
-            if (model.model_name == model_name or 
-                model.litellm_model_name == model_name or
-                model.display_name == model_name):
-                model_info = model
-                break
+        
+        # First try direct lookup by litellm_model_name (most common case)
+        model_info = self._models.get(model_name)
+        
+        if not model_info:
+            # Try other lookups
+            for model in self._models.values():
+                # Generate the model definition ID for comparison
+                model_definition_id = f"model_{model.model_name.replace('-', '_').replace('.', '_')}_{model.provider.value}"
+                
+                if (model.model_name == model_name or 
+                    model.display_name == model_name or
+                    model_definition_id == model_name):
+                    model_info = model
+                    break
         
         if not model_info:
             available_models = self._get_available_models_list(available_keys)
@@ -910,7 +1379,7 @@ class ModelCatalogService:
         available_models = []
         for model in self._models.values():
             if not model.requires_api_key or available_keys.get(model.provider.value, False):
-                available_models.append(model.model_name)
+                available_models.append(model.litellm_model_name)
         return sorted(available_models)
     
     def get_available_models_for_keys(self, available_keys: dict) -> List[ModelInfo]:

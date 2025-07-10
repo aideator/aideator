@@ -88,6 +88,11 @@ class Settings(BaseSettings):
     upload_max_size_mb: int = Field(default=50, ge=1, le=200)
     temp_dir: str = "/tmp/aideator"
     results_retention_days: int = Field(default=30, ge=1, le=365)
+    
+    # LiteLLM Proxy Configuration
+    LITELLM_PROXY_URL: str = "http://localhost:4000"
+    LITELLM_PROXY_API_KEY: Optional[str] = None
+    model_sync_interval_minutes: int = Field(default=60, ge=5, le=1440)  # 5 min to 24 hours
 
     model_config = SettingsConfigDict(
         env_file=".env",

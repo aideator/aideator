@@ -39,8 +39,8 @@ const DEFAULT_MODELS: ModelInfo[] = [
     isRecommended: false,
   },
   {
-    id: 'claude-3-opus',
-    name: 'Claude-3 Opus',
+    id: 'claude-3-opus-20240229',
+    name: 'Claude 3 Opus',
     provider: 'Anthropic',
     description: 'Most powerful Claude model for complex reasoning',
     pricing: { input: 0.015, output: 0.075, currency: 'USD' },
@@ -50,8 +50,8 @@ const DEFAULT_MODELS: ModelInfo[] = [
     isRecommended: true,
   },
   {
-    id: 'claude-3-sonnet',
-    name: 'Claude-3 Sonnet',
+    id: 'claude-3-sonnet-20240229',
+    name: 'Claude 3 Sonnet',
     provider: 'Anthropic',
     description: 'Balanced Claude model for general use',
     pricing: { input: 0.003, output: 0.015, currency: 'USD' },
@@ -61,8 +61,8 @@ const DEFAULT_MODELS: ModelInfo[] = [
     isRecommended: true,
   },
   {
-    id: 'claude-3-haiku',
-    name: 'Claude-3 Haiku',
+    id: 'claude-3-haiku-20240307',
+    name: 'Claude 3 Haiku',
     provider: 'Anthropic',
     description: 'Fastest Claude model for simple tasks',
     pricing: { input: 0.00025, output: 0.00125, currency: 'USD' },

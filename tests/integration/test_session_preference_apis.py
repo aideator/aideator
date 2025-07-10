@@ -29,8 +29,7 @@ settings = get_settings()
 from app.core.database import get_session
 from app.models.user import User
 from app.models.session import Session, Preference
-from app.schemas.session import SessionCreate, SessionUpdate
-from app.schemas.preference import PreferenceCreate
+from app.schemas.session import SessionCreate, SessionUpdate, PreferenceCreate
 
 
 class TestSessionAPI:

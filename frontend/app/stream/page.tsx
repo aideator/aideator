@@ -63,19 +63,7 @@ function StreamPageContent() {
   const apiIntegration = useAPIIntegration();
   const agentMode = useAgentMode();
   
-  // Don't render anything while auth is loading
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-ai-primary mx-auto mb-4"></div>
-          <p className="text-neutral-shadow">Authenticating...</p>
-        </div>
-      </div>
-    );
-  }
-  
-  // Form state
+  // Form state - Initialize early to avoid hook order issues
   const defaultPrompt = agentMode.isCodeMode 
     ? "Analyze this repository and suggest improvements."
     : "Write a creative story about a robot who discovers emotions for the first time.";
@@ -117,6 +105,18 @@ function StreamPageContent() {
       : "Write a creative story about a robot who discovers emotions for the first time.";
     setPrompt(newDefaultPrompt);
   }, [agentMode.isCodeMode]);
+  
+  // Don't render anything while auth is loading
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-ai-primary mx-auto mb-4"></div>
+          <p className="text-neutral-shadow">Authenticating...</p>
+        </div>
+      </div>
+    );
+  }
   
   const handleStartComparison = async () => {
     if (!prompt.trim()) {

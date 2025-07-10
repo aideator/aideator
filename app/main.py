@@ -16,6 +16,7 @@ from app.core.database import create_db_and_tables
 from app.core.logging import setup_logging
 from app.middleware.logging import LoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
+from app.tasks.model_sync_task import model_sync_task
 # Using Kubernetes service for container orchestration
 from app.utils.openapi import custom_openapi
 
@@ -25,13 +26,17 @@ logger = setup_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Manage app lifecycle - database initialization only."""
+    """Manage app lifecycle - database initialization and background tasks."""
     # Startup
     logger.info(f"Starting {settings.project_name} v{settings.version}")
 
     # Initialize database
     await create_db_and_tables()
     logger.info("Database initialized")
+
+    # Start model sync task
+    await model_sync_task.start()
+    logger.info("Model sync task started")
 
     # Kubernetes connections are handled via kubectl
     # No persistent connection needed at the server level
@@ -40,6 +45,10 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down application")
+    
+    # Stop model sync task
+    await model_sync_task.stop()
+    logger.info("Model sync task stopped")
 
 
 def create_application() -> FastAPI:

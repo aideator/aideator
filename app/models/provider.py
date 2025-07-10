@@ -54,7 +54,7 @@ class ProviderType(str, Enum):
     PALM = "palm"
     WATSON = "watson"
     MARITALK = "maritalk"
-    NLPCLOUD = "nlpcloud"
+    NLP_CLOUD = "nlp_cloud"
     ALEPH_ALPHA = "aleph_alpha"
     PETALS = "petals"
     CLARIFAI = "clarifai"
@@ -68,6 +68,7 @@ class ModelCapability(str, Enum):
     CHAT_COMPLETION = "chat_completion"
     VISION = "vision"
     EMBEDDING = "embedding"
+    EMBEDDINGS = "embeddings"  # Some providers use plural
     AUDIO_INPUT = "audio_input"
     AUDIO_OUTPUT = "audio_output"
     IMAGE_GENERATION = "image_generation"

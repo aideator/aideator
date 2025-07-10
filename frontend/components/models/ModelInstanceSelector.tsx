@@ -192,6 +192,7 @@ export function ModelInstanceSelector({
         variant="outline"
         className="w-full justify-between font-normal"
         disabled={isLoading || !canAddMore}
+        data-testid="model-selector"
       >
         <span className={cn(
           "text-left",
