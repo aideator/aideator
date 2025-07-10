@@ -51,10 +51,10 @@ agents:
 
 # Database configuration
 database:
-  type: sqlite
-  url: "sqlite+aiosqlite:///./data/aideator.db"
+  type: postgresql
+  url: "postgresql+asyncpg://aideator:aideator123@aideator-postgresql:5432/aideator"
   
-# Storage for SQLite database
+# Storage for application data (logs, temp files, etc.)
 persistence:
   enabled: true
   storageClass: ""

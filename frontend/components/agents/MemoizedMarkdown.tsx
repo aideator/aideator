@@ -1,11 +1,9 @@
 'use client';
 
-import React, { useMemo, memo } from 'react';
+import React, { useMemo, memo, useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import remarkGfm from 'remark-gfm';
-import remarkBreaks from 'remark-breaks';
 import { motion } from 'framer-motion';
 
 interface CodeProps {
@@ -65,16 +63,48 @@ CodeBlock.displayName = 'CodeBlock';
 
 // Main markdown component with memoization
 export const MemoizedMarkdown = memo(({ content, isStreaming = false, className = '' }: MemoizedMarkdownProps) => {
-  // Parse content into blocks for efficient rendering
-  const blocks = useMemo(() => {
-    // Split content by double newlines to create blocks
-    const parts = content.split(/\n\n+/);
-    return parts.map((part, index) => ({
-      id: `block-${index}`,
-      content: part,
-      isLast: index === parts.length - 1
-    }));
-  }, [content]);
+  const [displayedContent, setDisplayedContent] = useState('');
+  const [isCurrentlyStreaming, setIsCurrentlyStreaming] = useState(false);
+  const [markdownError, setMarkdownError] = useState(false);
+  const previousContentRef = useRef('');
+  const streamingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Handle streaming animation
+  useEffect(() => {
+    if (isStreaming && content && content !== previousContentRef.current) {
+      setIsCurrentlyStreaming(true);
+      
+      // Clear any existing timeout
+      if (streamingTimeoutRef.current) {
+        clearTimeout(streamingTimeoutRef.current);
+      }
+      
+      // Get the new content that was added
+      const newContent = content.slice(previousContentRef.current.length);
+      
+      if (newContent) {
+        // Add new content with a brief delay to show animation
+        streamingTimeoutRef.current = setTimeout(() => {
+          setDisplayedContent(content);
+          previousContentRef.current = content;
+        }, 50); // Very brief delay for smooth appearance
+      }
+    } else if (!isStreaming && content) {
+      // Not streaming, show content immediately
+      setDisplayedContent(content);
+      setIsCurrentlyStreaming(false);
+      previousContentRef.current = content;
+    }
+  }, [content, isStreaming]);
+
+  // Clean up timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (streamingTimeoutRef.current) {
+        clearTimeout(streamingTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const components = useMemo(() => ({
     code: CodeBlock,
@@ -136,22 +166,36 @@ export const MemoizedMarkdown = memo(({ content, isStreaming = false, className 
 
   return (
     <div className={`prose prose-xs max-w-none markdown-content ${isStreaming ? 'streaming' : ''} ${className}`} style={{ fontSize: '0.75rem' }}>
-      {blocks.map((block, index) => (
-        <motion.div
-          key={block.id}
-          initial={isStreaming && block.isLast ? { opacity: 0.7 } : { opacity: 1 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.15 }}
-          className={isStreaming && block.isLast ? 'streaming-text' : ''}
-        >
+      <motion.div
+        key={displayedContent.length} // Re-animate when content changes
+        initial={isStreaming ? { opacity: 0.7, y: 2 } : { opacity: 1, y: 0 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, ease: "easeOut" }}
+      >
+        {markdownError ? (
+          // Fallback to simple pre-formatted text if markdown fails
+          <pre className="whitespace-pre-wrap text-sm font-mono leading-relaxed text-gray-700">
+            {displayedContent}
+          </pre>
+        ) : (
           <ReactMarkdown
-            remarkPlugins={[remarkGfm, remarkBreaks]}
             components={components}
+            onError={() => setMarkdownError(true)}
           >
-            {block.content}
+            {displayedContent}
           </ReactMarkdown>
-        </motion.div>
-      ))}
+        )}
+      </motion.div>
+      {/* Add blinking cursor for active streaming */}
+      {isStreaming && (
+        <motion.span 
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.8 }}
+          transition={{ duration: 0.2 }}
+          className="streaming-cursor"
+        />
+      )}
     </div>
   );
 });

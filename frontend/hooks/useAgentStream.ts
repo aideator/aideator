@@ -92,11 +92,11 @@ export function useAgentStream(): AgentStreamHook {
         console.log(`Stream buffer for agent ${variationId} flushed`);
       }
     }, {
-      tokensPerSecond: 50, // Smooth streaming rate
-      minChunkSize: 5,     // Start streaming after 5 chars
-      maxBufferSize: 1000, // Force drain at 1000 chars
+      tokensPerSecond: 60, // Faster but still readable rate
+      minChunkSize: 1,     // Start streaming immediately
+      maxBufferSize: 200,  // Very small buffer for instant streaming
       respectWordBoundaries: true,
-      respectMarkdownBlocks: true
+      respectMarkdownBlocks: false // Disable for smoother flow
     });
     
     streamBuffersRef.current.set(variationId, buffer);

@@ -53,9 +53,14 @@ export function StreamCard({
   // Auto-scroll to bottom when new content arrives (if enabled)
   useEffect(() => {
     if (contentRef.current && isStreaming && autoScroll) {
-      contentRef.current.scrollTo({
-        top: contentRef.current.scrollHeight,
-        behavior: 'smooth'
+      // Use requestAnimationFrame to ensure DOM has updated before scrolling
+      requestAnimationFrame(() => {
+        if (contentRef.current) {
+          contentRef.current.scrollTo({
+            top: contentRef.current.scrollHeight,
+            behavior: 'smooth'
+          });
+        }
       });
     }
   }, [content, isStreaming, autoScroll]);
@@ -145,10 +150,11 @@ export function StreamCard({
               className="h-full overflow-y-auto smooth-scroll"
               ref={contentRef}
               onScroll={handleScroll}
+              style={{ minHeight: '200px', maxHeight: '400px' }} // Fixed height bounds
             >
               <MemoizedMarkdown 
                 content={displayContent} 
-                isStreaming={isStreaming}
+                isStreaming={isStreaming && hasContent}
                 className="text-sm"
               />
             </motion.div>

@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     allowed_hosts: list[str] = ["*"]
 
     # Database
-    database_url: str = "sqlite+aiosqlite:///./aideator.db"
+    database_url: str = "postgresql+asyncpg://aideator:aideator@localhost:5432/aideator"
     database_echo: bool = False
     database_pool_size: int = 5
     database_pool_recycle: int = 3600
@@ -151,11 +151,11 @@ class Settings(BaseSettings):
     @property
     def database_url_async(self) -> str:
         """Get async database URL."""
-        if "sqlite" in self.database_url:
-            # Handle both sqlite:// and sqlite+aiosqlite:// formats
-            if self.database_url.startswith("sqlite+aiosqlite://"):
+        if "postgresql" in self.database_url:
+            # Handle both postgresql:// and postgresql+asyncpg:// formats
+            if self.database_url.startswith("postgresql+asyncpg://"):
                 return self.database_url
-            return self.database_url.replace("sqlite://", "sqlite+aiosqlite://")
+            return self.database_url.replace("postgresql://", "postgresql+asyncpg://")
         return self.database_url
 
 

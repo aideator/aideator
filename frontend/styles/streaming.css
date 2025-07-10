@@ -28,7 +28,7 @@
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(2px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -47,7 +47,23 @@
 
 /* Streaming text effect */
 .streaming-text {
-  animation: fadeIn 0.15s ease-out forwards;
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+/* Streaming content container effect */
+.markdown-content.streaming {
+  animation: streamingPulse 0.2s ease-out;
+}
+
+@keyframes streamingPulse {
+  0% {
+    opacity: 0.85;
+    transform: scale(0.999);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* Cursor animation for active streaming */
@@ -56,29 +72,35 @@
   width: 2px;
   height: 1em;
   background-color: currentColor;
-  margin-left: 2px;
-  animation: blink 1s infinite;
+  margin-left: 3px;
+  animation: blink 1.2s infinite;
+  border-radius: 1px;
 }
 
 @keyframes blink {
-  0%, 50% {
+  0%, 60% {
     opacity: 1;
   }
-  51%, 100% {
-    opacity: 0;
+  61%, 100% {
+    opacity: 0.2;
   }
 }
 
-/* Word-by-word appearance */
+/* Word-by-word appearance with subtle movement */
 .word-appear {
   display: inline-block;
-  animation: wordFadeIn 0.2s ease-out forwards;
+  animation: wordFadeIn 0.25s ease-out forwards;
   opacity: 0;
 }
 
 @keyframes wordFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
   to {
     opacity: 1;
+    transform: translateY(0);
   }
 }
 

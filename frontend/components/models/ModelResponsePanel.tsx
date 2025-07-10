@@ -1,12 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CheckCircle2, Clock, AlertCircle, Loader2, Star, Heart, ThumbsUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn, getAgentColorClasses } from '@/lib/utils';
+import { MemoizedMarkdown } from '@/components/agents/MemoizedMarkdown';
+import { SimpleMarkdown } from '@/components/agents/SimpleMarkdown';
 
 interface ModelResponsePanelProps {
   modelId: string;
@@ -47,6 +49,40 @@ export function ModelResponsePanel({
 }: ModelResponsePanelProps) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [userScrolled, setUserScrolled] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // Check if user has scrolled up
+  const handleScroll = useCallback(() => {
+    if (!contentRef.current) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = contentRef.current;
+    const isAtBottom = Math.abs(scrollHeight - scrollTop - clientHeight) < 50;
+    
+    if (!isAtBottom && !userScrolled) {
+      setUserScrolled(true);
+      setAutoScroll(false);
+    } else if (isAtBottom && userScrolled) {
+      setUserScrolled(false);
+      setAutoScroll(true);
+    }
+  }, [userScrolled]);
+
+  // Auto-scroll to bottom when new content arrives (if enabled)
+  useEffect(() => {
+    if (contentRef.current && status === 'streaming' && autoScroll) {
+      // Use requestAnimationFrame to ensure DOM has updated before scrolling
+      requestAnimationFrame(() => {
+        if (contentRef.current) {
+          contentRef.current.scrollTo({
+            top: contentRef.current.scrollHeight,
+            behavior: 'smooth'
+          });
+        }
+      });
+    }
+  }, [content, status, autoScroll]);
 
   const handleSelect = () => {
     setIsAnimating(true);
@@ -130,11 +166,17 @@ export function ModelResponsePanel({
     }
 
     return (
-      <div className="text-body text-neutral-charcoal whitespace-pre-wrap">
-        {content}
-        {status === 'streaming' && (
-          <span className="inline-block w-2 h-5 bg-ai-accent animate-pulse ml-1" />
-        )}
+      <div 
+        className="overflow-y-auto smooth-scroll p-md"
+        ref={contentRef}
+        onScroll={handleScroll}
+        style={{ minHeight: '200px', maxHeight: '400px' }}
+      >
+        <SimpleMarkdown 
+          content={content} 
+          isStreaming={status === 'streaming'}
+          className="text-sm"
+        />
       </div>
     );
   };
@@ -234,8 +276,23 @@ export function ModelResponsePanel({
       
       <CardContent className="space-y-md">
         {/* Response Content */}
-        <div className="bg-neutral-white rounded-md p-md max-h-96 overflow-y-auto border border-neutral-fog">
+        <div className="bg-neutral-white rounded-md border border-neutral-fog relative">
           {getContentDisplay()}
+          {/* Auto-scroll indicator */}
+          {content && status === 'streaming' && (
+            <AnimatePresence>
+              {!autoScroll && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  className="auto-scroll-indicator paused"
+                >
+                  Auto-scroll paused
+                </motion.div>
+              )}
+            </AnimatePresence>
+          )}
         </div>
         
         {/* Response Metrics */}

@@ -84,7 +84,7 @@ export function SessionSidebar({
 
   // Filter and sort sessions
   const filteredAndSortedSessions = React.useMemo(() => {
-    let filtered = sessions.filter(session => 
+    const filtered = sessions.filter(session => 
       session.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       session.lastPrompt?.toLowerCase().includes(searchQuery.toLowerCase())
     );

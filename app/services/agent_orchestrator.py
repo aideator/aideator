@@ -189,8 +189,22 @@ class AgentOrchestrator:
                     # This is plain text content (markdown), send it
                     await self.sse.send_agent_output(run_id, 0, log_line)
             
+            # Log streaming has ended, now check if batch job completed successfully
+            logger.info(f"Log streaming ended for batch job {job_name}, checking job status...")
+            
+            # Wait a moment for job status to be updated
+            await asyncio.sleep(2)
+            
+            # Check job status
+            job_status = await self.kubernetes.get_job_status(job_name)
+            logger.info(f"Batch job {job_name} final status: {job_status}")
+            
             # Send completion event
-            await self._send_status_event(run_id, "completed", f"Batch job {job_name} completed")
+            await self._send_status_event(
+                run_id, 
+                "completed", 
+                f"Batch job {job_name} completed with status: {job_status.get('status', 'unknown')}"
+            )
             self.active_runs[run_id]["status"] = "completed"
             
             # Send SSE completion events to frontend
@@ -240,11 +254,21 @@ class AgentOrchestrator:
                     logger.info(f"Sending plain text via SSE: {log_line[:50]}...")
                     await self.sse.send_agent_output(run_id, variation_id, log_line)
             
+            # Log streaming has ended, now check if job completed successfully
+            logger.info(f"Log streaming ended for job {job_name}, checking job status...")
+            
+            # Wait a moment for job status to be updated
+            await asyncio.sleep(2)
+            
+            # Check job status
+            job_status = await self.kubernetes.get_job_status(job_name)
+            logger.info(f"Job {job_name} final status: {job_status}")
+            
             # Send job completion event
             await self._send_status_event(
                 run_id, 
                 "job_completed", 
-                f"Job {job_name} (variation {variation_id}) completed"
+                f"Job {job_name} (variation {variation_id}) completed with status: {job_status.get('status', 'unknown')}"
             )
             
             # Send SSE completion event to frontend

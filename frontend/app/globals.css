@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "../force-colors.css";
+@import "../styles/streaming.css";
 
 /* AIdeator "Prism" Design System - Tailwind CSS v4 Theme Configuration */
 @theme {

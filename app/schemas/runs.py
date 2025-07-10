@@ -79,8 +79,8 @@ class CreateRunRequest(BaseModel):
     )
     agent_mode: Optional[str] = Field(
         default="litellm",
-        description="Agent execution mode: 'litellm' or 'claude-cli'",
-        examples=["litellm", "claude-cli"],
+        description="Agent execution mode: 'litellm', 'claude-cli', 'gemini-cli', or 'openai-codex'",
+        examples=["litellm", "claude-cli", "gemini-cli", "openai-codex"],
     )
 
     @field_validator("github_url")
@@ -110,8 +110,9 @@ class CreateRunRequest(BaseModel):
     @classmethod
     def validate_agent_mode(cls, v: Optional[str]) -> str:
         """Validate agent mode."""
-        if v not in ["litellm", "claude-cli", None]:
-            raise ValueError("Agent mode must be 'litellm' or 'claude-cli'")
+        valid_modes = ["litellm", "claude-cli", "gemini-cli", "openai-codex"]
+        if v not in valid_modes + [None]:
+            raise ValueError(f"Agent mode must be one of: {', '.join(valid_modes)}")
         return v or "litellm"
     
 

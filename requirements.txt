@@ -7,7 +7,7 @@ pydantic-settings>=2.0.0
 
 # Database
 sqlmodel>=0.0.14
-aiosqlite>=0.19.0
+asyncpg>=0.28.0
 alembic>=1.13.0
 
 # HTTP & API clients

@@ -22,7 +22,7 @@ from app.services.sse_manager import SSEManager
 def test_settings() -> Settings:
     """Test-specific settings."""
     return Settings(
-        database_url="sqlite+aiosqlite:///:memory:",
+        database_url="postgresql+asyncpg://test:test@localhost:5432/test_aideator",
         secret_key="test-secret-key-for-testing-only-32chars",
         anthropic_api_key="sk-ant-test-key",
         debug=True,

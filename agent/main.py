@@ -486,17 +486,18 @@ async def main():
     agent = AIdeatorAgent()
     try:
         await agent.run()
-        # Sleep for 600 seconds (10 minutes) before exit on success
-        agent.log("⏱️ Sleeping for 600 seconds before exit", "INFO")
-        await asyncio.sleep(600)
+        # Log completion and exit immediately
+        agent.log("✅ Agent completed successfully", "INFO", status="completed")
+        agent.log("🏁 Exiting agent container", "INFO")
+        sys.exit(0)
     except Exception as e:
         # Ensure error is visible in logs
         agent.log(f"💥 Fatal error: {str(e)}", "ERROR", 
                  exception_type=type(e).__name__)
-        # Sleep for 600 seconds even on error
-        agent.log("⏱️ Sleeping for 600 seconds before exit (after error)", "INFO")
-        await asyncio.sleep(600)
-        sys.exit(0)
+        # Log failure and exit immediately
+        agent.log("❌ Agent failed", "INFO", status="failed")
+        agent.log("🏁 Exiting agent container", "INFO")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

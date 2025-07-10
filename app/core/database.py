@@ -20,6 +20,9 @@ engine = create_async_engine(
     pool_size=settings.database_pool_size,
     pool_recycle=settings.database_pool_recycle,
     pool_pre_ping=True,
+    # PostgreSQL-specific optimizations
+    pool_timeout=30,
+    max_overflow=10,
 )
 
 # Create async session factory

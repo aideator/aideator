@@ -2,7 +2,48 @@ import { useState, useEffect } from 'react';
 
 const STORAGE_KEY = 'aideator-agent-mode';
 
-export type AgentMode = 'litellm' | 'claude-cli';
+export type AgentMode = 'litellm' | 'claude-cli' | 'gemini-cli' | 'openai-codex';
+
+export type ExecutionMode = 'text' | 'code';
+
+export interface AgentModeInfo {
+  mode: AgentMode;
+  executionMode: ExecutionMode;
+  label: string;
+  description: string;
+  requiresRepo: boolean;
+}
+
+export const AGENT_MODE_OPTIONS: AgentModeInfo[] = [
+  {
+    mode: 'litellm',
+    executionMode: 'text',
+    label: 'Chat',
+    description: 'Multi-model text completion and conversation',
+    requiresRepo: false,
+  },
+  {
+    mode: 'claude-cli',
+    executionMode: 'code',
+    label: 'Claude Code',
+    description: 'Code analysis and generation using Claude CLI',
+    requiresRepo: true,
+  },
+  {
+    mode: 'gemini-cli',
+    executionMode: 'code',
+    label: 'Gemini Code',
+    description: 'Code analysis and generation using Gemini CLI',
+    requiresRepo: true,
+  },
+  {
+    mode: 'openai-codex',
+    executionMode: 'code',
+    label: 'OpenAI Codex',
+    description: 'Code analysis and generation using OpenAI Codex',
+    requiresRepo: true,
+  },
+];
 
 export function useAgentMode() {
   const [agentMode, setAgentModeState] = useState<AgentMode>('litellm');
@@ -10,9 +51,9 @@ export function useAgentMode() {
   // Load from LocalStorage on mount
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored === 'claude-cli') {
-        setAgentModeState('claude-cli');
+      const stored = localStorage.getItem(STORAGE_KEY) as AgentMode;
+      if (stored && AGENT_MODE_OPTIONS.some(option => option.mode === stored)) {
+        setAgentModeState(stored);
       }
     } catch (error) {
       console.error('Error loading agent mode from LocalStorage:', error);
@@ -32,11 +73,17 @@ export function useAgentMode() {
     setAgentModeState(mode);
   };
 
+  const currentModeInfo = AGENT_MODE_OPTIONS.find(option => option.mode === agentMode) || AGENT_MODE_OPTIONS[0];
   const isLiteLLM = agentMode === 'litellm';
+  const isCodeMode = currentModeInfo.executionMode === 'code';
+  const requiresRepo = currentModeInfo.requiresRepo;
 
   return {
     agentMode,
     setAgentMode,
+    currentModeInfo,
     isLiteLLM,
+    isCodeMode,
+    requiresRepo,
   };
 }

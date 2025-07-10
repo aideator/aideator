@@ -12,6 +12,8 @@ export interface ModelComparisonRequest {
   maxTokens?: number;
   temperature?: number;
   systemPrompt?: string;
+  agentMode?: string; // Agent execution mode
+  repositoryUrl?: string; // GitHub repository URL (only for code modes)
 }
 
 export interface ModelComparisonResponse {
@@ -101,6 +103,28 @@ export function useAPIIntegration() {
         };
       });
 
+      // Prepare request body based on agent mode
+      const requestBody: any = {
+        prompt: request.prompt,
+        model_variants: modelVariants,
+        use_claude_code: false,
+        agent_mode: request.agentMode || 'litellm',
+      };
+
+      // Include github_url - required by backend schema
+      if (request.repositoryUrl) {
+        requestBody.github_url = request.repositoryUrl;
+      } else {
+        // Use default repository URL when none is provided
+        requestBody.github_url = 'https://github.com/octocat/Hello-World';
+      }
+
+      console.log('🔥 API Request details:', {
+        url: `${API_BASE_URL}/api/v1/runs`,
+        requestBody: requestBody,
+        apiKey: localStorage.getItem('api_key') ? '***set***' : 'NOT SET',
+      });
+
       // Start comparison via runs API
       const response = await fetch(`${API_BASE_URL}/api/v1/runs`, {
         method: 'POST',
@@ -108,22 +132,43 @@ export function useAPIIntegration() {
           'Content-Type': 'application/json',
           'X-API-Key': localStorage.getItem('api_key') || '', // Use API key authentication
         },
-        body: JSON.stringify({
-          github_url: 'https://github.com/octocat/Hello-World', // Placeholder for now
-          prompt: request.prompt,
-          model_variants: modelVariants,
-          use_claude_code: false,
-          agent_mode: 'litellm',
-        }),
+        body: JSON.stringify(requestBody),
       });
 
+      console.log('🔥 Response status:', response.status, response.statusText);
+      console.log('🔥 Response headers:', Object.fromEntries(response.headers.entries()));
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `API request failed: ${response.status} ${response.statusText}`);
+        const errorText = await response.text();
+        console.log('🔥 Error response text:', errorText);
+        
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { detail: errorText };
+        }
+        
+        const errorMessage = Array.isArray(errorData.detail) 
+          ? errorData.detail.map((err: any) => err.msg || err).join(', ')
+          : errorData.detail || errorData.message || `API request failed: ${response.status} ${response.statusText}`;
+        throw new Error(errorMessage);
       }
 
-      const data = await response.json();
+      const responseText = await response.text();
+      console.log('🔥 Success response text:', responseText);
+      
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('🚨 Failed to parse response JSON:', parseError);
+        throw new Error(`Invalid JSON response: ${responseText}`);
+      }
+      
+      console.log('🔥 Parsed response data:', data);
       const runId = data.run_id;
+      console.log('🔥 Extracted runId:', runId);
 
       // Initialize comparison state
       console.log('🔥 BACKEND: Request data:', { 
@@ -165,9 +210,13 @@ export function useAPIIntegration() {
 
       return runId;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('🚨 useAPIIntegration error:', error);
+      console.error('🚨 Error type:', typeof error);
+      console.error('🚨 Error stringified:', JSON.stringify(error, null, 2));
+      
+      const errorMessage = error instanceof Error ? error.message : (typeof error === 'string' ? error : `Unknown error: ${JSON.stringify(error)}`);
       setState(prev => ({ ...prev, lastError: errorMessage }));
-      throw error;
+      throw new Error(errorMessage);
     }
   }, []);
 

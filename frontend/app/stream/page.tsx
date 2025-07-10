@@ -15,6 +15,7 @@ import {
   ChevronDown,
   History,
   BarChart3,
+  Code,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,9 @@ import { usePreferenceStore } from "@/hooks/usePreferenceStore";
 import { useModelInstances } from "@/hooks/useModelInstances";
 import { useAPIIntegration } from "@/hooks/useAPIIntegration";
 import { AuthStatus } from "@/components/AuthStatus";
+import { ModeSelector } from "@/components/ModeSelector";
+import { RepositoryPicker } from "@/components/RepositoryPicker";
+import { useAgentMode } from "@/hooks/useAgentMode";
 
 // Import streaming update type
 import { StreamingUpdate } from '@/hooks/useAPIIntegration';
@@ -57,9 +61,11 @@ function StreamPageContent() {
   const modelInstances = useModelInstances();
   const preferenceStore = usePreferenceStore();
   const apiIntegration = useAPIIntegration();
+  const agentMode = useAgentMode();
   
   // Form state
   const [prompt, setPrompt] = useState("Analyze this repository and suggest improvements.");
+  const [selectedRepository, setSelectedRepository] = useState<string>('');
   const [isComparing, setIsComparing] = useState(false);
   const [isConfigExpanded, setIsConfigExpanded] = useState(true);
   const [formError, setFormError] = useState<string | null>(null);
@@ -87,7 +93,12 @@ function StreamPageContent() {
       return;
     }
     
-    if (modelInstances.selectedInstances.length === 0) {
+    if (agentMode.requiresRepo && !selectedRepository) {
+      setFormError("Please select a repository for code analysis mode");
+      return;
+    }
+    
+    if (!agentMode.isCodeMode && modelInstances.selectedInstances.length === 0) {
       setFormError("Please select at least one model");
       return;
     }
@@ -146,6 +157,8 @@ function StreamPageContent() {
           prompt: prompt,
           modelIds: modelIds,
           instanceIds: instanceIds,
+          agentMode: agentMode.agentMode,
+          repositoryUrl: agentMode.requiresRepo ? selectedRepository : undefined,
         }, handleStreamingUpdate);
         
         setCurrentRunId(runId);
@@ -159,13 +172,19 @@ function StreamPageContent() {
           prompt: prompt,
           modelIds: modelIds,
           instanceIds: instanceIds,
+          agentMode: agentMode.agentMode,
+          repositoryUrl: agentMode.requiresRepo ? selectedRepository : undefined,
         }, handleStreamingUpdate);
         
         setCurrentRunId(runId);
       }
     } catch (error) {
-      console.error('Failed to start comparison:', error);
-      setFormError(error instanceof Error ? error.message : 'Failed to start comparison');
+      console.error('🚨 Stream page error:', error);
+      console.error('🚨 Error type:', typeof error);
+      console.error('🚨 Error instance check:', error instanceof Error);
+      
+      const errorMessage = error instanceof Error ? error.message : (typeof error === 'string' ? error : `Failed to start comparison: ${JSON.stringify(error)}`);
+      setFormError(errorMessage);
       setIsComparing(false);
       
       // Reset model responses on error
@@ -428,7 +447,7 @@ function StreamPageContent() {
                 </h2>
                 {!isConfigExpanded && (
                   <p className="text-neutral-shadow text-body-sm mt-1 line-clamp-1">
-                    {modelInstances.selectedInstances.length} instances · {prompt.substring(0, 50)}...
+                    {agentMode.currentModeInfo.label} · {agentMode.isCodeMode ? 'Code Mode' : `${modelInstances.selectedInstances.length} instances`} · {prompt.substring(0, 50)}...
                   </p>
                 )}
               </div>
@@ -461,7 +480,7 @@ function StreamPageContent() {
                     e.stopPropagation();
                     handleStartComparison();
                   }}
-                  disabled={!prompt.trim() || modelInstances.selectedInstances.length === 0 || !apiKey}
+                  disabled={!prompt.trim() || (!agentMode.isCodeMode && modelInstances.selectedInstances.length === 0) || !apiKey || (agentMode.requiresRepo && !selectedRepository)}
                   className="px-md py-sm bg-gradient-to-r from-ai-primary to-ai-secondary text-white rounded-lg font-semibold hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Play className="inline w-4 h-4 mr-2" />
@@ -487,6 +506,18 @@ function StreamPageContent() {
                 style={{ overflow: 'visible' }}
               >
                 <div className="p-lg pt-0 space-y-6 relative">
+                  {/* Mode Selector */}
+                  <ModeSelector disabled={isComparing} />
+                  
+                  {/* Repository Picker - Only show for code modes */}
+                  {agentMode.requiresRepo && (
+                    <RepositoryPicker
+                      selectedRepo={selectedRepository}
+                      onRepoSelect={setSelectedRepository}
+                      disabled={isComparing}
+                    />
+                  )}
+                  
                   {/* Prompt Input */}
                   <div>
                     <label
@@ -495,12 +526,15 @@ function StreamPageContent() {
                     >
                       <div className="flex items-center gap-2">
                         <Zap className="h-4 w-4" />
-                        Prompt
+                        {agentMode.isCodeMode ? 'Code Analysis Prompt' : 'Prompt'}
                       </div>
                     </label>
                     <Textarea
                       id="prompt"
-                      placeholder="Enter your prompt to compare across multiple models..."
+                      placeholder={agentMode.isCodeMode 
+                        ? "Enter your code analysis prompt (e.g., 'Add error handling to all API endpoints')..." 
+                        : "Enter your prompt to compare across multiple models..."
+                      }
                       value={prompt}
                       onChange={(e) => setPrompt(e.target.value)}
                       disabled={isComparing}
@@ -529,21 +563,46 @@ function StreamPageContent() {
                     </div>
                   )}
 
-                  {/* Model Selection */}
-                  <div>
-                    <label className="block text-label font-medium text-neutral-charcoal mb-3">
-                      Select Models to Compare
-                    </label>
-                    <ModelInstanceSelector
-                      availableModels={modelInstances.availableModels}
-                      selectedInstances={modelInstances.selectedInstances}
-                      onAddInstance={modelInstances.addInstance}
-                      onRemoveInstance={modelInstances.removeInstance}
-                      maxInstances={modelInstances.maxInstances}
-                      isLoading={modelInstances.isLoading}
-                      placeholder="Click to add models (can add same model multiple times)..."
-                    />
-                  </div>
+                  {/* Model Selection - Only show for text mode */}
+                  {!agentMode.isCodeMode && (
+                    <div>
+                      <label className="block text-label font-medium text-neutral-charcoal mb-3">
+                        Select Models to Compare
+                      </label>
+                      <ModelInstanceSelector
+                        availableModels={modelInstances.availableModels}
+                        selectedInstances={modelInstances.selectedInstances}
+                        onAddInstance={modelInstances.addInstance}
+                        onRemoveInstance={modelInstances.removeInstance}
+                        maxInstances={modelInstances.maxInstances}
+                        isLoading={modelInstances.isLoading}
+                        placeholder="Click to add models (can add same model multiple times)..."
+                      />
+                    </div>
+                  )}
+                  
+                  {/* Code Mode Info */}
+                  {agentMode.isCodeMode && (
+                    <div className="bg-ai-secondary/10 border border-ai-secondary/20 rounded-md p-md">
+                      <div className="flex items-center gap-2 text-ai-secondary mb-2">
+                        <Code className="h-5 w-5" />
+                        <span className="font-medium">Code Analysis Mode</span>
+                      </div>
+                      <p className="text-body-sm text-neutral-charcoal">
+                        The selected CLI tool ({agentMode.currentModeInfo.label}) will analyze your repository and execute the prompt. 
+                        Model selection is handled by the CLI tool configuration.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Debug Info */}
+                  {process.env.NODE_ENV === 'development' && (
+                    <div className="p-2 bg-blue-50 border border-blue-200 text-xs rounded space-y-1">
+                      <div><strong>Auth Debug:</strong> Authenticated: {isAuthenticated.toString()}, API Key: {apiKey ? 'SET' : 'NOT SET'}</div>
+                      <div><strong>Models:</strong> Selected: {modelInstances.selectedInstances.length}</div>
+                      <div><strong>Mode:</strong> {agentMode.agentMode}, RequiresRepo: {agentMode.requiresRepo.toString()}</div>
+                    </div>
+                  )}
 
                   {/* Error Display */}
                   {displayError && (
@@ -560,7 +619,7 @@ function StreamPageContent() {
                     {!isComparing ? (
                       <Button
                         onClick={handleStartComparison}
-                        disabled={!prompt.trim() || modelInstances.selectedInstances.length === 0 || !apiKey}
+                        disabled={!prompt.trim() || (!agentMode.isCodeMode && modelInstances.selectedInstances.length === 0) || !apiKey || (agentMode.requiresRepo && !selectedRepository)}
                         className="bg-gradient-to-r from-ai-primary to-ai-secondary text-white px-lg py-md rounded-lg font-semibold hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Play className="inline w-5 h-5 mr-2" />
