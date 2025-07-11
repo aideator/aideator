@@ -81,7 +81,10 @@ Before any suggestion that changes dependencies, environment, or tools:
 
 - **Frontend**: Next.js 15.2.4 with React 19, TypeScript 5
 - **Navigation**: Next.js App Router
-- **Styling**: Tailwind CSS v4.1.11 with PostCSS v4
+- **Styling**: Tailwind CSS v3.4.17 (shadcn/ui compatible)
+- **Component Library**: shadcn/ui with Radix UI primitives
+- **Design System**: Custom AIdeator design system (see interface-codex/DESIGN-SYSTEM.md)
+- **Icons**: Lucide React for consistent iconography
 - **State**: React hooks and context
 - **Backend**: FastAPI with async/await patterns
 - **Database**: SQLite with SQLModel ORM
@@ -90,6 +93,49 @@ Before any suggestion that changes dependencies, environment, or tools:
 - **Testing**: Pytest (backend), Jest + Playwright (frontend)
 - **Package Management**: pip with requirements.txt and pyproject.toml
 - **Development**: Tilt for Kubernetes orchestration, k3d for local cluster
+
+---
+
+## 🎨 Design System & UI Guidelines
+
+### Design System Implementation
+- **Design System Location**: `interface-codex/DESIGN-SYSTEM.md`
+- **Component Pattern**: shadcn/ui components with CVA (class-variance-authority)
+- **Styling Approach**: Utility-first with Tailwind v3, component variants via CVA
+- **Theme Structure**: CSS variables for colors, spacing based on 4px grid
+
+### Agent Color System
+Consistent colors for multi-agent comparison:
+```typescript
+// Agent colors for visual differentiation
+const agentColors = {
+  1: 'border-cyan-500/20 bg-cyan-50 dark:bg-cyan-950/20',
+  2: 'border-violet-500/20 bg-violet-50 dark:bg-violet-950/20',
+  3: 'border-amber-500/20 bg-amber-50 dark:bg-amber-950/20',
+  4: 'border-rose-500/20 bg-rose-50 dark:bg-rose-950/20',
+  5: 'border-emerald-500/20 bg-emerald-50 dark:bg-emerald-950/20',
+  6: 'border-indigo-500/20 bg-indigo-50 dark:bg-indigo-950/20'
+}
+```
+
+### Component Guidelines
+- **Always use complete Tailwind classes** (no string interpolation)
+- **Follow shadcn/ui patterns** for consistency
+- **Use CVA for component variants** instead of conditional classes
+- **Implement dark mode** using Tailwind's dark: prefix
+- **Maintain 4px grid spacing** (Tailwind's default scale)
+
+### Typography Rules
+- **Body text**: Inter font, 14px default size
+- **Code/Technical**: Use monospace font for all technical content
+- **Hierarchy**: Follow type scale in design system
+- **Contrast**: Minimum WCAG AA compliance
+
+### Animation Guidelines
+- **Streaming animations**: Use CSS keyframes for smooth text append
+- **Loading states**: Skeleton screens with shimmer effect
+- **Transitions**: 150ms micro, 250ms normal, 400ms major
+- **Performance**: Prioritize 60fps, avoid layout thrashing
 
 ---
 
@@ -254,10 +300,24 @@ When making changes, check if these need updates:
 - [ ] Test SSE streaming
 
 ### Frontend Changes
-- [ ] Use complete Tailwind v4 classes (no dynamic)
-- [ ] Test responsive layout (1-5 agents)
+- [ ] Use complete Tailwind v3 classes (no dynamic string interpolation)
+- [ ] Follow Design System guidelines (DESIGN-SYSTEM.md)
+- [ ] Test responsive grid layout (1-6 agents)
+- [ ] Implement proper agent color coding
+- [ ] Use CVA for component variants
+- [ ] Verify dark mode implementation
+- [ ] Test streaming animations performance
 - [ ] Verify SSE connection handling
-- [ ] Run E2E tests
+- [ ] Run E2E tests with multi-agent scenarios
+
+### Design System Changes
+- [ ] Update DESIGN-SYSTEM.md documentation
+- [ ] Ensure Tailwind classes are complete (no interpolation)
+- [ ] Verify component follows CVA pattern
+- [ ] Test in both light and dark modes
+- [ ] Check responsive breakpoints
+- [ ] Update component examples if needed
+- [ ] Verify accessibility compliance
 
 ---
 
@@ -270,14 +330,50 @@ When making changes, check if these need updates:
 
 ## 🚨 AIdeator-Specific Gotchas
 
-### Tailwind CSS v4
+### Tailwind CSS v3 with shadcn/ui
 ```css
-/* CORRECT - Use this in globals.css */
-@import "tailwindcss";
-
-/* WRONG - Old v3 syntax */
+/* CORRECT - Standard Tailwind v3 imports */
 @tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* WRONG - Dynamic class construction */
+className={`text-${color}-500`} // Never do this!
+
+/* CORRECT - Complete classes */
+className={agentColors[agentIndex]} // Pre-defined complete classes
 ```
+
+### Component Development Pattern
+```typescript
+// CORRECT - Using CVA for variants
+import { cva } from "class-variance-authority"
+
+const agentCardVariants = cva(
+  "rounded-lg border p-4 transition-all",
+  {
+    variants: {
+      streaming: {
+        true: "border-l-4 animate-pulse",
+        false: ""
+      },
+      selected: {
+        true: "ring-2 ring-offset-2",
+        false: "hover:shadow-md"
+      }
+    }
+  }
+)
+
+// WRONG - Conditional string concatenation
+className={`card ${streaming ? 'streaming' : ''} ${selected ? 'selected' : ''}`}
+```
+
+### Design System Compliance
+- Read `interface-codex/DESIGN-SYSTEM.md` before creating new components
+- Use defined color palette and spacing scale
+- Follow component composition patterns
+- Maintain consistency with existing UI components
 
 ### Required Secrets Before Deployment
 ```bash

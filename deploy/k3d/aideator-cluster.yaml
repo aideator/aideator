@@ -1,0 +1,52 @@
+apiVersion: ctlptl.dev/v1alpha1
+kind: Cluster
+name: aideator
+product: k3d
+registry: ctlptl-registry
+minorVersion: 25
+k3d:
+  extraPortMappings:
+    # API Server
+    - port: 8000
+      containerPort: 8000
+      hostPort: 8000
+      protocol: tcp
+    # Redis
+    - port: 6379
+      containerPort: 6379
+      hostPort: 6379
+      protocol: tcp
+    # PostgreSQL
+    - port: 5432
+      containerPort: 5432
+      hostPort: 5432
+      protocol: tcp
+    # LiteLLM
+    - port: 4000
+      containerPort: 4000
+      hostPort: 4000
+      protocol: tcp
+    # Traefik (for ingress)
+    - port: 80
+      containerPort: 80
+      hostPort: 80
+      protocol: tcp
+    - port: 443
+      containerPort: 443
+      hostPort: 443
+      protocol: tcp
+  
+  extraK3sArgs:
+    - --disable=traefik  # We'll use our own ingress if needed
+  
+  registries:
+    use:
+      - ctlptl-registry:5000
+    
+  network: ctlptl  # Use the ctlptl network for registry access
+
+---
+apiVersion: ctlptl.dev/v1alpha1
+kind: Registry
+name: ctlptl-registry
+port: 5005

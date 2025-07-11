@@ -181,81 +181,7 @@ class AgentOrchestrator:
         if db_session:
             await self._update_run_status(db_session, run_id, RunStatus.COMPLETED)
 
-    async def _stream_batch_job_logs(
-        self, run_id: str, job_name: str, db_session: AsyncSession | None = None
-    ) -> None:
-        """Stream logs from a batch job."""
-        try:
-            async for log_line in self.kubernetes.stream_batch_job_logs(
-                job_name, run_id
-            ):
-                try:
-                    log_entry = json.loads(log_line)
-                    # Skip JSON log entries - only process non-log content
-                    if "timestamp" in log_entry and "level" in log_entry:
-                        # This is a structured log, skip it
-                        logger.debug(
-                            f"Agent log: {log_entry.get('message', log_entry)}"
-                        )
-                        continue
-                    # If it's JSON but not a log, send it
-                    if "variation_id" in log_entry:
-                        await self.sse.send_agent_output(
-                            run_id, log_entry["variation_id"], json.dumps(log_entry)
-                        )
-                    else:
-                        await self.sse.send_agent_output(
-                            run_id, 0, json.dumps(log_entry)
-                        )
-                except json.JSONDecodeError:
-                    # This is plain text content (markdown), send it
-                    await self.sse.send_agent_output(run_id, 0, log_line)
 
-            # Log streaming has ended, now check if batch job completed successfully
-            logger.info(
-                f"Log streaming ended for batch job {job_name}, checking job status..."
-            )
-
-            # Wait a moment for job status to be updated
-            await asyncio.sleep(2)
-
-            # Check job status
-            job_status = await self.kubernetes.get_job_status(job_name)
-            logger.info(f"Batch job {job_name} final status: {job_status}")
-
-            # Send completion event
-            await self._send_status_event(
-                run_id,
-                "completed",
-                f"Batch job {job_name} completed with status: {job_status.get('status', 'unknown')}",
-            )
-            self.active_runs[run_id]["status"] = "completed"
-
-            # Send SSE completion events to frontend
-            # For batch jobs, we need to send completion for all variations
-            variations = self.active_runs[run_id].get("variations", 1)
-            for i in range(variations):
-                await self.sse.send_agent_complete(run_id, i)
-            await self.sse.send_run_complete(run_id, "completed")
-
-            # Update database status
-            if db_session:
-                await self._update_run_status(db_session, run_id, RunStatus.COMPLETED)
-
-        except Exception as e:
-            logger.error(f"Error streaming batch job logs for run {run_id}: {e}")
-            await self._send_error_event(run_id, f"Log streaming error: {e!s}")
-            self.active_runs[run_id]["status"] = "failed"
-
-            # Send SSE error events to frontend
-            variations = self.active_runs[run_id].get("variations", 1)
-            for i in range(variations):
-                await self.sse.send_agent_error(run_id, i, str(e))
-            await self.sse.send_run_complete(run_id, "failed")
-
-            # Update database status
-            if db_session:
-                await self._update_run_status(db_session, run_id, RunStatus.FAILED)
 
     async def _stream_job_logs(
         self, run_id: str, job_name: str, variation_id: int
@@ -305,11 +231,9 @@ class AgentOrchestrator:
             job_status = await self.kubernetes.get_job_status(job_name)
             logger.info(f"Job {job_name} final status: {job_status}")
 
-            # Send job completion event
-            await self._send_status_event(
-                run_id,
-                "job_completed",
-                f"Job {job_name} (variation {variation_id}) completed with status: {job_status.get('status', 'unknown')}",
+            # Log job completion
+            logger.info(
+                f"Job {job_name} (variation {variation_id}) completed with status: {job_status.get('status', 'unknown')}"
             )
 
             # Send SSE completion event to frontend
@@ -317,7 +241,6 @@ class AgentOrchestrator:
 
         except Exception as e:
             logger.error(f"Error streaming job logs for {job_name}: {e}")
-            await self._send_error_event(run_id, f"Job {job_name} error: {e!s}")
             # Send SSE error event to frontend
             await self.sse.send_agent_error(run_id, variation_id, str(e))
 
@@ -361,12 +284,8 @@ class AgentOrchestrator:
         # Update run status
         run_data["status"] = "cancelled"
         
-        # Publish cancellation to Redis
-        await redis_service.publish_status(
-            run_id,
-            "cancelled",
-            {"message": "Run cancelled by user"}
-        )
+        # Send cancellation event via SSE
+        await self.sse.send_run_complete(run_id, "cancelled")
 
         return success
 
@@ -415,24 +334,16 @@ class AgentOrchestrator:
         """Wait for SSE connections to be established before starting orchestration."""
         logger.info(f"Waiting for SSE connections for run {run_id}...")
 
-        for i in range(max_wait_seconds * 10):  # Check every 100ms
-            if self.sse._connections.get(run_id):
-                logger.info(
-                    f"SSE connection established for run {run_id} after {i / 10:.1f}s"
-                )
-                # Send connected message to all variations
-                variations = self.active_runs.get(run_id, {}).get("variations", 1)
-                for variation_id in range(variations):
-                    await self.sse.send_agent_output(
-                        run_id,
-                        variation_id,
-                        "🔗 Connected! Starting agent variations...",
-                    )
-                return
-
-            await asyncio.sleep(0.1)  # 100ms check interval
-
-        logger.warning(
-            f"No SSE connections found for run {run_id} after {max_wait_seconds}s, proceeding anyway"
-        )
-        # Continue without SSE - jobs will still run, just no streaming
+        # For simplicity, just add a short delay to allow connections to establish
+        await asyncio.sleep(1.0)
+        
+        logger.info(f"SSE preparation complete for run {run_id}")
+        
+        # Send connected message to all variations
+        variations = self.active_runs.get(run_id, {}).get("variations", 1)
+        for variation_id in range(variations):
+            await self.sse.send_agent_output(
+                run_id,
+                variation_id,
+                "🔗 Connected! Starting agent variations...",
+            )

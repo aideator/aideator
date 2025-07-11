@@ -96,58 +96,7 @@ class KubernetesService:
             # Clean up temporary file
             os.unlink(job_file)
 
-    async def create_batch_job(
-        self,
-        run_id: str,
-        repo_url: str,
-        prompt: str,
-        variations: int,
-        parallelism: int | None = None,
-    ) -> str:
-        """Create a batch job for multiple agent variations."""
-        job_name = f"batch-{run_id}"
-        parallelism = parallelism or min(variations, 3)  # Default to 3 parallel
 
-        # Load batch job template
-        template_path = self.job_templates_dir / "batch-job-template.yaml"
-        with open(template_path) as f:
-            job_yaml = f.read()
-
-        # Replace placeholders
-        job_yaml = job_yaml.format(
-            run_id=run_id,
-            repo_url=repo_url,
-            prompt=prompt.replace('"', '\\"'),
-            parallelism=parallelism,
-            completions=variations,
-        )
-
-        # Create temporary file for job manifest
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            f.write(job_yaml)
-            job_file = f.name
-
-        try:
-            # Apply the job
-            cmd = ["kubectl", "apply", "-f", job_file, "--namespace", self.namespace]
-            result = await self._run_kubectl_command(cmd)
-
-            if result.returncode != 0:
-                stderr_str = (
-                    result.stderr.decode("utf-8")
-                    if isinstance(result.stderr, bytes)
-                    else result.stderr
-                )
-                raise RuntimeError(f"Failed to create batch job: {stderr_str}")
-
-            logger.info(
-                f"Created batch job {job_name} for run {run_id} with {variations} variations"
-            )
-            return job_name
-
-        finally:
-            # Clean up temporary file
-            os.unlink(job_file)
 
     async def stream_job_logs(
         self,
@@ -171,45 +120,7 @@ class KubernetesService:
             async for log_line in self._stream_pod_logs(pod, run_id, variation_id):
                 yield log_line
 
-    async def stream_batch_job_logs(
-        self,
-        job_name: str,
-        run_id: str,
-    ) -> AsyncGenerator[str, None]:
-        """Stream logs from all pods in a batch job."""
-        # Wait for pods to be created
-        await self._wait_for_job_pods(job_name)
 
-        # Get all pods for this batch job
-        pods = await self._get_job_pods(job_name)
-
-        if not pods:
-            logger.warning(f"No pods found for batch job {job_name}")
-            return
-
-        # Stream logs from all pods concurrently
-        tasks = []
-        for pod in pods:
-            # Extract variation ID from pod name or index
-            variation_id = self._extract_variation_id(pod)
-            task = asyncio.create_task(
-                self._stream_pod_logs_to_list(pod, run_id, variation_id)
-            )
-            tasks.append(task)
-
-        # Collect all log streams
-        log_streams = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Merge and yield all logs chronologically
-        all_logs = []
-        for logs in log_streams:
-            if isinstance(logs, list):
-                all_logs.extend(logs)
-
-        # Sort by timestamp and yield
-        all_logs.sort(key=lambda x: x.get("timestamp", ""))
-        for log_entry in all_logs:
-            yield json.dumps(log_entry)
 
     async def delete_job(self, job_name: str) -> bool:
         """Delete a Kubernetes job."""
