@@ -18,7 +18,7 @@ export interface AgentStreamState {
 }
 
 export interface AgentStreamHook extends AgentStreamState {
-  startStream: (runId: string, backend?: 'kubectl' | 'redis') => void;
+  startStream: (runId: string) => void;
   stopStream: () => void;
   clearStreams: () => void;
   clearLogs: (variationId?: number) => void;
@@ -144,7 +144,7 @@ export function useAgentStream(): AgentStreamHook {
     }
   }, []);
 
-  const startStream = useCallback((runId: string, backend?: 'kubectl' | 'redis') => {
+  const startStream = useCallback((runId: string) => {
     // Stop any existing stream
     stopStream();
     
@@ -154,19 +154,10 @@ export function useAgentStream(): AgentStreamHook {
     setIsStreaming(true);
     currentRunIdRef.current = runId;
 
-    // Check which streaming backend to use - prefer parameter, then localStorage, then env var
-    const storedBackend = typeof window !== 'undefined' ? localStorage.getItem('streamingBackend') : null;
-    const streamingBackend = backend || storedBackend || process.env.NEXT_PUBLIC_STREAMING_BACKEND || 'kubectl';
     const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+    const streamUrl = `${apiBase}/api/v1/runs/${runId}/stream`;
     
-    // Use Redis endpoint if configured, otherwise use kubectl endpoint
-    const streamPath = streamingBackend === 'redis' 
-      ? `/api/v1/runs/${runId}/stream/redis`
-      : `/api/v1/runs/${runId}/stream`;
-    
-    const streamUrl = `${apiBase}${streamPath}`;
     console.log(`[STREAM-DEBUG] Starting SSE stream:`, {
-      backend: streamingBackend,
       runId,
       streamUrl,
       timestamp: new Date().toISOString()
@@ -180,7 +171,6 @@ export function useAgentStream(): AgentStreamHook {
       eventSource.onopen = () => {
         console.log('[STREAM-DEBUG] SSE connection opened:', {
           runId,
-          backend: streamingBackend,
           readyState: eventSource.readyState,
           url: eventSource.url,
           timestamp: new Date().toISOString()
@@ -310,7 +300,7 @@ export function useAgentStream(): AgentStreamHook {
         try {
           const data = JSON.parse(event.data);
           const variationId = typeof data.variation_id === 'string' ? parseInt(data.variation_id, 10) : data.variation_id;
-          const logEntry = data.log;
+          const logEntry = data.log_entry;
           
           console.log('[STREAM-DEBUG] Processing agent log:', {
             variation_id: variationId,
@@ -388,7 +378,6 @@ export function useAgentStream(): AgentStreamHook {
           error: event,
           readyState: eventSource.readyState,
           url: eventSource.url,
-          backend: streamingBackend,
           timestamp: new Date().toISOString(),
           readyStateMapping: {
             0: 'CONNECTING',
@@ -400,15 +389,10 @@ export function useAgentStream(): AgentStreamHook {
         setConnectionState('error');
         setIsStreaming(false);
         
-        // Enhanced reconnection logic for Redis
-        const storedBackend = typeof window !== 'undefined' ? localStorage.getItem('streamingBackend') : null;
-        const streamingBackend = storedBackend || process.env.NEXT_PUBLIC_STREAMING_BACKEND || 'redis';
-        const isRedis = streamingBackend === 'redis';
-        
         // Auto-reconnect with exponential backoff
         if (currentRunIdRef.current === runId) {
-          const reconnectDelay = isRedis ? 1000 : 3000; // Faster reconnect for Redis
-          const maxRetries = isRedis ? 10 : 3; // More retries for Redis
+          const reconnectDelay = 1000; // 1 second initial delay
+          const maxRetries = 10;
           
           // Track retry count (stored on the ref to persist across renders)
           if (!eventSourceRef.current) return;
@@ -417,7 +401,6 @@ export function useAgentStream(): AgentStreamHook {
           if (retryCount < maxRetries) {
             const delay = Math.min(reconnectDelay * Math.pow(2, retryCount), 30000);
             console.log('[STREAM-DEBUG] Attempting SSE reconnection:', {
-              backend: streamingBackend,
               runId,
               retryCount: retryCount + 1,
               maxRetries,
@@ -433,7 +416,6 @@ export function useAgentStream(): AgentStreamHook {
             }, delay);
           } else {
             console.error('[STREAM-DEBUG] Max reconnection attempts reached:', {
-              backend: streamingBackend,
               maxRetries,
               runId,
               timestamp: new Date().toISOString()
@@ -475,7 +457,6 @@ export function useAgentStream(): AgentStreamHook {
     } catch (initError) {
       console.error('[STREAM-DEBUG] Failed to initialize SSE connection:', {
         error: initError,
-        backend: streamingBackend,
         runId,
         streamUrl,
         timestamp: new Date().toISOString()
@@ -484,7 +465,7 @@ export function useAgentStream(): AgentStreamHook {
       setConnectionState('error');
       setIsStreaming(false);
     }
-  }, [stopStream, clearStreams]);
+  }, [stopStream, clearStreams, createStreamBuffer]);
 
   const selectAgent = useCallback(async (variationId: number): Promise<void> => {
     if (!currentRunIdRef.current) {

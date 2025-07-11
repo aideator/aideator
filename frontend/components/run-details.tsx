@@ -44,18 +44,9 @@ export function RunDetails({ runId }: { runId: string }) {
   const [isConnected, setIsConnected] = useState(false)
 
   useEffect(() => {
-    // Check which streaming backend to use - prefer localStorage over env var
-    const storedBackend = typeof window !== 'undefined' ? localStorage.getItem('streamingBackend') : null;
-    const streamingBackend = storedBackend || process.env.NEXT_PUBLIC_STREAMING_BACKEND || 'redis';
     const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
-    
-    // Use Redis endpoint if configured, otherwise use kubectl endpoint
-    const streamPath = streamingBackend === 'redis' 
-      ? `/api/v1/runs/${runId}/stream/redis`
-      : `/api/v1/runs/${runId}/stream`;
-    
-    const streamUrl = `${apiBase}${streamPath}`;
-    console.log(`Starting SSE stream (${streamingBackend}) to:`, streamUrl);
+    const streamUrl = `${apiBase}/api/v1/runs/${runId}/stream`;
+    console.log(`Starting SSE stream to:`, streamUrl);
     
     const eventSource = new EventSource(streamUrl)
     setIsConnected(true)
@@ -147,8 +138,7 @@ export function RunDetails({ runId }: { runId: string }) {
                   Connected to stream
                 </span>
                 <Badge variant="outline" className="text-xs">
-                  {(typeof window !== 'undefined' && localStorage.getItem('streamingBackend') === 'redis') || 
-                   process.env.NEXT_PUBLIC_STREAMING_BACKEND === 'redis' ? 'Redis' : 'Kubectl'} Streaming
+                  Redis Streaming
                 </Badge>
               </div>
             )}

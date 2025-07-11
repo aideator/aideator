@@ -1,6 +1,5 @@
 """
-Kubernetes service for managing agent jobs and log streaming.
-Replaces Dagger with native Kubernetes orchestration.
+Kubernetes service for managing agent jobs.
 """
 
 import asyncio
@@ -8,7 +7,6 @@ import json
 import os
 import subprocess
 import tempfile
-from collections.abc import AsyncGenerator
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -23,7 +21,7 @@ settings = get_settings()
 
 
 class KubernetesService:
-    """Service for managing Kubernetes jobs and log streaming."""
+    """Service for managing Kubernetes jobs."""
 
     def __init__(self, namespace: str = "aideator"):
         self.namespace = namespace
@@ -90,30 +88,6 @@ class KubernetesService:
         finally:
             # Clean up temporary file
             os.unlink(job_file)
-
-
-    async def stream_job_logs(
-        self,
-        job_name: str,
-        run_id: str,
-        variation_id: int | None = None,
-    ) -> AsyncGenerator[str, None]:
-        """Stream logs from a Kubernetes job."""
-        # First, wait for pods to be created
-        await self._wait_for_job_pods(job_name)
-
-        # Get pods for this job
-        pods = await self._get_job_pods(job_name)
-
-        if not pods:
-            logger.warning(f"No pods found for job {job_name}")
-            return
-
-        # Stream logs from all pods
-        for pod in pods:
-            async for log_line in self._stream_pod_logs(pod, run_id, variation_id):
-                yield log_line
-
 
     async def delete_job(self, job_name: str) -> bool:
         """Delete a Kubernetes job."""
@@ -182,93 +156,13 @@ class KubernetesService:
             logger.error(f"kubectl command timed out: {' '.join(cmd)}")
             raise RuntimeError(f"kubectl command timed out after {self.kubectl_timeout}s")
 
-    async def _wait_for_job_pods(self, job_name: str, timeout: int = 60) -> None:
-        """Wait for job pods to be created."""
-        start_time = asyncio.get_event_loop().time()
-
-        while True:
-            pods = await self._get_job_pods(job_name)
-            if pods:
-                logger.info(f"Found {len(pods)} pods for job {job_name}")
-                return
-
-            elapsed = asyncio.get_event_loop().time() - start_time
-            if elapsed > timeout:
-                raise RuntimeError(f"Timeout waiting for pods for job {job_name}")
-
-            await asyncio.sleep(2)
-
-    async def _get_job_pods(self, job_name: str) -> list[str]:
-        """Get pod names for a job."""
-        cmd = [
-            "kubectl", "get", "pods",
-            "--namespace", self.namespace,
-            "--selector", f"job-name={job_name}",
-            "-o", "jsonpath={.items[*].metadata.name}"
-        ]
-
-        result = await self._run_kubectl_command(cmd)
-        if result.returncode != 0:
-            logger.error(f"Failed to get pods for job {job_name}: {result.stderr}")
-            return []
-
-        pods = result.stdout.strip().split()
-        return [pod for pod in pods if pod]
-
-    async def _stream_pod_logs(
-        self,
-        pod_name: str,
-        run_id: str,
-        variation_id: int | None = None,
-    ) -> AsyncGenerator[str, None]:
-        """Stream logs from a specific pod."""
-        cmd = [
-            "kubectl", "logs", "-f", pod_name,
-            "--namespace", self.namespace
-            # Removed --tail 0 to get all logs from the beginning
-        ]
-
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-
-            while True:
-                line = await process.stdout.readline()
-                if not line:
-                    break
-
-                log_line = line.decode().rstrip("\n")
-                if log_line:
-                    # Just yield the raw log line - the agent_orchestrator will handle parsing
-                    # Add newline back to preserve original formatting
-                    yield log_line + "\n"
-
-            # Wait for process to complete
-            await process.wait()
-
-        except Exception as e:
-            logger.error(f"Error streaming logs from pod {pod_name}: {e}")
-            error_entry = {
-                "timestamp": datetime.utcnow().isoformat(),
-                "run_id": run_id,
-                "variation_id": variation_id,
-                "pod_name": pod_name,
-                "message": f"Error streaming logs: {e!s}",
-                "type": "error"
-            }
-            yield json.dumps(error_entry)
-
-
-
-    def _determine_job_status(self, status: dict[str, Any]) -> str:
-        """Determine job status from Kubernetes status."""
+    def _determine_job_status(self, status: dict) -> str:
+        """Determine the simplified status of a job."""
         if status.get("succeeded", 0) > 0:
             return "completed"
-        if status.get("failed", 0) > 0:
+        elif status.get("failed", 0) > 0:
             return "failed"
-        if status.get("active", 0) > 0:
+        elif status.get("active", 0) > 0:
             return "running"
-        return "pending"
+        else:
+            return "pending"

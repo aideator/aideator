@@ -34,21 +34,19 @@ async def lifespan(app: FastAPI):
     await create_db_and_tables()
     logger.info("Database initialized")
 
-    # Initialize Redis if URL is configured
-    if settings.redis_url:
-        try:
-            await redis_service.connect()
-            logger.info("Redis connected successfully")
-        except Exception as e:
-            logger.warning(f"Redis connection failed (non-critical): {e}")
-            # Continue without Redis - kubectl logs will still work
+    # Initialize Redis (required)
+    try:
+        await redis_service.connect()
+        logger.info("Redis connected successfully")
+    except Exception as e:
+        logger.error(f"Redis connection failed: {e}")
+        raise RuntimeError("Redis connection is required for streaming. Please ensure Redis is available.")
     
     yield
 
     # Shutdown
-    if settings.redis_url:
-        await redis_service.disconnect()
-        logger.info("Redis disconnected")
+    await redis_service.disconnect()
+    logger.info("Redis disconnected")
     
     logger.info("Shutting down application")
 
@@ -138,15 +136,13 @@ def create_application() -> FastAPI:
     @app.get("/health", tags=["System"])
     async def health_check() -> dict[str, Any]:
         """Health check endpoint."""
-        redis_status = "not_configured"
-        if settings.redis_url:
-            redis_status = "healthy" if await redis_service.health_check() else "unhealthy"
-            
+        redis_healthy = await redis_service.health_check()
+        
         return {
-            "status": "healthy",
+            "status": "healthy" if redis_healthy else "degraded",
             "version": settings.version,
-            "orchestration": "kubernetes",  # Using Kubernetes for orchestration
-            "redis": redis_status,
+            "orchestration": "kubernetes",
+            "redis": "healthy" if redis_healthy else "unhealthy",
         }
 
     return app

@@ -1,5 +1,5 @@
 """
-Agent orchestrator using Kubernetes jobs and kubectl log streaming.
+Agent orchestrator using Kubernetes jobs with Redis-based streaming.
 """
 
 import asyncio
@@ -15,7 +15,6 @@ from app.models.run import Run, RunStatus
 from app.schemas.runs import AgentConfig
 from app.services.kubernetes_service import KubernetesService
 from app.services.redis_service import redis_service
-from app.services.sse_manager import SSEManager, sse_manager
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -24,9 +23,8 @@ settings = get_settings()
 class AgentOrchestrator:
     """Orchestrates LLM agents using Kubernetes jobs."""
 
-    def __init__(self, kubernetes_service: KubernetesService, sse_manager_instance: SSEManager = None):
+    def __init__(self, kubernetes_service: KubernetesService):
         self.kubernetes = kubernetes_service
-        self.sse = sse_manager_instance or sse_manager
         self.active_runs: dict[str, dict[str, Any]] = {}
         self._job_count_lock = asyncio.Lock()
         self._total_active_jobs = 0
@@ -115,8 +113,14 @@ class AgentOrchestrator:
 
         except Exception as e:
             logger.error(f"Error executing variations for run {run_id}: {e}")
-            await self._send_error_event(run_id, str(e))
             self.active_runs[run_id]["status"] = "failed"
+            
+            # Publish error to Redis
+            await redis_service.publish_status(
+                run_id,
+                "failed",
+                {"error": str(e)}
+            )
 
             # Decrement job count on failure
             await self._decrement_job_count(variations)
@@ -155,94 +159,56 @@ class AgentOrchestrator:
         self.active_runs[run_id]["jobs"] = [job[0] for job in jobs]
         self.active_runs[run_id]["status"] = "running"
 
-        # Send start event
-        await self._send_status_event(run_id, "started", f"Created {len(jobs)} agent jobs")
-
-        # Stream logs from all jobs concurrently
-        tasks = []
-        for job_name, variation_id in jobs:
-            task = asyncio.create_task(
-                self._stream_job_logs(run_id, job_name, variation_id)
-            )
-            tasks.append(task)
-
-        # Wait for all streaming tasks to complete
-        await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Send run completion event to frontend
-        await self.sse.send_run_complete(run_id, "completed")
-
-        # Update database status
-        if db_session:
-            await self._update_run_status(db_session, run_id, RunStatus.COMPLETED)
-
-
-    async def _stream_job_logs(self, run_id: str, job_name: str, variation_id: int) -> None:
-        """Stream logs from an individual job."""
-        try:
-            async for log_line in self.kubernetes.stream_job_logs(job_name, run_id, variation_id):
-                try:
-                    log_entry = json.loads(log_line)
-                    # Check if this is a structured log entry
-                    if "timestamp" in log_entry and "level" in log_entry:
-                        # This is a structured log, send as agent_log event
-                        logger.info(f"[LOG-DEBUG] Sending agent_log event: variation_id={variation_id}, level={log_entry.get('level')}, message={log_entry.get('message', '')[:100]}")
-                        await self.sse.send_agent_log(run_id, variation_id, log_entry)
-                        # Publish to Redis logs channel if available
-                        if settings.redis_url:
-                            try:
-                                await redis_service.publish_agent_log(run_id, str(variation_id), log_entry)
-                            except Exception as e:
-                                logger.warning(f"Failed to publish log to Redis: {e}")
-                        continue
-                    # If it's JSON but not a log, send it
-                    await self.sse.send_agent_output(run_id, variation_id, json.dumps(log_entry))
-                    # Also publish to Redis if available
-                    if settings.redis_url:
-                        try:
-                            logger.debug(f"[REDIS-PUB] Publishing JSON agent output to Redis for run {run_id}, variation {variation_id}")
-                            result = await redis_service.publish_agent_output(run_id, str(variation_id), json.dumps(log_entry))
-                            logger.debug(f"[REDIS-PUB] Published to {result} subscribers")
-                        except Exception as e:
-                            logger.warning(f"Failed to publish output to Redis: {e}")
-                except json.JSONDecodeError:
-                    # This is plain text content (markdown), send it
-                    await self.sse.send_agent_output(run_id, variation_id, log_line)
-                    # Also publish to Redis if available
-                    if settings.redis_url:
-                        try:
-                            logger.debug(f"[REDIS-PUB] Publishing plain text agent output to Redis for run {run_id}, variation {variation_id}")
-                            result = await redis_service.publish_agent_output(run_id, str(variation_id), log_line)
-                            logger.debug(f"[REDIS-PUB] Published to {result} subscribers")
-                        except Exception as e:
-                            logger.warning(f"Failed to publish output to Redis: {e}")
-
-            # Send job completion event
-            await self._send_status_event(
-                run_id,
-                "job_completed",
-                f"Job {job_name} (variation {variation_id}) completed"
-            )
-
-            # Send SSE completion event to frontend
-            await self.sse.send_agent_complete(run_id, variation_id)
-
-            # Publish status to Redis if available
-            if settings.redis_url:
-                try:
+        # Publish start event to Redis
+        await redis_service.publish_status(
+            run_id,
+            "started",
+            {"message": f"Created {len(jobs)} agent jobs", "jobs": [job[0] for job in jobs]}
+        )
+        
+        # Monitor job statuses
+        completed_variations = set()
+        failed_variations = set()
+        
+        # Wait for all jobs to complete
+        while len(completed_variations) + len(failed_variations) < variations:
+            await asyncio.sleep(5)  # Check every 5 seconds
+            
+            for job_name, variation_id in jobs:
+                if variation_id in completed_variations or variation_id in failed_variations:
+                    continue
+                    
+                status = await self.kubernetes.get_job_status(job_name)
+                
+                if status["status"] == "completed":
+                    completed_variations.add(variation_id)
                     await redis_service.publish_status(
                         run_id,
                         "variation_completed",
                         {"variation_id": variation_id, "job_name": job_name}
                     )
-                except Exception as e:
-                    logger.warning(f"Failed to publish status to Redis: {e}")
+                elif status["status"] == "failed":
+                    failed_variations.add(variation_id)
+                    await redis_service.publish_status(
+                        run_id,
+                        "variation_failed",
+                        {"variation_id": variation_id, "job_name": job_name, "error": "Job failed"}
+                    )
 
-        except Exception as e:
-            logger.error(f"Error streaming job logs for {job_name}: {e}")
-            await self._send_error_event(run_id, f"Job {job_name} error: {e!s}")
-            # Send SSE error event to frontend
-            await self.sse.send_agent_error(run_id, variation_id, str(e))
+        # Publish run completion
+        await redis_service.publish_status(
+            run_id,
+            "completed",
+            {
+                "completed_variations": list(completed_variations),
+                "failed_variations": list(failed_variations),
+                "total_variations": variations
+            }
+        )
+
+        # Update database status
+        if db_session:
+            await self._update_run_status(db_session, run_id, RunStatus.COMPLETED)
 
     async def get_run_status(self, run_id: str) -> dict[str, Any]:
         """Get the status of a run."""
@@ -286,18 +252,15 @@ class AgentOrchestrator:
 
         # Update run status
         run_data["status"] = "cancelled"
-        await self._send_status_event(run_id, "cancelled", "Run cancelled by user")
+        
+        # Publish cancellation to Redis
+        await redis_service.publish_status(
+            run_id,
+            "cancelled",
+            {"message": "Run cancelled by user"}
+        )
 
         return success
-
-    async def _send_status_event(self, run_id: str, status: str, message: str) -> None:
-        """Send a status event via SSE."""
-        # Log the status internally but don't send to agent output
-        logger.info(f"Run {run_id} status: {status} - {message}")
-
-    async def _send_error_event(self, run_id: str, error: str) -> None:
-        """Send an error event via SSE."""
-        await self.sse.send_agent_error(run_id, 0, error)
 
     async def _cleanup_run_metadata(self, run_id: str, delay: int = 3600) -> None:
         """Clean up run metadata after a delay."""

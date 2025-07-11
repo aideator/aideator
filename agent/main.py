@@ -20,7 +20,7 @@ import git
 from litellm import acompletion
 from tenacity import retry, stop_after_attempt, wait_exponential
 import aiofiles
-import redis
+import redis.asyncio as redis
 
 
 class AIdeatorAgent:
@@ -54,25 +54,36 @@ class AIdeatorAgent:
         self.log_file = self.work_dir / f"agent_{self.run_id}_{self.variation_id}.log"
         self._setup_file_logging()
         
-        # Redis setup (optional)
-        self.redis_client = None
-        redis_url = os.getenv("REDIS_URL")
-        if redis_url:
-            try:
-                self.log(f"[REDIS-CONNECT] Attempting to connect to Redis at: {redis_url}", "INFO")
-                self.redis_client = redis.from_url(redis_url, decode_responses=True)
-                self.log("[REDIS-CONNECT] Redis client created, testing connection...", "DEBUG")
-                self.redis_client.ping()
-                self.log("[REDIS-CONNECT] Redis ping successful", "DEBUG")
-                # Test publish to verify permissions
-                test_channel = f"run:{self.run_id}:test"
-                test_result = self.redis_client.publish(test_channel, "test")
-                self.log(f"[REDIS-CONNECT] Test publish successful, {test_result} subscribers", "DEBUG")
-                self.log("Redis connected successfully", "INFO", redis_url=redis_url)
-            except Exception as e:
-                self.log(f"[REDIS-CONNECT] Redis connection failed: {e}", "ERROR")
-                self.log(f"Redis connection failed (will use stdout only): {e}", "WARNING")
-                self.redis_client = None
+        # Redis setup (required) - will be initialized in async context
+        self.redis_url = os.getenv("REDIS_URL")
+        if not self.redis_url:
+            print(json.dumps({
+                "timestamp": datetime.utcnow().isoformat(),
+                "run_id": self.run_id,
+                "variation_id": self.variation_id,
+                "level": "ERROR",
+                "message": "REDIS_URL environment variable not set"
+            }), flush=True)
+            raise RuntimeError("REDIS_URL is required for agent operation")
+        
+        self.redis_client = None  # Will be initialized in async context
+    
+    async def _init_redis(self):
+        """Initialize Redis connection in async context."""
+        try:
+            self.log(f"[REDIS-CONNECT] Connecting to Redis at: {self.redis_url}", "INFO")
+            self.redis_client = redis.from_url(self.redis_url, decode_responses=True)
+            self.log("[REDIS-CONNECT] Redis client created, testing connection...", "DEBUG")
+            await self.redis_client.ping()
+            self.log("[REDIS-CONNECT] Redis ping successful", "DEBUG")
+            # Test publish to verify permissions
+            test_channel = f"run:{self.run_id}:test"
+            test_result = await self.redis_client.publish(test_channel, "test")
+            self.log(f"[REDIS-CONNECT] Test publish successful, {test_result} subscribers", "DEBUG")
+            self.log("Redis connected successfully", "INFO", redis_url=self.redis_url)
+        except Exception as e:
+            self.log(f"[REDIS-CONNECT] Redis connection failed: {e}", "ERROR")
+            raise RuntimeError(f"Failed to connect to Redis: {e}")
     
     def _setup_file_logging(self):
         """Setup file-only logging to avoid stdout pollution."""
@@ -95,8 +106,8 @@ class AIdeatorAgent:
     
     def log(self, message: str, level: str = "INFO", **kwargs):
         """
-        Structured logging with JSON output.
-        This goes to stdout for kubectl logs streaming and optionally to Redis.
+        Structured logging with JSON output to Redis.
+        Note: This is synchronous for now, Redis publish happens in publish_output
         """
         log_entry = {
             "timestamp": datetime.utcnow().isoformat(),
@@ -107,18 +118,9 @@ class AIdeatorAgent:
             **kwargs
         }
         
-        # Output to stdout for streaming
-        print(json.dumps(log_entry), flush=True)
-        
-        # Also publish to Redis if available
-        if self.redis_client:
-            try:
-                channel = f"run:{self.run_id}:logs:{self.variation_id}"
-                result = self.redis_client.publish(channel, json.dumps(log_entry))
-                print(f"[AGENT-REDIS-LOG] Published log to channel {channel}, {result} subscribers", flush=True)
-            except Exception as e:
-                # Don't fail if Redis publish fails
-                print(f"[AGENT-REDIS-LOG] Failed to publish log to Redis: {e}", flush=True)
+        # For now, just print to stdout for debugging
+        if os.getenv("DEBUG") == "true":
+            print(json.dumps(log_entry), flush=True)
         
         # Also log to file
         self.file_logger.log(
@@ -130,43 +132,44 @@ class AIdeatorAgent:
         """Log progress updates for user visibility."""
         self.log(f"⚡ {message}", "INFO", detail=detail)
     
-    def publish_output(self, content: str):
-        """Publish agent output to stdout and Redis."""
-        # Always print to stdout for kubectl logs
-        print(f"🔸 {content}", flush=True)
-        
-        # Also publish to Redis if available
-        if self.redis_client:
-            try:
-                channel = f"run:{self.run_id}:output:{self.variation_id}"
-                message = json.dumps({
-                    "content": content,
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "variation_id": self.variation_id
-                })
-                self.log(f"[REDIS-PUB] Publishing to channel: {channel}", "DEBUG")
-                self.log(f"[REDIS-PUB] Message size: {len(message)} bytes", "DEBUG")
-                result = self.redis_client.publish(channel, message)
-                self.log(f"[REDIS-PUB] Published successfully, {result} subscribers received message", "INFO")
-            except Exception as e:
-                # Don't fail if Redis publish fails
-                self.log(f"[REDIS-PUB] Failed to publish output to Redis: {e}", "ERROR")
-                self.file_logger.warning(f"Failed to publish output to Redis: {e}")
+    async def publish_output(self, content: str):
+        """Publish agent output to Redis."""
+        try:
+            if not self.redis_client:
+                self.log("[REDIS-PUB] Redis client not initialized", "ERROR")
+                return
+                
+            channel = f"run:{self.run_id}:output:{self.variation_id}"
+            message = json.dumps({
+                "content": content,
+                "timestamp": datetime.utcnow().isoformat(),
+                "variation_id": self.variation_id
+            })
+            self.log(f"[REDIS-PUB] Publishing to channel: {channel}", "DEBUG")
+            self.log(f"[REDIS-PUB] Message size: {len(message)} bytes", "DEBUG")
+            result = await self.redis_client.publish(channel, message)
+            self.log(f"[REDIS-PUB] Published successfully, {result} subscribers received message", "INFO")
+        except Exception as e:
+            # Don't fail if Redis publish fails
+            self.log(f"[REDIS-PUB] Failed to publish output to Redis: {e}", "ERROR")
+            self.file_logger.warning(f"Failed to publish output to Redis: {e}")
     
-    def publish_status(self, status: str, metadata: Optional[Dict[str, Any]] = None):
+    async def publish_status(self, status: str, metadata: Optional[Dict[str, Any]] = None):
         """Publish status update to Redis."""
-        if self.redis_client:
-            try:
-                channel = f"run:{self.run_id}:status"
-                message = json.dumps({
-                    "status": status,
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "variation_id": self.variation_id,
-                    "metadata": metadata or {}
-                })
-                self.redis_client.publish(channel, message)
-            except Exception as e:
-                self.file_logger.warning(f"Failed to publish status to Redis: {e}")
+        try:
+            if not self.redis_client:
+                return
+                
+            channel = f"run:{self.run_id}:status"
+            message = json.dumps({
+                "status": status,
+                "timestamp": datetime.utcnow().isoformat(),
+                "variation_id": self.variation_id,
+                "metadata": metadata or {}
+            })
+            await self.redis_client.publish(channel, message)
+        except Exception as e:
+            self.file_logger.warning(f"Failed to publish status to Redis: {e}")
     
     def log_error(self, error: str, exception: Optional[Exception] = None):
         """Log errors with details."""
@@ -178,6 +181,9 @@ class AIdeatorAgent:
     
     async def run(self) -> None:
         """Main agent execution flow."""
+        # Initialize Redis first
+        await self._init_redis()
+        
         self.log(f"🚀 Starting AIdeator Agent", "INFO", config=self.config)
         
         # Log agent mode
@@ -515,16 +521,16 @@ Be thorough but concise in your response.
                     while '\n' in buffer:
                         line, buffer = buffer.split('\n', 1)
                         if line.strip():  # Only output non-empty lines
-                            self.publish_output(line)
+                            await self.publish_output(line)
                     
                     # Also output partial lines periodically
                     if len(buffer) > 100:
-                        self.publish_output(buffer)
+                        await self.publish_output(buffer)
                         buffer = ""
             
             # Output any remaining buffer
             if buffer.strip():
-                self.publish_output(buffer)
+                await self.publish_output(buffer)
             
             self.log("Streaming LLM response complete", "INFO", 
                     step="streaming_complete",
@@ -542,13 +548,11 @@ async def main():
     """Main entry point."""
     agent = AIdeatorAgent()
     try:
-        # Publish starting status
-        agent.publish_status("starting")
-        
+        # Run the agent
         await agent.run()
         
         # Publish completion status
-        agent.publish_status("variation_completed", {
+        await agent.publish_status("variation_completed", {
             "variation_id": agent.variation_id,
             "success": True
         })
@@ -556,21 +560,31 @@ async def main():
         # Sleep for 600 seconds (10 minutes) before exit on success
         agent.log("⏱️ Sleeping for 600 seconds before exit", "INFO")
         await asyncio.sleep(600)
+        
+        # Clean up Redis connection
+        if agent.redis_client:
+            await agent.redis_client.close()
     except Exception as e:
         # Ensure error is visible in logs
         agent.log(f"💥 Fatal error: {str(e)}", "ERROR", 
                  exception_type=type(e).__name__)
         
         # Publish failure status
-        agent.publish_status("variation_failed", {
-            "variation_id": agent.variation_id,
-            "error": str(e),
-            "error_type": type(e).__name__
-        })
+        if agent.redis_client:
+            await agent.publish_status("variation_failed", {
+                "variation_id": agent.variation_id,
+                "error": str(e),
+                "error_type": type(e).__name__
+            })
         
         # Sleep for 600 seconds even on error
         agent.log("⏱️ Sleeping for 600 seconds before exit (after error)", "INFO")
         await asyncio.sleep(600)
+        
+        # Clean up Redis connection
+        if agent.redis_client:
+            await agent.redis_client.close()
+            
         sys.exit(0)
 
 

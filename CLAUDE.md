@@ -86,7 +86,7 @@ Before any suggestion that changes dependencies, environment, or tools:
 - **Backend**: FastAPI with async/await patterns
 - **Database**: SQLite with SQLModel ORM
 - **Container Orchestration**: Kubernetes Jobs with Helm
-- **Streaming**: Server-Sent Events (SSE) via kubectl logs
+- **Streaming**: Server-Sent Events (SSE) via Redis pub/sub
 - **Testing**: Pytest (backend), Jest + Playwright (frontend)
 
 ---
@@ -100,7 +100,6 @@ tilt down               # Stop environment
 cd frontend && npm run dev  # Frontend only
 
 # Database
-# No migrations needed - SQLModel creates tables automatically
 
 # Type Generation
 python -m app.generate_types  # After model changes
@@ -127,7 +126,7 @@ mypy app/
 ```
 app/                    # FastAPI backend
   api/v1/              # API routes
-  services/            # Business logic (KubernetesService, SSEManager)
+  services/            # Business logic (KubernetesService, RedisService)
   models/              # SQLModel database models
   
 frontend/              # Next.js 15 frontend
@@ -195,10 +194,10 @@ timeout 20 curl -N http://localhost:8000/api/v1/runs/${RUN_ID}/stream
 4. Check logs: `kubectl logs -f job/agent-job-dev-test -n aideator`
 
 ### Debugging Streaming Issues
-1. Compare kubectl logs vs SSE output
-2. Check KubernetesService log streaming
-3. Verify SSEManager connections
-4. Test with timeout on curl commands
+1. Check Redis connectivity with `redis-cli ping`
+2. Monitor Redis channels with `redis-cli monitor`
+3. Verify agent Redis connection in logs
+4. Test SSE endpoint with timeout on curl commands
 
 ---
 
@@ -273,9 +272,9 @@ kubectl create secret generic openai-secret \
 ```
 
 ### Streaming Pipeline Architecture
-1. Agent outputs to stdout in pod
-2. KubernetesService captures via `kubectl logs -f`
-3. Logs parsed and sent as SSE events
+1. Agent publishes to Redis pub/sub channels
+2. Backend subscribes to Redis channels
+3. Messages converted to SSE events
 4. Frontend consumes SSE and displays in real-time
 
 ### Common Pitfalls

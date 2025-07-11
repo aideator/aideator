@@ -53,21 +53,10 @@ export default function StreamPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isConfigExpanded, setIsConfigExpanded] = useState(true);
   
-  // Streaming backend state
-  const [streamingBackend, setStreamingBackend] = useState<'kubectl' | 'redis'>('kubectl');
-  
   // Dialog state
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newRepoUrl, setNewRepoUrl] = useState('');
   const [dialogError, setDialogError] = useState<string | null>(null);
-  
-  // Load streaming backend preference from localStorage
-  React.useEffect(() => {
-    const stored = localStorage.getItem('streamingBackend');
-    if (stored === 'redis' || stored === 'kubectl') {
-      setStreamingBackend(stored);
-    }
-  }, []);
 
   // Streaming state
   const {
@@ -113,8 +102,8 @@ export default function StreamPage() {
       console.log("Run created:", response);
       setCurrentRunId(response.run_id);
 
-      // Start streaming with selected backend
-      startStream(response.run_id, streamingBackend);
+      // Start streaming
+      startStream(response.run_id);
 
       // Collapse config panel to maximize screen space
       setIsConfigExpanded(false);
@@ -364,30 +353,6 @@ export default function StreamPage() {
                                 </div>
                                 <p className="text-xs text-gray-500">
                                   {isLiteLLM ? 'Using LiteLLM with GPT-4' : 'Using Claude Code CLI'}
-                                </p>
-                              </div>
-                              
-                              {/* Streaming Backend */}
-                              <div className="space-y-2 border-t pt-3">
-                                <p className="text-sm font-medium">Streaming Backend</p>
-                                <div className="flex items-center justify-between">
-                                  <label htmlFor="streaming-backend-switch" className="text-sm text-gray-600">
-                                    {streamingBackend === 'redis' ? 'Redis' : 'Kubectl'}
-                                  </label>
-                                  <Switch
-                                    id="streaming-backend-switch"
-                                    checked={streamingBackend === 'redis'}
-                                    onCheckedChange={(checked) => {
-                                      const backend = checked ? 'redis' : 'kubectl';
-                                      setStreamingBackend(backend);
-                                      localStorage.setItem('streamingBackend', backend);
-                                    }}
-                                  />
-                                </div>
-                                <p className="text-xs text-gray-500">
-                                  {streamingBackend === 'redis' 
-                                    ? 'Redis pub/sub for improved reliability'
-                                    : 'Kubectl logs streaming (default)'}
                                 </p>
                               </div>
                             </div>
