@@ -1,40 +1,69 @@
-# Multi-stage Dockerfile for AIdeator with optimized image sizes
-# Using distroless and minimal base images for security and size
+# Multi-stage Dockerfile for AIdeator using Wolfi base images
+# Following patterns from manifold build-config
 
-# Build stage for Python dependencies
-FROM python:3.11-alpine AS python-builder
+# Build stage for Python dependencies using Wolfi
+FROM cgr.dev/chainguard/wolfi-base:latest AS python-builder
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+USER root
+
+# Install Python build dependencies
+RUN apk --no-cache --update upgrade && apk --no-cache add \
+    python-3.12 \
+    py3.12-pip \
+    python-3.12-dev \
+    build-base \
     git \
     curl \
-    build-essential \
-    libssl-dev \
-    libffi-dev \
-    python3-dev \
-    && rm -rf /var/lib/apt/lists/*
+    nodejs \
+    npm \
+    ca-certificates \
+    openssl \
+    bash
 
-# Install Node.js
-ARG NODE_MAJOR=22
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends curl gnupg ca-certificates; \
-    curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -; \
-    apt-get install -y --no-install-recommends nodejs; \
-    apt-get clean; \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+# Install uv for faster Python package management
+RUN pip install -Iv "uv==0.7.10"
 
-# Install Claude Code and Gemini CLI globally
-RUN npm install -g @anthropic-ai/claude-code @google/gemini-cli @openai/codex
+# Set Python environment variables
+ENV UV_LINK_MODE=copy
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_PYTHON_DOWNLOADS=never
+ENV UV_PYTHON=python3.12
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+
+# Create virtual environment
+RUN python3.12 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy Python requirements
+COPY requirements.txt pyproject.toml ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install Claude Code and AI CLI tools globally
+RUN npm install -g @anthropic-ai/claude-code
 
 # Download kubectl
-FROM alpine AS kubectl-builder
+FROM cgr.dev/chainguard/wolfi-base:latest AS kubectl-builder
 RUN apk add --no-cache curl && \
     curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
     chmod +x kubectl
 
-# Final API stage using distroless
-FROM gcr.io/distroless/python3-debian12:nonroot AS api
+# Final API stage using Wolfi base
+FROM cgr.dev/chainguard/wolfi-base:latest AS api
+
+USER root
+
+# Install runtime dependencies
+RUN apk --no-cache --update upgrade && apk --no-cache add \
+    python-3.12 \
+    bash \
+    git \
+    ca-certificates \
+    openssl
+
+# Create nonroot user and directories
+RUN adduser -D -u 1000 nonroot
+WORKDIR /app
+RUN chown nonroot:nonroot /app
 
 # Copy Python virtual environment
 COPY --from=python-builder /opt/venv /opt/venv
@@ -45,13 +74,8 @@ ENV PYTHONPATH="/app:$PYTHONPATH"
 COPY --from=kubectl-builder /kubectl /usr/local/bin/kubectl
 
 # Copy Node.js tools
-COPY --from=node-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
-COPY --from=node-builder /usr/local/bin/claude-code /usr/local/bin/
-COPY --from=node-builder /usr/local/bin/gemini-cli /usr/local/bin/
-COPY --from=node-builder /usr/local/bin/codex /usr/local/bin/
-
-# Set working directory
-WORKDIR /app
+COPY --from=python-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=python-builder /usr/local/bin/claude-code /usr/local/bin/claude-code
 
 # Copy application code
 COPY --chown=nonroot:nonroot app/ ./app/
@@ -60,24 +84,32 @@ COPY --chown=nonroot:nonroot alembic/ ./alembic/
 COPY --chown=nonroot:nonroot alembic.ini ./
 COPY --chown=nonroot:nonroot scripts/ ./scripts/
 
+# Switch to nonroot user
+USER nonroot
+
 # Expose port
 EXPOSE 8000
 
-# Run FastAPI (distroless includes Python)
-ENTRYPOINT ["python", "-m", "uvicorn"]
-CMD ["app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run FastAPI
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
-# Agent stage using minimal Alpine
-FROM python:3.11-alpine AS agent
+# Agent stage using Wolfi base
+FROM cgr.dev/chainguard/wolfi-base:latest AS agent
 
-# Install runtime dependencies only
-RUN apk add --no-cache \
+USER root
+
+# Install runtime dependencies
+RUN apk --no-cache --update upgrade && apk --no-cache add \
+    python-3.12 \
+    bash \
     git \
-    curl \
-    nodejs \
-    npm \
     ca-certificates \
-    && rm -rf /var/cache/apk/*
+    openssl
+
+# Create nonroot user and directories
+RUN adduser -D -u 1000 agentuser
+WORKDIR /app
+RUN chown agentuser:agentuser /app
 
 # Copy Python virtual environment
 COPY --from=python-builder /opt/venv /opt/venv
@@ -87,23 +119,15 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY --from=kubectl-builder /kubectl /usr/local/bin/kubectl
 
 # Copy Node.js tools
-COPY --from=node-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
-COPY --from=node-builder /usr/local/bin/claude-code /usr/local/bin/
-COPY --from=node-builder /usr/local/bin/gemini-cli /usr/local/bin/
-COPY --from=node-builder /usr/local/bin/codex /usr/local/bin/
-
-# Create non-root user
-RUN adduser -D -u 1000 agentuser
-
-# Set working directory
-WORKDIR /app
+COPY --from=python-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=python-builder /usr/local/bin/claude-code /usr/local/bin/claude-code
 
 # Copy agent code
 COPY --chown=agentuser:agentuser agent/ ./agent/
 COPY --chown=agentuser:agentuser app/models/ ./app/models/
 COPY --chown=agentuser:agentuser app/core/config.py ./app/core/config.py
 
-# Switch to non-root user
+# Switch to nonroot user
 USER agentuser
 
 # Set working directory to workspace

@@ -35,23 +35,23 @@ docker_build(
     ],
 )
 
-docker_build(
-    'aideator-agent',
-    context='.',
-    dockerfile='agent/Dockerfile',
-    only=[
-        'agent/',
-        'pyproject.toml',
-        'requirements.txt',
-        'prompts/',
-        'scripts/',
-    ],
-    live_update=[
-        sync('agent/', '/app/agent/'),
-        sync('prompts/', '/app/prompts/'),
-        run('cd /app && pip install -e .', trigger=['pyproject.toml', 'requirements.txt']),
-    ],
-)
+# docker_build(
+#     'aideator-agent',
+#     context='.',
+#     dockerfile='agent/Dockerfile',
+#     only=[
+#         'agent/',
+#         'pyproject.toml',
+#         'requirements.txt',
+#         'prompts/',
+#         'scripts/',
+#     ],
+#     live_update=[
+#         sync('agent/', '/app/agent/'),
+#         sync('prompts/', '/app/prompts/'),
+#         run('cd /app && pip install -e .', trigger=['pyproject.toml', 'requirements.txt']),
+#     ],
+# )
 
 # Secrets management
 local_resource(
@@ -72,24 +72,19 @@ helm_resource(
         'deploy/charts/aideator/templates',
         'deploy/values/local.yaml',
     ],
-    image_deps=['aideator-api', 'aideator-agent'],
+    image_deps=['aideator-api'],
     image_keys=[
-        ('api.image.repository', 'api.image.tag'),
-        ('agent.image.repository', 'agent.image.tag'),
+        ('image.repository', 'image.tag'),
     ],
     resource_deps=['create-secrets'],
 )
 
 # Frontend development (runs locally)
-# Check for available port
-frontend_port = str(local('python3 -c "import socket; s=socket.socket(); s.bind((\'\', 0)); print(s.getsockname()[1]); s.close()"', quiet=True)).strip()
-
 local_resource(
     'frontend',
-    serve_cmd='cd frontend && npm run dev -- --port ' + frontend_port,
+    serve_cmd='cd frontend && npm run dev',
     serve_env={
         'NEXT_PUBLIC_API_URL': 'http://localhost:8000',
-        'PORT': frontend_port,
     },
     deps=['frontend/'],
     ignore=[
@@ -127,59 +122,59 @@ k8s_resource(
 )
 
 # Development job template for testing agents
-k8s_yaml('''
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: agent-job-dev-test
-  namespace: aideator
-  labels:
-    app: aideator-agent
-    type: dev-test
-spec:
-  ttlSecondsAfterFinished: 300
-  backoffLimit: 0
-  template:
-    metadata:
-      labels:
-        app: aideator-agent
-        type: dev-test
-    spec:
-      serviceAccountName: aideator-agent
-      restartPolicy: Never
-      containers:
-      - name: agent
-        image: aideator-agent:dev
-        imagePullPolicy: IfNotPresent
-        env:
-        - name: RUN_ID
-          value: "dev-test-run"
-        - name: VARIATION_ID
-          value: "dev-test-variation"
-        - name: REDIS_HOST
-          value: "aideator-redis"
-        - name: REDIS_PORT
-          value: "6379"
-        - name: OPENAI_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: openai-secret
-              key: api-key
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "500m"
-          limits:
-            memory: "2Gi"
-            cpu: "2000m"
-''')
+# k8s_yaml('''
+# apiVersion: batch/v1
+# kind: Job
+# metadata:
+#   name: agent-job-dev-test
+#   namespace: aideator
+#   labels:
+#     app: aideator-agent
+#     type: dev-test
+# spec:
+#   ttlSecondsAfterFinished: 300
+#   backoffLimit: 0
+#   template:
+#     metadata:
+#       labels:
+#         app: aideator-agent
+#         type: dev-test
+#     spec:
+#       serviceAccountName: aideator-agent
+#       restartPolicy: Never
+#       containers:
+#       - name: agent
+#         image: aideator-agent:dev
+#         imagePullPolicy: IfNotPresent
+#         env:
+#         - name: RUN_ID
+#           value: "dev-test-run"
+#         - name: VARIATION_ID
+#           value: "dev-test-variation"
+#         - name: REDIS_HOST
+#           value: "aideator-redis"
+#         - name: REDIS_PORT
+#           value: "6379"
+#         - name: OPENAI_API_KEY
+#           valueFrom:
+#             secretKeyRef:
+#               name: openai-secret
+#               key: api-key
+#         resources:
+#           requests:
+#             memory: "512Mi"
+#             cpu: "500m"
+#           limits:
+#             memory: "2Gi"
+#             cpu: "2000m"
+# ''')
 
-k8s_resource(
-    'agent-job-dev-test',
-    labels=['dev-tools'],
-    auto_init=False,
-    trigger_mode=TRIGGER_MODE_MANUAL,
-)
+# k8s_resource(
+#     'agent-job-dev-test',
+#     labels=['dev-tools'],
+#     auto_init=False,
+#     trigger_mode=TRIGGER_MODE_MANUAL,
+# )
 
 # Print helpful information
 print("""
@@ -193,4 +188,4 @@ To create a test agent run:
   tilt trigger agent-job-dev-test
 
 Wise the Force be with you. 🧘
-""".format(frontend_port))
+""")
