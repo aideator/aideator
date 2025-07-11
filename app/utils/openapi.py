@@ -1,10 +1,11 @@
+from collections.abc import Callable
 from typing import Any
 
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 
 
-def custom_openapi(app: FastAPI) -> callable:
+def custom_openapi(app: FastAPI) -> Callable[[], dict[str, Any]]:
     """Create custom OpenAPI schema."""
 
     def openapi() -> dict[str, Any]:
@@ -20,6 +21,11 @@ def custom_openapi(app: FastAPI) -> callable:
         )
 
         # Add security schemes
+        if "components" not in openapi_schema:
+            openapi_schema["components"] = {}
+        if "securitySchemes" not in openapi_schema["components"]:
+            openapi_schema["components"]["securitySchemes"] = {}
+
         openapi_schema["components"]["securitySchemes"] = {
             "ApiKeyAuth": {
                 "type": "apiKey",
@@ -53,6 +59,9 @@ def custom_openapi(app: FastAPI) -> callable:
         ]
 
         # Add example responses
+        if "responses" not in openapi_schema["components"]:
+            openapi_schema["components"]["responses"] = {}
+
         openapi_schema["components"]["responses"] = {
             "ValidationError": {
                 "description": "Validation error",

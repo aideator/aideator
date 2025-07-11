@@ -98,11 +98,14 @@ export function useSessionManager(): SessionManagerHook {
       const response = await createSession(request);
       
       const newSession: Session = {
-        session_id: response.session_id,
+        id: response.id,
         title: response.title,
         created_at: response.created_at,
         updated_at: response.created_at,
-        turn_count: 0
+        total_turns: 0,
+        last_activity_at: response.created_at,
+        is_active: true,
+        is_archived: false
       };
       
       // Add to sessions list
@@ -142,7 +145,7 @@ export function useSessionManager(): SessionManagerHook {
         setCurrentSession(null);
         
         // Remove from sessions list
-        setSessions(prev => prev.filter(s => s.session_id !== sessionId));
+        setSessions(prev => prev.filter(s => s.id !== sessionId));
       }
     } finally {
       setIsLoading(false);
@@ -158,19 +161,19 @@ export function useSessionManager(): SessionManagerHook {
       
       // Update in sessions list
       setSessions(prev => prev.map(session => 
-        session.session_id === sessionId
+        session.id === sessionId
           ? { ...session, title, updated_at: new Date().toISOString() }
           : session
       ));
       
       // Update current session if it's the one being updated
-      if (currentSession && currentSession.session_id === sessionId) {
+      if (currentSession && currentSession.id === sessionId) {
         setCurrentSession(prev => prev ? { ...prev, title } : null);
       }
       
       // Update cache
       const updatedSessions = sessions.map(session => 
-        session.session_id === sessionId
+        session.id === sessionId
           ? { ...session, title, updated_at: new Date().toISOString() }
           : session
       );
@@ -193,16 +196,16 @@ export function useSessionManager(): SessionManagerHook {
       await deleteSession(sessionId);
       
       // Remove from sessions list
-      setSessions(prev => prev.filter(s => s.session_id !== sessionId));
+      setSessions(prev => prev.filter(s => s.id !== sessionId));
       
       // Clear current session if it's the one being deleted
-      if (currentSession && currentSession.session_id === sessionId) {
+      if (currentSession && currentSession.id === sessionId) {
         setCurrentSession(null);
         cacheCurrentSession(null);
       }
       
       // Update cache
-      const updatedSessions = sessions.filter(s => s.session_id !== sessionId);
+      const updatedSessions = sessions.filter(s => s.id !== sessionId);
       cacheSessions(updatedSessions);
       
     } catch (error) {
@@ -221,7 +224,7 @@ export function useSessionManager(): SessionManagerHook {
   
   const refreshCurrentSession = useCallback(async () => {
     if (currentSession) {
-      await switchToSession(currentSession.session_id);
+      await switchToSession(currentSession.id);
     }
   }, [currentSession, switchToSession]);
   

@@ -1,5 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { createPrompt, recordPreference, type CreatePromptRequest, type ModelResponse, type PromptDetails } from '@/lib/api-client';
+import { createPrompt, recordPreference, type CreatePromptRequest, type ModelResponse as ApiModelResponse, type PromptDetails } from '@/lib/api-client';
+
+// Extended ModelResponse with UI-specific properties
+interface ModelResponse extends ApiModelResponse {
+  selected?: boolean;
+}
 
 export interface MultiModelStreamState {
   promptId: string | null;

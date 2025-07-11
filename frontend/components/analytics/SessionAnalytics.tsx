@@ -32,7 +32,7 @@ export interface SessionMetrics {
 interface SessionAnalyticsProps {
   metrics: SessionMetrics;
   isLoading?: boolean;
-  timeRange?: 'day' | 'week' | 'month' | 'all';
+  timeRange?: 'day' | 'week' | 'month' | 'quarter' | 'year' | 'all';
 }
 
 export function SessionAnalytics({ 
@@ -56,6 +56,8 @@ export function SessionAnalytics({
       case 'day': return 'Today';
       case 'week': return 'This Week';
       case 'month': return 'This Month';
+      case 'quarter': return 'This Quarter';
+      case 'year': return 'This Year';
       case 'all': return 'All Time';
       default: return 'This Week';
     }
@@ -266,4 +268,3 @@ export function SessionAnalytics({
   );
 }
 
-export default SessionAnalytics;

@@ -281,4 +281,3 @@ export function ComparisonGrid({
   );
 }
 
-export default ComparisonGrid;

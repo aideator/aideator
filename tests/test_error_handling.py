@@ -156,7 +156,9 @@ class TestModelCatalogValidation:
         """Test validation for non-existent model."""
         available_keys = {"openai": True}
 
-        is_valid, error_msg = model_catalog.validate_model_access("nonexistent-model", available_keys)
+        is_valid, error_msg = model_catalog.validate_model_access(
+            "nonexistent-model", available_keys
+        )
 
         assert is_valid is False
         assert "not found" in error_msg
@@ -166,7 +168,9 @@ class TestModelCatalogValidation:
         """Test validation when required API key is missing."""
         available_keys = {"openai": False, "anthropic": False}
 
-        is_valid, error_msg = model_catalog.validate_model_access("gpt-4", available_keys)
+        is_valid, error_msg = model_catalog.validate_model_access(
+            "gpt-4", available_keys
+        )
 
         assert is_valid is False
         assert "requires openai API key" in error_msg
@@ -175,7 +179,9 @@ class TestModelCatalogValidation:
         """Test validation when API key is available."""
         available_keys = {"openai": True}
 
-        is_valid, error_msg = model_catalog.validate_model_access("gpt-4", available_keys)
+        is_valid, error_msg = model_catalog.validate_model_access(
+            "gpt-4", available_keys
+        )
 
         assert is_valid is True
         assert error_msg == ""
@@ -188,7 +194,9 @@ class TestModelCatalogValidation:
 
         # Should include OpenAI models but not Anthropic models
         openai_models = [m for m in available_models if m.provider.value == "openai"]
-        anthropic_models = [m for m in available_models if m.provider.value == "anthropic"]
+        anthropic_models = [
+            m for m in available_models if m.provider.value == "anthropic"
+        ]
 
         assert len(openai_models) > 0
         assert len(anthropic_models) == 0
@@ -217,7 +225,7 @@ class TestAgentErrorHandling:
             "MODEL": "gpt-4",
             "OPENAI_API_KEY": "sk-test123456789",
             "AGENT_MODE": "litellm",
-            "PROMPT": "test prompt"
+            "PROMPT": "test prompt",
         }
 
         with patch.dict(os.environ, mock_env, clear=True):
@@ -238,7 +246,7 @@ class TestAgentErrorHandling:
             "MODEL": "gpt-4",
             "OPENAI_API_KEY": "sk-test123456789",
             "AGENT_MODE": "litellm",
-            "PROMPT": "test prompt"
+            "PROMPT": "test prompt",
         }
 
         with patch.dict(os.environ, mock_env, clear=True):
@@ -246,7 +254,9 @@ class TestAgentErrorHandling:
 
             # Mock authentication error
             with patch("agent.main.acompletion") as mock_completion:
-                mock_completion.side_effect = Exception("Authentication failed: invalid API key")
+                mock_completion.side_effect = Exception(
+                    "Authentication failed: invalid API key"
+                )
 
                 with pytest.raises(RuntimeError) as exc_info:
                     await agent._generate_litellm_response(None)
@@ -259,7 +269,7 @@ class TestAgentErrorHandling:
             "MODEL": "gpt-4",
             "OPENAI_API_KEY": "sk-test123456789",
             "AGENT_MODE": "litellm",
-            "PROMPT": "test prompt"
+            "PROMPT": "test prompt",
         }
 
         with patch.dict(os.environ, mock_env, clear=True):
@@ -280,7 +290,7 @@ class TestAgentErrorHandling:
             "MODEL": "nonexistent-model",
             "OPENAI_API_KEY": "sk-test123456789",
             "AGENT_MODE": "litellm",
-            "PROMPT": "test prompt"
+            "PROMPT": "test prompt",
         }
 
         with patch.dict(os.environ, mock_env, clear=True):
@@ -313,9 +323,7 @@ class TestAPIErrorHandling:
 
             # Create mock request with unavailable model
             mock_request = Mock()
-            mock_request.model_variants = [
-                Mock(model_definition_id="claude-3-sonnet")
-            ]
+            mock_request.model_variants = [Mock(model_definition_id="claude-3-sonnet")]
 
             # This should raise HTTPException due to missing API key
             # (Full integration test would require FastAPI test client setup)
@@ -332,11 +340,14 @@ class TestAPIErrorHandling:
         }
 
         available_models = model_catalog.get_available_models_for_keys(
-            {provider.value: available for provider, available in available_keys.items()}
+            {
+                provider.value: available
+                for provider, available in available_keys.items()
+            }
         )
 
         # Should include OpenAI and Gemini models, but not Anthropic
-        providers = set(model.provider.value for model in available_models)
+        providers = {model.provider.value for model in available_models}
         assert "openai" in providers
         assert "gemini" in providers
         assert "anthropic" not in providers

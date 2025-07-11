@@ -1,7 +1,8 @@
 from collections.abc import AsyncGenerator
+from typing import Any
 
 from sqlalchemy import create_engine
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import Session as SyncSession
 from sqlmodel import SQLModel
@@ -10,76 +11,62 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 
 # Import models to ensure they're registered with SQLModel
-from app.models.model_definition import ModelDefinitionDB, ModelSyncLog
-from app.models.provider_key import ProviderAPIKeyDB, ProviderAPIKeyAuditLog
-from app.models import (
-    APIKey,
-    AgentOutput,
-    ModelDefinition,
-    ModelVariant,
-    Preference,
-    ProviderCredential,
-    Run,
-    Session,
-    Turn,
-    User,
-)
 
 settings = get_settings()
 logger = get_logger(__name__)
 
 # Create async engine with database-specific parameters
-engine_kwargs = {
+engine_kwargs: dict[str, Any] = {
     "echo": settings.database_echo,
     "pool_pre_ping": True,
 }
 
 # Add PostgreSQL-specific parameters only for PostgreSQL
 if "postgresql" in settings.database_url_async:
-    engine_kwargs.update({
-        "pool_size": settings.database_pool_size,
-        "pool_recycle": settings.database_pool_recycle,
-        "pool_timeout": 30,
-        "max_overflow": 10,
-    })
+    engine_kwargs.update(
+        {
+            "pool_size": settings.database_pool_size,
+            "pool_recycle": settings.database_pool_recycle,
+            "pool_timeout": 30,
+            "max_overflow": 10,
+        }
+    )
 
 engine = create_async_engine(settings.database_url_async, **engine_kwargs)
 
 # Create async session factory
-async_session_maker = sessionmaker(
-    engine,
+async_session_maker = async_sessionmaker(
+    bind=engine,
     class_=AsyncSession,
     expire_on_commit=False,
     autoflush=False,
-    autocommit=False,
 )
 
-# Alias for backward compatibility with migration scripts
-AsyncSessionFactory = async_session_maker
 
 # Create sync engine for background tasks with database-specific parameters
 sync_url = settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
-sync_engine_kwargs = {
+sync_engine_kwargs: dict[str, Any] = {
     "echo": settings.database_echo,
     "pool_pre_ping": True,
 }
 
 # Add PostgreSQL-specific parameters only for PostgreSQL
 if "postgresql" in sync_url:
-    sync_engine_kwargs.update({
-        "pool_size": settings.database_pool_size,
-        "pool_recycle": settings.database_pool_recycle,
-    })
+    sync_engine_kwargs.update(
+        {
+            "pool_size": settings.database_pool_size,
+            "pool_recycle": settings.database_pool_recycle,
+        }
+    )
 
 sync_engine = create_engine(sync_url, **sync_engine_kwargs)
 
 # Create sync session factory
 sync_session_maker = sessionmaker(
-    sync_engine,
+    bind=sync_engine,
     class_=SyncSession,
     expire_on_commit=False,
     autoflush=False,
-    autocommit=False,
 )
 
 
@@ -93,8 +80,13 @@ async def create_db_and_tables() -> None:
     except Exception as e:
         error_msg = str(e).lower()
         # Handle specific duplicate index/table errors
-        if ("ix_model_definitions_model_name" in error_msg and "already exists" in error_msg):
-            logger.info("Database index already exists, continuing with existing schema")
+        if (
+            "ix_model_definitions_model_name" in error_msg
+            and "already exists" in error_msg
+        ):
+            logger.info(
+                "Database index already exists, continuing with existing schema"
+            )
         elif "already exists" in error_msg or "duplicate" in error_msg:
             logger.info("Database objects already exist, skipping creation")
         else:
@@ -127,7 +119,7 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
-def get_sync_session():
+def get_sync_session() -> Any:
     """Get synchronous database session for background tasks."""
     with sync_session_maker() as session:
         try:

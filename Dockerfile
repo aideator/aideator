@@ -1,5 +1,8 @@
-# Multi-stage Dockerfile for AIdeator
-FROM python:3.11-slim AS base
+# Multi-stage Dockerfile for AIdeator with optimized image sizes
+# Using distroless and minimal base images for security and size
+
+# Build stage for Python dependencies
+FROM python:3.11-alpine AS python-builder
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -24,59 +27,83 @@ RUN set -eux; \
 # Install Claude Code and Gemini CLI globally
 RUN npm install -g @anthropic-ai/claude-code @google/gemini-cli @openai/codex
 
-# Install kubectl for Kubernetes operations
-RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
-    && chmod +x kubectl \
-    && mv kubectl /usr/local/bin/
+# Download kubectl
+FROM alpine AS kubectl-builder
+RUN apk add --no-cache curl && \
+    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
+    chmod +x kubectl
+
+# Final API stage using distroless
+FROM gcr.io/distroless/python3-debian12:nonroot AS api
+
+# Copy Python virtual environment
+COPY --from=python-builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONPATH="/app:$PYTHONPATH"
+
+# Copy kubectl
+COPY --from=kubectl-builder /kubectl /usr/local/bin/kubectl
+
+# Copy Node.js tools
+COPY --from=node-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=node-builder /usr/local/bin/claude-code /usr/local/bin/
+COPY --from=node-builder /usr/local/bin/gemini-cli /usr/local/bin/
+COPY --from=node-builder /usr/local/bin/codex /usr/local/bin/
 
 # Set working directory
 WORKDIR /app
 
-# Copy requirements first (for better caching)
-COPY requirements.txt .
-
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# FastAPI API stage
-FROM base AS api
-
 # Copy application code
-COPY app/ ./app/
-COPY k8s/ ./k8s/
-COPY alembic/ ./alembic/
-COPY alembic.ini ./
-COPY scripts/ ./scripts/
-
-# Create non-root user
-RUN useradd -m -u 1000 apiuser && chown -R apiuser:apiuser /app
-USER apiuser
+COPY --chown=nonroot:nonroot app/ ./app/
+COPY --chown=nonroot:nonroot k8s/ ./k8s/
+COPY --chown=nonroot:nonroot alembic/ ./alembic/
+COPY --chown=nonroot:nonroot alembic.ini ./
+COPY --chown=nonroot:nonroot scripts/ ./scripts/
 
 # Expose port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+# Run FastAPI (distroless includes Python)
+ENTRYPOINT ["python", "-m", "uvicorn"]
+CMD ["app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
-# Run FastAPI
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Agent stage using minimal Alpine
+FROM python:3.11-alpine AS agent
 
-# Agent stage
-FROM base AS agent
+# Install runtime dependencies only
+RUN apk add --no-cache \
+    git \
+    curl \
+    nodejs \
+    npm \
+    ca-certificates \
+    && rm -rf /var/cache/apk/*
 
-# Copy agent requirements and install dependencies
-COPY agent/requirements.txt ./agent-requirements.txt
-RUN pip install --no-cache-dir -r agent-requirements.txt
+# Copy Python virtual environment
+COPY --from=python-builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy agent code
-COPY agent/ ./agent/
+# Copy kubectl
+COPY --from=kubectl-builder /kubectl /usr/local/bin/kubectl
 
-# Create workspace directory
-RUN mkdir -p /workspace && chmod 777 /workspace
+# Copy Node.js tools
+COPY --from=node-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=node-builder /usr/local/bin/claude-code /usr/local/bin/
+COPY --from=node-builder /usr/local/bin/gemini-cli /usr/local/bin/
+COPY --from=node-builder /usr/local/bin/codex /usr/local/bin/
 
 # Create non-root user
-RUN useradd -m -u 1000 agentuser && chown -R agentuser:agentuser /app /workspace
+RUN adduser -D -u 1000 agentuser
+
+# Set working directory
+WORKDIR /app
+
+# Copy agent code
+COPY --chown=agentuser:agentuser agent/ ./agent/
+COPY --chown=agentuser:agentuser app/models/ ./app/models/
+COPY --chown=agentuser:agentuser app/core/config.py ./app/core/config.py
+
+# Switch to non-root user
 USER agentuser
 
 # Set working directory to workspace
@@ -86,4 +113,4 @@ WORKDIR /workspace
 ENV PYTHONPATH="/app:$PYTHONPATH"
 
 # Run agent
-CMD ["python", "-u", "/app/agent/main.py"]
+CMD ["python", "-m", "agent.main"]

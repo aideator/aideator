@@ -51,7 +51,7 @@ export function StreamGrid({
       {/* Status bar - only show when connecting, error, or streaming */}
       {(connectionStatus || isStreaming) && (
         <div className="mb-6 flex justify-end items-center gap-3">
-          {connectionStatus && (
+          {connectionStatus && StatusIcon && (
             <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${connectionStatus.colorClass}`}>
               <StatusIcon className="w-4 h-4 mr-2" />
               {connectionStatus.text}
@@ -111,4 +111,3 @@ export function StreamGrid({
   );
 }
 
-export default StreamGrid;

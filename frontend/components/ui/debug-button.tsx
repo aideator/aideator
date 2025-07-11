@@ -55,7 +55,7 @@ export function DebugButton({ runId, variationId, className }: DebugButtonProps)
     // Check if it's an agent output (markdown content)
     const isAgentOutput = logLine.includes('```') || 
                          logLine.includes('#') || 
-                         logLine.match(/^[A-Z][a-z].*\.$/) ||
+                         !!logLine.match(/^[A-Z][a-z].*\.$/) ||
                          logLine.includes('**') ||
                          logLine.includes('*') ||
                          logLine.length > 200;

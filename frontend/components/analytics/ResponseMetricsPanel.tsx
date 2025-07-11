@@ -325,4 +325,3 @@ export function ResponseMetricsPanel({
   );
 }
 
-export default ResponseMetricsPanel;

@@ -5,12 +5,17 @@ Runs inside Kubernetes jobs and streams output via stdout.
 """
 
 import asyncio
+import asyncio.subprocess
+import builtins
+import contextlib
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
-from datetime import datetime
+import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 import aiofiles
@@ -20,6 +25,18 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 import aiofiles
 import redis.asyncio as redis
 from agent.services.database_service import DatabaseService
+
+# Constants
+MIN_API_KEY_LENGTH = 10
+MIN_GENERIC_KEY_LENGTH = 5
+MAX_RETRY_ATTEMPTS = 3
+RETRY_MIN_WAIT = 4
+RETRY_MAX_WAIT = 10
+DEFAULT_TEMPERATURE = 0.7
+MAX_KEY_FILE_SIZE = 50000
+MAX_KEY_FILES_TO_READ = 10
+MAX_FILE_PREVIEW_CHARS = 2000
+CHUNK_READ_SIZE = 1024
 
 
 class AIdeatorAgent:
@@ -35,12 +52,14 @@ class AIdeatorAgent:
         # LLM configuration
         self.config = {
             "model": os.getenv("MODEL", "gpt-4"),
-            "temperature": float(os.getenv("TEMPERATURE", "0.7")),
+            "temperature": float(os.getenv("TEMPERATURE", str(DEFAULT_TEMPERATURE))),
             "max_tokens": int(os.getenv("MAX_TOKENS", "4000")),
         }
 
         # LiteLLM Gateway configuration
-        self.gateway_url = os.getenv("LITELLM_GATEWAY_URL", "http://aideator-litellm:4000")
+        self.gateway_url = os.getenv(
+            "LITELLM_GATEWAY_URL", "http://aideator-litellm:4000"
+        )
         self.gateway_key = os.getenv("LITELLM_GATEWAY_KEY", "sk-1234")
 
         # API key setup (for direct calls if needed)
@@ -48,9 +67,8 @@ class AIdeatorAgent:
         if api_key:
             os.environ["OPENAI_API_KEY"] = api_key
 
-        # Working directory
-        self.work_dir = Path("/tmp/agent-workspace")
-        self.work_dir.mkdir(exist_ok=True)
+        # Working directory - use a secure temp directory
+        self.work_dir = Path(tempfile.mkdtemp(prefix="agent-workspace-"))
         self.repo_dir = self.work_dir / "repo"
 
         # Setup logging to file only (not stdout to avoid mixing with LLM output)
@@ -120,14 +138,23 @@ class AIdeatorAgent:
 
         # Check OpenAI API Key
         openai_key = os.getenv("OPENAI_API_KEY")
-        if openai_key and openai_key.strip() and openai_key != "sk-" and len(openai_key) > 10:
+        if (
+            openai_key
+            and openai_key.strip()
+            and openai_key != "sk-"
+            and len(openai_key) > MIN_API_KEY_LENGTH
+        ):
             available_keys["openai"] = True
         else:
             available_keys["openai"] = False
 
         # Check Anthropic API Key
         anthropic_key = os.getenv("ANTHROPIC_API_KEY")
-        if anthropic_key and anthropic_key.strip() and anthropic_key.startswith("sk-ant-"):
+        if (
+            anthropic_key
+            and anthropic_key.strip()
+            and anthropic_key.startswith("sk-ant-")
+        ):
             available_keys["anthropic"] = True
         else:
             available_keys["anthropic"] = False
@@ -145,10 +172,12 @@ class AIdeatorAgent:
             ("cohere", "COHERE_API_KEY"),
             ("groq", "GROQ_API_KEY"),
             ("perplexity", "PERPLEXITY_API_KEY"),
-            ("deepseek", "DEEPSEEK_API_KEY")
+            ("deepseek", "DEEPSEEK_API_KEY"),
         ]:
             key = os.getenv(env_var)
-            available_keys[provider] = bool(key and key.strip() and len(key) > 5)
+            available_keys[provider] = bool(
+                key and key.strip() and len(key) > MIN_GENERIC_KEY_LENGTH
+            )
 
         return available_keys
 
@@ -177,7 +206,7 @@ class AIdeatorAgent:
 
     def _validate_model_credentials(self, model_name: str) -> tuple[bool, str]:
         """Validate that credentials are available for the requested model.
-        
+
         Returns:
             tuple: (is_valid, error_message)
         """
@@ -192,7 +221,7 @@ class AIdeatorAgent:
                 "cohere": "Cohere",
                 "groq": "Groq",
                 "perplexity": "Perplexity",
-                "deepseek": "DeepSeek"
+                "deepseek": "DeepSeek",
             }
 
             readable_provider = provider_names.get(provider, provider.title())
@@ -233,7 +262,11 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
 
     def _get_available_models_suggestion(self) -> str:
         """Get a helpful suggestion of available models based on configured API keys."""
-        available_providers = [provider for provider, available in self.available_api_keys.items() if available]
+        available_providers = [
+            provider
+            for provider, available in self.available_api_keys.items()
+            if available
+        ]
 
         if not available_providers:
             return "No API keys are currently configured. Please add at least one API key to use any models."
@@ -247,7 +280,9 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             elif provider == "gemini":
                 suggestions.append("- Google: gemini-1.5-pro, gemini-1.5-flash")
             elif provider == "mistral":
-                suggestions.append("- Mistral: mistral-large-latest, mistral-small-latest")
+                suggestions.append(
+                    "- Mistral: mistral-large-latest, mistral-small-latest"
+                )
             elif provider == "cohere":
                 suggestions.append("- Cohere: command-r-plus, command-r")
             elif provider == "groq":
@@ -257,7 +292,9 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             elif provider == "deepseek":
                 suggestions.append("- DeepSeek: deepseek-chat")
 
-        return "**Available models with configured API keys:**\n" + "\n".join(suggestions)
+        return "**Available models with configured API keys:**\n" + "\n".join(
+            suggestions
+        )
 
     def log(self, message: str, level: str = "INFO", **kwargs):
         """
@@ -265,12 +302,12 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
         Note: This is synchronous for now, Redis publish happens in publish_output
         """
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "run_id": self.run_id,
             "variation_id": self.variation_id,
             "level": level,
             "message": message,
-            **kwargs
+            **kwargs,
         }
         
         # For now, just print to stdout for debugging
@@ -280,7 +317,7 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
         # Also log to file
         self.file_logger.log(
             getattr(logging, level, logging.INFO),
-            f"{message} | {json.dumps(kwargs) if kwargs else ''}"
+            f"{message} | {json.dumps(kwargs) if kwargs else ''}",
         )
 
     def log_progress(self, message: str, detail: str = ""):
@@ -358,18 +395,23 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
 
     async def run(self) -> None:
         """Main agent execution flow."""
-        # Initialize Redis first (currently disabled for database messaging)
-        await self._init_redis()
-        
-        # Initialize database connection
-        db_connected = await self.db_service.connect()
-        if db_connected:
-            self.log("✅ Database connected for output persistence", "INFO")
-        else:
-            self.log("⚠️  Database not connected, outputs will not be persisted", "WARNING")
-        
-        self.log(f"🚀 Starting AIdeator Agent", "INFO", config=self.config)
-        
+        self.log("🚀 Starting AIdeator Agent", "INFO", config=self.config)
+
+        # Log available API keys for debugging
+        self.log(
+            "🔑 API Key availability check",
+            "INFO",
+            available_keys=self.available_api_keys,
+        )
+
+        # Validate model credentials before proceeding
+        is_valid, error_msg = self._validate_model_credentials(self.config["model"])
+        if not is_valid:
+            # Output the user-friendly error message
+            print(error_msg, flush=True)
+            self.log_error(f"Missing API key for model {self.config['model']}", None)
+            raise RuntimeError(f"Missing API key for model {self.config['model']}")
+
         # Log agent mode
         agent_mode = os.getenv("AGENT_MODE", "litellm")
         self.log(f"🎯 Agent mode: {agent_mode}", "INFO", agent_mode=agent_mode)
@@ -381,16 +423,27 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             # Log CLI tool versions for code modes
             if agent_mode == "claude-cli":
                 claude_version = self._get_cli_version("claude")
-                self.log(f"🤖 Claude CLI version: {claude_version}", "INFO", claude_version=claude_version)
+                self.log(
+                    f"🤖 Claude CLI version: {claude_version}",
+                    "INFO",
+                    claude_version=claude_version,
+                )
             elif agent_mode == "gemini-cli":
                 gemini_version = self._get_cli_version("gemini")
-                self.log(f"💎 Gemini CLI version: {gemini_version}", "INFO", gemini_version=gemini_version)
+                self.log(
+                    f"💎 Gemini CLI version: {gemini_version}",
+                    "INFO",
+                    gemini_version=gemini_version,
+                )
 
         # Log LiteLLM Gateway configuration
-        self.log("🔧 Using LiteLLM Gateway", "INFO",
-                 gateway_url=self.gateway_url,
-                 model=self.config["model"],
-                 note="Routing through LiteLLM Gateway for unified API access")
+        self.log(
+            "🔧 Using LiteLLM Gateway",
+            "INFO",
+            gateway_url=self.gateway_url,
+            model=self.config["model"],
+            note="Routing through LiteLLM Gateway for unified API access",
+        )
 
         # Log file location to file only, not stdout
         self.log(f"Debug logs location: {self.log_file}", "INFO")
@@ -412,9 +465,12 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                 response = await self._generate_llm_response(None)
 
             # Output final response
-            self.log("✅ Generation complete", "INFO",
-                    response_length=len(response),
-                    status="success")
+            self.log(
+                "✅ Generation complete",
+                "INFO",
+                response_length=len(response),
+                status="success",
+            )
 
         except Exception as e:
             self.log_error("Agent execution failed", e)
@@ -426,23 +482,21 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
 
         try:
             if self.repo_dir.exists():
-                import shutil
                 shutil.rmtree(self.repo_dir)
 
             # Clone with minimal depth
             git.Repo.clone_from(
-                self.repo_url,
-                self.repo_dir,
-                depth=1,
-                single_branch=True
+                self.repo_url, self.repo_dir, depth=1, single_branch=True
             )
 
-            self.log_progress("Repository cloned successfully",
-                            f"Size: {self._get_directory_size(self.repo_dir)} MB")
+            self.log_progress(
+                "Repository cloned successfully",
+                f"Size: {self._get_directory_size(self.repo_dir)} MB",
+            )
 
         except Exception as e:
             self.log_error("Failed to clone repository", e)
-            raise RuntimeError(f"Repository clone failed: {e}")
+            raise RuntimeError(f"Repository clone failed: {e}") from e
 
     async def _analyze_codebase(self) -> str:
         """Analyze the codebase structure and content."""
@@ -453,14 +507,19 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             "total_files": 0,
             "total_size_mb": 0,
             "languages": {},
-            "key_files": []
+            "key_files": [],
         }
 
         try:
             # Walk through repository
             for root, dirs, files in os.walk(self.repo_dir):
                 # Skip hidden and vendor directories
-                dirs[:] = [d for d in dirs if not d.startswith(".") and d not in ["node_modules", "vendor", "__pycache__"]]
+                dirs[:] = [
+                    d
+                    for d in dirs
+                    if not d.startswith(".")
+                    and d not in ["node_modules", "vendor", "__pycache__"]
+                ]
 
                 for file in files:
                     if file.startswith("."):
@@ -472,14 +531,16 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                     # Track file extension
                     ext = file_path.suffix.lower()
                     if ext:
-                        analysis["languages"][ext] = analysis["languages"].get(ext, 0) + 1
+                        analysis["languages"][ext] = (
+                            analysis["languages"].get(ext, 0) + 1
+                        )
 
                     analysis["total_files"] += 1
 
                     # Add file info
                     file_info = {
                         "path": str(relative_path),
-                        "size": file_path.stat().st_size
+                        "size": file_path.stat().st_size,
                     }
                     analysis["files"].append(file_info)
 
@@ -500,41 +561,62 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             ]
 
             # Read contents of key files
-            for key_file in analysis["key_files"][:10]:  # Limit to top 10 files
+            for key_file in analysis["key_files"][
+                :MAX_KEY_FILES_TO_READ
+            ]:  # Limit to top files
                 file_path = self.repo_dir / key_file
-                if file_path.exists() and file_path.stat().st_size < 50000:  # Skip large files
+                if (
+                    file_path.exists() and file_path.stat().st_size < MAX_KEY_FILE_SIZE
+                ):  # Skip large files
                     try:
-                        async with aiofiles.open(file_path, encoding="utf-8", errors="ignore") as f:
+                        async with aiofiles.open(
+                            file_path, encoding="utf-8", errors="ignore"
+                        ) as f:
                             content = await f.read()
-                            summary_parts.extend([
-                                f"\n--- {key_file} ---",
-                                content[:2000],  # First 2000 chars
-                                "..." if len(content) > 2000 else "",
-                                ""
-                            ])
+                            summary_parts.extend(
+                                [
+                                    f"\n--- {key_file} ---",
+                                    content[:MAX_FILE_PREVIEW_CHARS],  # First chars
+                                    "..."
+                                    if len(content) > MAX_FILE_PREVIEW_CHARS
+                                    else "",
+                                    "",
+                                ]
+                            )
                     except Exception as e:
                         self.file_logger.warning(f"Failed to read {key_file}: {e}")
 
             summary = "\n".join(summary_parts)
 
-            self.log_progress("Codebase analysis complete",
-                            f"Files: {analysis['total_files']}, Size: {analysis['total_size_mb']}MB")
+            self.log_progress(
+                "Codebase analysis complete",
+                f"Files: {analysis['total_files']}, Size: {analysis['total_size_mb']}MB",
+            )
 
             return summary
 
         except Exception as e:
             self.log_error("Codebase analysis failed", e)
-            raise RuntimeError(f"Failed to analyze codebase: {e}")
+            raise RuntimeError(f"Failed to analyze codebase: {e}") from e
 
     def _identify_key_files(self) -> list:
         """Identify important files in the repository."""
         key_patterns = [
-            "README*", "readme*",
-            "package.json", "requirements.txt", "setup.py", "Cargo.toml", "go.mod",
-            "Dockerfile", "docker-compose*",
+            "README*",
+            "readme*",
+            "package.json",
+            "requirements.txt",
+            "setup.py",
+            "Cargo.toml",
+            "go.mod",
+            "Dockerfile",
+            "docker-compose*",
             ".github/workflows/*",
-            "main.*", "app.*", "index.*",
-            "config.*", "settings.*"
+            "main.*",
+            "app.*",
+            "index.*",
+            "config.*",
+            "settings.*",
         ]
 
         key_files = []
@@ -542,6 +624,7 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             if "*" in pattern:
                 # Handle wildcards
                 import glob
+
                 matches = glob.glob(str(self.repo_dir / pattern), recursive=True)
                 for match in matches:
                     try:
@@ -567,9 +650,10 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
         try:
             result = subprocess.run(
                 [command, "--version"],
-                check=False, capture_output=True,
+                check=False,
+                capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
             )
             if result.returncode == 0:
                 return result.stdout.strip()
@@ -582,8 +666,8 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             return f"Error: {e!s}"
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=4, max=10)
+        stop=stop_after_attempt(MAX_RETRY_ATTEMPTS),
+        wait=wait_exponential(multiplier=1, min=RETRY_MIN_WAIT, max=RETRY_MAX_WAIT),
     )
     async def _generate_llm_response(self, codebase_summary: str) -> str:
         """Generate LLM response based on codebase analysis."""
@@ -597,8 +681,10 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
 
     async def _generate_claude_cli_response(self) -> str:
         """Generate response using Claude CLI with real-time streaming."""
-        self.log_progress("Generating response using Claude CLI",
-                         "Executing claude command with streaming output")
+        self.log_progress(
+            "Generating response using Claude CLI",
+            "Executing claude command with streaming output",
+        )
 
         try:
             # Change to repository directory for context
@@ -606,7 +692,9 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             os.chdir(self.repo_dir)
 
             # Execute Claude CLI with streaming arguments (matching TypeScript version)
-            self.log_progress("Executing Claude CLI", f"Working directory: {self.repo_dir}")
+            self.log_progress(
+                "Executing Claude CLI", f"Working directory: {self.repo_dir}"
+            )
 
             # Use the same arguments as the working TypeScript version
             args = [
@@ -616,17 +704,18 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                 "stream-json",
                 "--dangerously-skip-permissions",
                 "-p",
-                self.prompt
+                self.prompt,
             ]
 
             self.log_progress("Spawning Claude CLI", f"Args: {' '.join(args)}")
 
             process = await asyncio.create_subprocess_exec(
-                *args,
+                args[0],
+                *args[1:],
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 stdin=asyncio.subprocess.PIPE,
-                env=os.environ  # Includes ANTHROPIC_API_KEY
+                env=os.environ,  # Includes ANTHROPIC_API_KEY
             )
 
             # Close stdin immediately since we're using -p flag (like TypeScript version)
@@ -637,7 +726,6 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             buffer = ""
             data_chunks = 0
             total_bytes = 0
-            has_received_data = False
 
             self.log_progress("Claude CLI process started", f"PID: {process.pid}")
 
@@ -645,21 +733,22 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                 # Read stdout in real-time chunks (like TypeScript version)
                 while True:
                     # Read a chunk of data
-                    chunk = await process.stdout.read(1024)
+                    chunk = await process.stdout.read(CHUNK_READ_SIZE)
                     if not chunk:
                         break
-                    
-                    has_received_data = True
+
                     data_chunks += 1
                     total_bytes += len(chunk)
-                    
-                    chunk_text = chunk.decode('utf-8', errors='ignore')
-                    self.log_progress(f"Received stdout chunk #{data_chunks}", 
-                                    f"({len(chunk)} bytes) - {chunk_text[:100]}{'...' if len(chunk_text) > 100 else ''}")
-                    
+
+                    chunk_text = chunk.decode("utf-8", errors="ignore")
+                    self.log_progress(
+                        f"Received stdout chunk #{data_chunks}",
+                        f"({len(chunk)} bytes) - {chunk_text[:100]}{'...' if len(chunk_text) > 100 else ''}",
+                    )
+
                     # Process the chunk immediately (streaming approach)
                     buffer += chunk_text
-                    lines = buffer.split('\n')
+                    lines = buffer.split("\n")
                     buffer = lines.pop()  # Keep incomplete line in buffer
 
                     for line in lines:
@@ -667,30 +756,45 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                             try:
                                 # Try to parse as JSON first (Claude CLI stream format)
                                 json_data = json.loads(line)
-                                self.log_progress("Parsed JSON message", f"Type: {json_data.get('type', 'unknown')}")
-                                
+                                self.log_progress(
+                                    "Parsed JSON message",
+                                    f"Type: {json_data.get('type', 'unknown')}",
+                                )
+
                                 # Extract content from JSON message
-                                if json_data.get('type') == 'assistant' and json_data.get('message', {}).get('content'):
-                                    for content_item in json_data['message']['content']:
-                                        if content_item.get('type') == 'text' and content_item.get('text'):
-                                            text_content = content_item['text']
+                                if json_data.get(
+                                    "type"
+                                ) == "assistant" and json_data.get("message", {}).get(
+                                    "content"
+                                ):
+                                    for content_item in json_data["message"]["content"]:
+                                        if content_item.get(
+                                            "type"
+                                        ) == "text" and content_item.get("text"):
+                                            text_content = content_item["text"]
                                             # Output immediately for streaming (like TypeScript)
-                                            print(text_content, end='', flush=True)
+                                            print(text_content, end="", flush=True)
                                             collected_output.append(text_content)
-                                        elif content_item.get('type') == 'tool_use':
+                                        elif content_item.get("type") == "tool_use":
                                             tool_info = f"🔧 Using tool: {content_item.get('name', 'unknown')}"
                                             print(tool_info, flush=True)
-                                            collected_output.append(tool_info + '\n')
-                                
+                                            collected_output.append(tool_info + "\n")
+
                             except json.JSONDecodeError:
                                 # If not JSON, treat as plain text output (like TypeScript fallback)
-                                self.log_progress("Plain text output", f"{line[:50]}{'...' if len(line) > 50 else ''}")
+                                self.log_progress(
+                                    "Plain text output",
+                                    f"{line[:50]}{'...' if len(line) > 50 else ''}",
+                                )
                                 print(line, flush=True)
-                                collected_output.append(line + '\n')
+                                collected_output.append(line + "\n")
 
                 # Handle any remaining buffer content
                 if buffer.strip():
-                    self.log_progress("Processing remaining buffer", f"{buffer[:50]}{'...' if len(buffer) > 50 else ''}")
+                    self.log_progress(
+                        "Processing remaining buffer",
+                        f"{buffer[:50]}{'...' if len(buffer) > 50 else ''}",
+                    )
                     print(buffer, flush=True)
                     collected_output.append(buffer)
 
@@ -703,21 +807,32 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                 # Handle stderr if there were errors
                 if process.returncode != 0:
                     stderr_output = await process.stderr.read()
-                    error_msg = stderr_output.decode() if stderr_output else "Unknown error"
-                    self.log_error("Claude CLI process failed", f"Exit code: {process.returncode}, Error: {error_msg}")
-                    
+                    error_msg = (
+                        stderr_output.decode() if stderr_output else "Unknown error"
+                    )
+                    self.log_error(
+                        "Claude CLI process failed",
+                        f"Exit code: {process.returncode}, Error: {error_msg}",
+                    )
+
                     # Still return collected output if we got some
                     if collected_output:
-                        self.log_progress("Returning partial output despite error", f"Collected {len(collected_output)} chunks")
-                        return ''.join(collected_output)
-                    else:
-                        raise RuntimeError(f"Claude CLI failed with exit code {process.returncode}: {error_msg}")
+                        self.log_progress(
+                            "Returning partial output despite error",
+                            f"Collected {len(collected_output)} chunks",
+                        )
+                        return "".join(collected_output)
+                    raise RuntimeError(
+                        f"Claude CLI failed with exit code {process.returncode}: {error_msg}"
+                    )
 
                 # Success case
-                response = ''.join(collected_output)
-                self.log_progress("Claude CLI streaming completed successfully", 
-                                f"Total chunks: {data_chunks}, Total bytes: {total_bytes}, Response length: {len(response)} characters")
-                
+                response = "".join(collected_output)
+                self.log_progress(
+                    "Claude CLI streaming completed successfully",
+                    f"Total chunks: {data_chunks}, Total bytes: {total_bytes}, Response length: {len(response)} characters",
+                )
+
                 return response if response else "No output received from Claude CLI"
 
             except Exception as stream_error:
@@ -729,18 +844,17 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
 
         except Exception as e:
             # Change back to original directory in case of error
-            try:
+            with contextlib.suppress(builtins.BaseException):
                 os.chdir(original_dir)
-            except:
-                pass
-            
+
             self.log_error("Claude CLI streaming execution failed", e)
-            raise RuntimeError(f"Failed to generate Claude CLI response: {e}")
+            raise RuntimeError(f"Failed to generate Claude CLI response: {e}") from e
 
     async def _generate_gemini_cli_response(self) -> str:
         """Generate response using Gemini CLI."""
-        self.log_progress("Generating response using Gemini CLI",
-                         "Executing gemini command")
+        self.log_progress(
+            "Generating response using Gemini CLI", "Executing gemini command"
+        )
 
         try:
             # Change to repository directory for context
@@ -748,7 +862,9 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             os.chdir(self.repo_dir)
 
             # Execute Gemini CLI
-            self.log_progress("Executing Gemini CLI", f"Working directory: {self.repo_dir}")
+            self.log_progress(
+                "Executing Gemini CLI", f"Working directory: {self.repo_dir}"
+            )
 
             result = await asyncio.create_subprocess_exec(
                 "gemini",
@@ -756,14 +872,13 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                 self.prompt,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env=os.environ  # Includes GEMINI_API_KEY
+                env=os.environ,  # Includes GEMINI_API_KEY
             )
 
             # Wait for completion with timeout
             try:
                 stdout, stderr = await asyncio.wait_for(
-                    result.communicate(),
-                    timeout=30.0
+                    result.communicate(), timeout=30.0
                 )
             except TimeoutError:
                 result.terminate()
@@ -776,8 +891,11 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             if result.returncode == 0:
                 # Gemini CLI returns plain text output
                 response = stdout.decode().strip()
-                self.log("Gemini CLI response received", "INFO",
-                        response_length=len(response))
+                self.log(
+                    "Gemini CLI response received",
+                    "INFO",
+                    response_length=len(response),
+                )
 
                 # Stream the response line by line
                 for line in response.split("\n"):
@@ -786,18 +904,23 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
 
                 return response
             error_msg = stderr.decode() if stderr else "Unknown error"
-            raise RuntimeError(f"Gemini CLI failed with exit code {result.returncode}: {error_msg}")
+            raise RuntimeError(
+                f"Gemini CLI failed with exit code {result.returncode}: {error_msg}"
+            )
 
         except Exception as e:
             self.log_error("Gemini CLI execution failed", e)
-            raise RuntimeError(f"Failed to generate Gemini CLI response: {e}")
+            raise RuntimeError(f"Failed to generate Gemini CLI response: {e}") from e
 
     async def _generate_litellm_response(self, codebase_summary: str | None) -> str:
         """Generate response using LiteLLM (original implementation)."""
-        self.log("Generating LLM response", "INFO",
-                step="llm_start",
-                model=self.config["model"],
-                temperature=self.config["temperature"])
+        self.log(
+            "Generating LLM response",
+            "INFO",
+            step="llm_start",
+            model=self.config["model"],
+            temperature=self.config["temperature"],
+        )
 
         try:
             # Prepare the full prompt based on mode
@@ -833,15 +956,12 @@ Be thorough but concise in your response.
             # The gateway will handle routing to the actual provider
             try:
                 response = await acompletion(
-                    model=self.config["model"],  # Use model name directly, Gateway handles routing
+                    model=self.config[
+                        "model"
+                    ],  # Use model name directly, Gateway handles routing
                     max_tokens=self.config["max_tokens"],
                     temperature=self.config["temperature"],
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": full_prompt
-                        }
-                    ],
+                    messages=[{"role": "user", "content": full_prompt}],
                     stream=True,  # Enable streaming
                     api_base=self.gateway_url,  # Point to LiteLLM Gateway service
                     api_key=self.gateway_key,  # Use Gateway master key
@@ -851,7 +971,11 @@ Be thorough but concise in your response.
                 # Handle specific API errors with user-friendly messages
                 error_str = str(api_error).lower()
 
-                if "authentication" in error_str or "api key" in error_str or "unauthorized" in error_str:
+                if (
+                    "authentication" in error_str
+                    or "api key" in error_str
+                    or "unauthorized" in error_str
+                ):
                     provider = self._get_model_provider(self.config["model"])
                     error_message = f"""
 🔑 **Authentication Error**
@@ -861,17 +985,19 @@ The {provider.title()} API rejected the request due to authentication issues.
 **Possible causes:**
 - API key is invalid or expired
 - API key lacks necessary permissions
-- Model '{self.config['model']}' requires a different tier of access
+- Model '{self.config["model"]}' requires a different tier of access
 
 **Next steps:**
 1. Verify your {provider.title()} API key is valid
-2. Check if your API key has access to model '{self.config['model']}'
+2. Check if your API key has access to model '{self.config["model"]}'
 3. Try using a different model from the same provider
 
 Original error: {api_error!s}
 """
                     print(error_message, flush=True)
-                    raise RuntimeError(f"Authentication failed for {provider}: {api_error}")
+                    raise RuntimeError(
+                        f"Authentication failed for {provider}: {api_error}"
+                    )
 
                 if "rate limit" in error_str or "quota" in error_str:
                     provider = self._get_model_provider(self.config["model"])
@@ -892,13 +1018,17 @@ The {provider.title()} API rate limit has been exceeded.
 Original error: {api_error!s}
 """
                     print(error_message, flush=True)
-                    raise RuntimeError(f"Rate limit exceeded for {provider}: {api_error}")
+                    raise RuntimeError(
+                        f"Rate limit exceeded for {provider}: {api_error}"
+                    )
 
-                if "model" in error_str and ("not found" in error_str or "does not exist" in error_str):
+                if "model" in error_str and (
+                    "not found" in error_str or "does not exist" in error_str
+                ):
                     error_message = f"""
 🤖 **Model Not Available**
 
-The model '{self.config['model']}' is not available or does not exist.
+The model '{self.config["model"]}' is not available or does not exist.
 
 **Possible causes:**
 - Model name is misspelled
@@ -954,11 +1084,11 @@ If the problem persists, contact support with the error details above.
                         # Adjust chunk to end at word boundary if possible
                         space_pos = output_chunk.rfind(" ")
                         if space_pos > 8:  # Only adjust if we have a reasonable word
-                            output_chunk = buffer[:space_pos + 1]
+                            output_chunk = buffer[: space_pos + 1]
 
                         # Output the chunk directly without emoji prefix for cleaner parsing
                         print(output_chunk, end="", flush=True)
-                        buffer = buffer[len(output_chunk):]
+                        buffer = buffer[len(output_chunk) :]
 
                     # Also check for newlines to maintain structure
                     if "\n" in buffer:
@@ -971,16 +1101,19 @@ If the problem persists, contact support with the error details above.
             if buffer.strip():
                 print(buffer, end="", flush=True)
 
-            self.log("Streaming LLM response complete", "INFO",
-                    step="streaming_complete",
-                    chunks_received=chunk_count,
-                    total_length=len(response_text))
+            self.log(
+                "Streaming LLM response complete",
+                "INFO",
+                step="streaming_complete",
+                chunks_received=chunk_count,
+                total_length=len(response_text),
+            )
 
             return response_text
 
         except Exception as e:
             self.log_error("LLM generation failed", e)
-            raise RuntimeError(f"Failed to generate LLM response: {e}")
+            raise RuntimeError(f"Failed to generate LLM response: {e}") from e
 
 
 async def main():
@@ -1007,27 +1140,18 @@ async def main():
         sys.exit(0)
     except Exception as e:
         # Ensure error is visible in logs
-        agent.log(f"💥 Fatal error: {e!s}", "ERROR",
-                 exception_type=type(e).__name__)
-        
-        # Publish failure status
-        if agent.redis_client:
-            await agent.publish_status("variation_failed", {
-                "variation_id": agent.variation_id,
-                "error": str(e),
-                "error_type": type(e).__name__
-            })
-        
-        # Sleep for 600 seconds even on error
-        agent.log("⏱️ Sleeping for 600 seconds before exit (after error)", "INFO")
-        await asyncio.sleep(600)
-        
-        # Clean up connections
-        if agent.redis_client:
-            await agent.redis_client.close()
-        await agent.db_service.disconnect()
-            
+        agent.log(f"💥 Fatal error: {e!s}", "ERROR", exception_type=type(e).__name__)
+        # Log failure and exit immediately
+        agent.log("❌ Agent failed", "INFO", status="failed")
+        agent.log("🏁 Exiting agent container", "INFO")
         sys.exit(1)
+    finally:
+        # Clean up temp directory
+        if hasattr(agent, "work_dir") and agent.work_dir.exists():
+            try:
+                shutil.rmtree(agent.work_dir)
+            except Exception:
+                pass  # Best effort cleanup
 
 
 if __name__ == "__main__":

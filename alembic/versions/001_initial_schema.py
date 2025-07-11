@@ -1,10 +1,11 @@
 """Initial schema creation
 
 Revision ID: 001
-Revises: 
+Revises:
 Create Date: 2025-07-10 01:40:00.000000
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -28,14 +29,24 @@ def upgrade() -> None:
         sa.Column("hashed_password", sa.String(), nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=False, default=True),
         sa.Column("is_superuser", sa.Boolean(), nullable=False, default=False),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
         sa.Column("full_name", sa.String(), nullable=True),
         sa.Column("company", sa.String(), nullable=True),
         sa.Column("max_runs_per_day", sa.Integer(), nullable=False, default=100),
         sa.Column("max_variations_per_run", sa.Integer(), nullable=False, default=5),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("email")
+        sa.UniqueConstraint("email"),
     )
 
     # Create api_keys table
@@ -48,12 +59,22 @@ def upgrade() -> None:
         sa.Column("description", sa.String(), nullable=True),
         sa.Column("scopes", sa.JSON(), nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=False, default=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
         sa.Column("last_used_at", sa.DateTime(), nullable=True),
         sa.Column("expires_at", sa.DateTime(), nullable=True),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id")
+        sa.PrimaryKeyConstraint("id"),
     )
 
     # Create runs table
@@ -65,13 +86,23 @@ def upgrade() -> None:
         sa.Column("prompt", sa.Text(), nullable=False),
         sa.Column("variations", sa.Integer(), nullable=False),
         sa.Column("status", sa.String(), nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
         sa.Column("completed_at", sa.DateTime(), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
         sa.Column("metadata", sa.JSON(), nullable=True),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id")
+        sa.PrimaryKeyConstraint("id"),
     )
 
     # Create sessions table
@@ -81,11 +112,21 @@ def upgrade() -> None:
         sa.Column("user_id", sa.String(), nullable=False),
         sa.Column("name", sa.String(), nullable=False),
         sa.Column("description", sa.String(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
         sa.Column("metadata", sa.JSON(), nullable=True),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id")
+        sa.PrimaryKeyConstraint("id"),
     )
 
     # Create turns table
@@ -98,13 +139,23 @@ def upgrade() -> None:
         sa.Column("response", sa.Text(), nullable=True),
         sa.Column("model", sa.String(), nullable=False),
         sa.Column("status", sa.String(), nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
         sa.Column("completed_at", sa.DateTime(), nullable=True),
         sa.Column("metadata", sa.JSON(), nullable=True),
         sa.ForeignKeyConstraint(["session_id"], ["sessions.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id")
+        sa.PrimaryKeyConstraint("id"),
     )
 
     # Create preferences table
@@ -117,13 +168,18 @@ def upgrade() -> None:
         sa.Column("run_id", sa.String(), nullable=True),
         sa.Column("selected_variation", sa.Integer(), nullable=False),
         sa.Column("feedback", sa.String(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
         sa.Column("metadata", sa.JSON(), nullable=True),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["session_id"], ["sessions.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["turn_id"], ["turns.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id")
+        sa.PrimaryKeyConstraint("id"),
     )
 
     # Create model_definitions table
@@ -143,9 +199,19 @@ def upgrade() -> None:
         sa.Column("requires_project_id", sa.Boolean(), nullable=False, default=False),
         sa.Column("default_parameters", sa.JSON(), nullable=True),
         sa.Column("is_active", sa.Boolean(), nullable=False, default=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.PrimaryKeyConstraint("id")
+        sa.Column(
+            "created_at",
+            sa.DateTime(),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
+        sa.PrimaryKeyConstraint("id"),
     )
 
     # Create indexes
@@ -158,7 +224,9 @@ def upgrade() -> None:
     op.create_index("idx_turns_user_id", "turns", ["user_id"])
     op.create_index("idx_preferences_user_id", "preferences", ["user_id"])
     op.create_index("idx_model_definitions_provider", "model_definitions", ["provider"])
-    op.create_index("idx_model_definitions_is_active", "model_definitions", ["is_active"])
+    op.create_index(
+        "idx_model_definitions_is_active", "model_definitions", ["is_active"]
+    )
 
 
 def downgrade() -> None:

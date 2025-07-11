@@ -31,7 +31,7 @@ export interface StreamBufferCallbacks {
 
 export class StreamBuffer {
   private buffer: string = '';
-  private drainInterval: NodeJS.Timeout | null = null;
+  private drainInterval: number | null = null;
   private isPaused: boolean = false;
   private isComplete: boolean = false;
   
@@ -102,7 +102,7 @@ export class StreamBuffer {
    */
   destroy(): void {
     if (this.drainInterval) {
-      cancelAnimationFrame(this.drainInterval as number);
+      cancelAnimationFrame(this.drainInterval);
       this.drainInterval = null;
     }
     this.flush();
@@ -127,10 +127,10 @@ export class StreamBuffer {
       }
       
       // Continue the loop
-      this.drainInterval = requestAnimationFrame(animationLoop) as any;
+      this.drainInterval = requestAnimationFrame(animationLoop);
     };
     
-    this.drainInterval = requestAnimationFrame(animationLoop) as any;
+    this.drainInterval = requestAnimationFrame(animationLoop);
   }
   
   /**
@@ -299,4 +299,3 @@ export class StreamBuffer {
   }
 }
 
-export default StreamBuffer;

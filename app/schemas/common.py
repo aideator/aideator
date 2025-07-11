@@ -32,7 +32,9 @@ class ValidationErrorDetail(BaseModel):
 class ValidationErrorResponse(BaseModel):
     """Validation error response."""
 
-    detail: list[ValidationErrorDetail] = Field(..., description="List of validation errors")
+    detail: list[ValidationErrorDetail] = Field(
+        ..., description="List of validation errors"
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -63,13 +65,6 @@ class SuccessResponse(BaseModel):
             }
         }
     }
-
-
-class PaginationParams(BaseModel):
-    """Pagination parameters."""
-
-    page: int = Field(1, ge=1, description="Page number")
-    per_page: int = Field(20, ge=1, le=100, description="Items per page")
 
 
 class PaginatedResponse(BaseModel):

@@ -116,6 +116,18 @@ tilt up
 tilt down
 ```
 
+### Dependency Management (ALWAYS use uv sync)
+
+```bash
+# ALWAYS use uv sync to install dependencies
+uv sync                  # Install all dependencies from pyproject.toml
+uv sync --dev            # Include development dependencies
+
+# Never use these (deprecated):
+# uv pip install ...     # DON'T USE
+# pip install ...        # DON'T USE
+```
+
 ### Testing & Quality (ALWAYS use uv for Python)
 
 ```bash
@@ -451,7 +463,7 @@ curl http://localhost:9090/api/v1/query \
 ### What I Never Do
 
 - ❌ Use `python` or `python3` commands (ALWAYS use `uv run`)
-- ❌ Use `pip` for package management (ALWAYS use `uv`)
+- ❌ Use `pip` for package management (ALWAYS use `uv sync`)
 - ❌ Test streaming without timeouts (causes hanging tests)
 - ❌ Use kubectl port-forward when Tilt is running
 - ❌ Call LLM APIs directly (always use Gateway)

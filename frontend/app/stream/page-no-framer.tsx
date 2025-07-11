@@ -35,6 +35,7 @@ import { StreamingUpdate } from '@/hooks/useAPIIntegration';
 interface ModelResponse {
   id: string;
   name: string;
+  provider: string;
   status: 'pending' | 'streaming' | 'completed' | 'error';
   content: string;
   responseTime?: number;
@@ -87,25 +88,29 @@ function StreamPageContent() {
     setIsConfigExpanded(false);
     
     // Initialize model responses
-    const initialResponses: ModelResponse[] = modelSelection.selectedModels.map(modelId => ({
-      id: modelId,
-      name: modelSelection.getModelById(modelId)?.name || modelId,
-      status: 'pending',
-      content: '',
-    }));
+    const initialResponses: ModelResponse[] = modelSelection.selectedModels.map(modelId => {
+      const model = modelSelection.getModelById(modelId);
+      return {
+        id: modelId,
+        name: model?.name || modelId,
+        provider: model?.provider || 'Unknown',
+        status: 'pending',
+        content: '',
+      };
+    });
     
     setModelResponses(initialResponses);
     
     try {
       // Start actual model comparison via API
       if (state.activeSession) {
-        const runId = await apiIntegration.startModelComparison({
+        const runResult = await apiIntegration.startModelComparison({
           sessionId: state.activeSession.id,
           prompt: prompt,
           modelIds: modelSelection.selectedModels,
         }, handleStreamingUpdate);
         
-        setCurrentRunId(runId);
+        setCurrentRunId(typeof runResult === 'string' ? runResult : runResult.runId);
       } else {
         // Fallback to simulation if no session
         simulateModelStreaming(initialResponses);
@@ -191,8 +196,9 @@ function StreamPageContent() {
         });
         
         // Add turn to session
-        actions.addSessionTurn(state.activeSession.id, {
+        actions.addSessionTurn({
           id: turnId,
+          sessionId: state.activeSession.id,
           prompt: prompt,
           modelResponses: modelResponses.map(r => ({
             modelId: r.id,
@@ -202,8 +208,8 @@ function StreamPageContent() {
             tokenCount: r.tokenCount,
             isSelected: r.id === modelId,
           })),
-          selectedModelId: modelId,
-          timestamp: new Date().toISOString(),
+          preferredModelId: modelId,
+          createdAt: new Date().toISOString(),
         });
       } catch (error) {
         console.error('Failed to record preference:', error);
@@ -284,7 +290,7 @@ function StreamPageContent() {
       {/* Session Sidebar */}
       <SessionSidebar
         sessions={state.sessions}
-        activeSessionId={state.activeSessionId}
+        activeSessionId={state.activeSessionId || undefined}
         onSessionSelect={actions.setActiveSession}
         onSessionCreate={actions.createSession}
         onSessionUpdate={actions.updateSession}

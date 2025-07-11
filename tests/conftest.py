@@ -1,12 +1,26 @@
 import asyncio
+import os
 from collections.abc import AsyncGenerator, Generator
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
+from dotenv import load_dotenv
+from fastapi.testclient import TestClient
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
+
+# Load environment variables from .env if it exists (for local development)
+# In CI, these will already be set by GitHub Actions
+env_file = Path(__file__).parent.parent / ".env"
+if env_file.exists():
+    load_dotenv(env_file)
+
+# Set required environment variables for tests if not already set
+if not os.getenv("ENCRYPTION_KEY"):
+    os.environ["ENCRYPTION_KEY"] = "test-encryption-key-32-chars-min"
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_session
@@ -71,7 +85,9 @@ async def db_session(db_engine) -> AsyncGenerator[AsyncSession, None]:
 
 
 @pytest_asyncio.fixture
-async def client(db_session: AsyncSession, test_settings: Settings) -> AsyncGenerator[AsyncClient, None]:
+async def client(
+    db_session: AsyncSession, test_settings: Settings
+) -> AsyncGenerator[AsyncClient, None]:
     """Create test client with database override."""
 
     def override_get_settings():
@@ -86,7 +102,11 @@ async def client(db_session: AsyncSession, test_settings: Settings) -> AsyncGene
     # Mock Kubernetes service
     app.state.kubernetes = MockKubernetesService()
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    from httpx import ASGITransport
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
         yield ac
 
     app.dependency_overrides.clear()
@@ -136,6 +156,7 @@ class MockKubernetesService:
 @pytest.fixture
 def make_user(db_session: AsyncSession):
     """Factory for creating test users."""
+
     async def _make_user(**kwargs):
         from app.api.v1.auth import get_password_hash
 
@@ -158,6 +179,7 @@ def make_user(db_session: AsyncSession):
 @pytest.fixture
 def make_api_key(db_session: AsyncSession):
     """Factory for creating test API keys."""
+
     async def _make_api_key(user: User, **kwargs):
         from app.api.v1.auth import generate_api_key, get_password_hash
 
@@ -182,6 +204,7 @@ def make_api_key(db_session: AsyncSession):
 @pytest.fixture
 def make_run(db_session: AsyncSession):
     """Factory for creating test runs."""
+
     async def _make_run(**kwargs):
         defaults = {
             "id": f"run_test_{asyncio.get_event_loop().time()}",
@@ -218,14 +241,23 @@ def sample_run_request():
 @pytest.fixture
 def auth_headers():
     """Factory for creating auth headers."""
+
     def _auth_headers(token: str):
         return {"Authorization": f"Bearer {token}"}
+
     return _auth_headers
 
 
 @pytest.fixture
 def api_key_headers():
     """Factory for creating API key headers."""
+
     def _api_key_headers(api_key: str):
         return {"X-API-Key": api_key}
+
     return _api_key_headers
+
+
+# Import embedded PostgreSQL fixtures
+# This imports all the fixtures from conftest_embedded_postgres.py
+pytest_plugins = ["tests.conftest_embedded_postgres"]

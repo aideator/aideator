@@ -438,4 +438,3 @@ export function SessionSidebar({
   );
 }
 
-export default SessionSidebar;

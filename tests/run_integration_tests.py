@@ -19,6 +19,7 @@ from rich.table import Table
 
 console = Console()
 
+
 class IntegrationTestRunner:
     """Comprehensive integration test runner."""
 
@@ -99,6 +100,7 @@ class IntegrationTestRunner:
             import httpx
             import openai
             import rich
+
             return True
         except ImportError as e:
             console.print(f"    Missing dependency: {e}")
@@ -118,16 +120,17 @@ class IntegrationTestRunner:
             "--tb=short",
             "--capture=no",
             "--durations=10",
-            f"--junit-xml=test_results_{test_name.lower().replace(' ', '_')}.xml"
+            f"--junit-xml=test_results_{test_name.lower().replace(' ', '_')}.xml",
         ]
 
         try:
             result = subprocess.run(
                 cmd,
-                check=False, cwd=self.base_dir,
+                check=False,
+                cwd=self.base_dir,
                 capture_output=True,
                 text=True,
-                timeout=300  # 5 minute timeout
+                timeout=300,  # 5 minute timeout
             )
 
             duration = time.time() - start_time
@@ -140,7 +143,7 @@ class IntegrationTestRunner:
                 "passed": passed,
                 "duration": duration,
                 "output": output,
-                "return_code": result.returncode
+                "return_code": result.returncode,
             }
 
         except subprocess.TimeoutExpired:
@@ -148,23 +151,27 @@ class IntegrationTestRunner:
                 "passed": False,
                 "duration": 300,
                 "output": "Test timed out after 5 minutes",
-                "return_code": -1
+                "return_code": -1,
             }
         except Exception as e:
             return {
                 "passed": False,
                 "duration": time.time() - start_time,
                 "output": f"Test failed with exception: {e}",
-                "return_code": -1
+                "return_code": -1,
             }
 
     def run_all_tests(self) -> dict:
         """Run all integration tests."""
-        console.print("\n[bold green]🚀 Starting AIdeator Integration Tests[/bold green]")
+        console.print(
+            "\n[bold green]🚀 Starting AIdeator Integration Tests[/bold green]"
+        )
 
         # Check prerequisites first
         if not self.check_prerequisites():
-            console.print("\n[bold red]❌ Prerequisites not met. Please fix the issues above.[/bold red]")
+            console.print(
+                "\n[bold red]❌ Prerequisites not met. Please fix the issues above.[/bold red]"
+            )
             return {"overall_passed": False, "results": {}}
 
         # Define test suites
@@ -172,13 +179,13 @@ class IntegrationTestRunner:
             {
                 "file": "tests/integration/test_litellm_gateway.py",
                 "name": "LiteLLM Gateway Integration",
-                "description": "Tests Gateway connectivity, model routing, and error handling"
+                "description": "Tests Gateway connectivity, model routing, and error handling",
             },
             {
                 "file": "tests/integration/test_streaming_integration.py",
                 "name": "Streaming Integration",
-                "description": "Tests multi-model streaming, SSE, and real-time functionality"
-            }
+                "description": "Tests multi-model streaming, SSE, and real-time functionality",
+            },
         ]
 
         results = {}
@@ -203,16 +210,13 @@ class IntegrationTestRunner:
                 console.print("[red]Test Output:[/red]")
                 console.print(result["output"][-1000:])  # Last 1000 chars
 
-        return {
-            "overall_passed": overall_passed,
-            "results": results
-        }
+        return {"overall_passed": overall_passed, "results": results}
 
     def generate_report(self, test_results: dict) -> None:
         """Generate a comprehensive test report."""
-        console.print("\n" + "="*80)
+        console.print("\n" + "=" * 80)
         console.print("[bold blue]🔍 TEST REPORT[/bold blue]")
-        console.print("="*80)
+        console.print("=" * 80)
 
         # Overall status
         if test_results["overall_passed"]:
@@ -244,11 +248,13 @@ class IntegrationTestRunner:
         for suite_name, result in test_results["results"].items():
             if not result["passed"]:
                 console.print(f"\n[bold red]❌ {suite_name} Failures:[/bold red]")
-                console.print(Panel(
-                    result["output"][-2000:],  # Last 2000 chars
-                    title=f"Error Output - {suite_name}",
-                    border_style="red"
-                ))
+                console.print(
+                    Panel(
+                        result["output"][-2000:],  # Last 2000 chars
+                        title=f"Error Output - {suite_name}",
+                        border_style="red",
+                    )
+                )
 
         # Summary statistics
         total_suites = len(test_results["results"])
@@ -265,31 +271,31 @@ class IntegrationTestRunner:
         # Recommendations
         if not test_results["overall_passed"]:
             console.print("\n[bold yellow]🔧 Recommendations:[/bold yellow]")
-            console.print("  1. Check that LiteLLM Gateway is running with correct configuration")
+            console.print(
+                "  1. Check that LiteLLM Gateway is running with correct configuration"
+            )
             console.print("  2. Verify all required environment variables are set")
             console.print("  3. Ensure backend API is running and accessible")
             console.print("  4. Review test output above for specific error details")
 
     def run_specific_tests(self, test_patterns: list[str]) -> dict:
         """Run specific tests matching patterns."""
-        console.print(f"\n[bold yellow]Running specific tests: {', '.join(test_patterns)}[/bold yellow]")
+        console.print(
+            f"\n[bold yellow]Running specific tests: {', '.join(test_patterns)}[/bold yellow]"
+        )
 
-        cmd = [
-            "pytest",
-            "-v",
-            "--tb=short",
-            "--capture=no",
-        ] + test_patterns
+        cmd = ["pytest", "-v", "--tb=short", "--capture=no", *test_patterns]
 
         start_time = time.time()
 
         try:
             result = subprocess.run(
                 cmd,
-                check=False, cwd=self.base_dir,
+                check=False,
+                cwd=self.base_dir,
                 capture_output=True,
                 text=True,
-                timeout=300
+                timeout=300,
             )
 
             duration = time.time() - start_time
@@ -302,9 +308,9 @@ class IntegrationTestRunner:
                         "passed": passed,
                         "duration": duration,
                         "output": result.stdout + result.stderr,
-                        "return_code": result.returncode
+                        "return_code": result.returncode,
                     }
-                }
+                },
             }
 
         except Exception as e:
@@ -315,10 +321,11 @@ class IntegrationTestRunner:
                         "passed": False,
                         "duration": time.time() - start_time,
                         "output": f"Failed to run tests: {e}",
-                        "return_code": -1
+                        "return_code": -1,
                     }
-                }
+                },
             }
+
 
 def main():
     """Main entry point."""
@@ -338,6 +345,7 @@ def main():
 
     # Exit with appropriate code
     sys.exit(0 if results["overall_passed"] else 1)
+
 
 if __name__ == "__main__":
     main()

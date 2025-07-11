@@ -1,6 +1,6 @@
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -14,7 +14,9 @@ logger = get_logger(__name__)
 class LoggingMiddleware(BaseHTTPMiddleware):
     """Middleware for request/response logging."""
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         """Log request details and response status."""
         request_id = str(uuid.uuid4())
         request.state.request_id = request_id

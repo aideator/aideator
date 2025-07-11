@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Search, Filter, Zap, Shield, Globe, Code, Eye, Music, Image, Tool, Cpu, X } from 'lucide-react';
+import { Plus, Search, Filter, Zap, Shield, Globe, Code, Eye, Music, Image, Settings, Cpu, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -84,7 +84,7 @@ const capabilityIcons = {
   audio_output: Music,
   image_generation: Image,
   web_search: Globe,
-  function_calling: Tool,
+  function_calling: Settings,
   streaming: Zap,
   json_schema: Code,
   pdf_input: Code,
@@ -377,7 +377,7 @@ export function ModelSelector({ selectedVariants, onVariantsChange, maxVariants 
                               onClick={() => openParameterEditor(variant)}
                               className="p-1 h-8 w-8"
                             >
-                              <Tool className="h-4 w-4" />
+                              <Settings className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="ghost"
@@ -679,4 +679,3 @@ function ModelCard({ model, provider, onSelect, isSelected, canSelect }: ModelCa
   );
 }
 
-export default ModelSelector;

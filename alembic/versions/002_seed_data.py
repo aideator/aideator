@@ -5,6 +5,7 @@ Revises: 001
 Create Date: 2025-07-10 01:41:00.000000
 
 """
+
 import secrets
 from collections.abc import Sequence
 from datetime import datetime
@@ -31,7 +32,8 @@ def hash_password(password: str) -> str:
 def upgrade() -> None:
     """Add seed data."""
     # Define table structures for data insertion
-    users_table = table("users",
+    users_table = table(
+        "users",
         column("id", String),
         column("email", String),
         column("hashed_password", String),
@@ -45,7 +47,8 @@ def upgrade() -> None:
         column("max_variations_per_run", Integer),
     )
 
-    api_keys_table = table("api_keys",
+    api_keys_table = table(
+        "api_keys",
         column("id", String),
         column("user_id", String),
         column("key_hash", String),
@@ -59,7 +62,8 @@ def upgrade() -> None:
         column("expires_at", DateTime),
     )
 
-    model_definitions_table = table("model_definitions",
+    model_definitions_table = table(
+        "model_definitions",
         column("id", String),
         column("provider", String),
         column("display_name", String),
@@ -85,41 +89,47 @@ def upgrade() -> None:
     test_user_id = f"user_test_{secrets.token_urlsafe(12)}"
     test_password_hash = hash_password("testpass123")
 
-    op.bulk_insert(users_table, [
-        {
-            "id": test_user_id,
-            "email": "test@aideator.local",
-            "hashed_password": test_password_hash,
-            "is_active": True,
-            "is_superuser": False,
-            "created_at": now,
-            "updated_at": now,
-            "full_name": "Test User",
-            "company": "AIdeator Development",
-            "max_runs_per_day": 100,
-            "max_variations_per_run": 5,
-        }
-    ])
+    op.bulk_insert(
+        users_table,
+        [
+            {
+                "id": test_user_id,
+                "email": "test@aideator.local",
+                "hashed_password": test_password_hash,
+                "is_active": True,
+                "is_superuser": False,
+                "created_at": now,
+                "updated_at": now,
+                "full_name": "Test User",
+                "company": "AIdeator Development",
+                "max_runs_per_day": 100,
+                "max_variations_per_run": 5,
+            }
+        ],
+    )
 
     # Create API key for test user
     api_key_value = f"aid_sk_test_{secrets.token_urlsafe(32)}"
     api_key_hash = hash_password(api_key_value)
 
-    op.bulk_insert(api_keys_table, [
-        {
-            "id": f"key_test_{secrets.token_urlsafe(12)}",
-            "user_id": test_user_id,
-            "key_hash": api_key_hash,
-            "name": "Development Test Key",
-            "description": "API key for development testing",
-            "scopes": ["read", "write"],
-            "is_active": True,
-            "created_at": now,
-            "updated_at": now,
-            "last_used_at": None,
-            "expires_at": None,
-        }
-    ])
+    op.bulk_insert(
+        api_keys_table,
+        [
+            {
+                "id": f"key_test_{secrets.token_urlsafe(12)}",
+                "user_id": test_user_id,
+                "key_hash": api_key_hash,
+                "name": "Development Test Key",
+                "description": "API key for development testing",
+                "scopes": ["read", "write"],
+                "is_active": True,
+                "created_at": now,
+                "updated_at": now,
+                "last_used_at": None,
+                "expires_at": None,
+            }
+        ],
+    )
 
     # Add basic model definitions
     models_data = [
@@ -141,7 +151,7 @@ def upgrade() -> None:
                 "max_tokens": 4096,
                 "top_p": 1.0,
                 "frequency_penalty": 0.0,
-                "presence_penalty": 0.0
+                "presence_penalty": 0.0,
             },
             "is_active": True,
             "created_at": now,
@@ -156,7 +166,12 @@ def upgrade() -> None:
             "max_output_tokens": 16384,
             "input_price_per_1m_tokens": 2.50,
             "output_price_per_1m_tokens": 10.00,
-            "capabilities": ["text_generation", "code_generation", "analysis", "vision"],
+            "capabilities": [
+                "text_generation",
+                "code_generation",
+                "analysis",
+                "vision",
+            ],
             "requires_api_key": True,
             "requires_region": False,
             "requires_project_id": False,
@@ -165,7 +180,7 @@ def upgrade() -> None:
                 "max_tokens": 4096,
                 "top_p": 1.0,
                 "frequency_penalty": 0.0,
-                "presence_penalty": 0.0
+                "presence_penalty": 0.0,
             },
             "is_active": True,
             "created_at": now,
@@ -180,14 +195,19 @@ def upgrade() -> None:
             "max_output_tokens": 8192,
             "input_price_per_1m_tokens": 3.00,
             "output_price_per_1m_tokens": 15.00,
-            "capabilities": ["text_generation", "code_generation", "analysis", "reasoning"],
+            "capabilities": [
+                "text_generation",
+                "code_generation",
+                "analysis",
+                "reasoning",
+            ],
             "requires_api_key": True,
             "requires_region": False,
             "requires_project_id": False,
             "default_parameters": {
                 "temperature": 0.7,
                 "max_tokens": 4096,
-                "top_p": 1.0
+                "top_p": 1.0,
             },
             "is_active": True,
             "created_at": now,
@@ -209,7 +229,7 @@ def upgrade() -> None:
             "default_parameters": {
                 "temperature": 0.7,
                 "max_tokens": 4096,
-                "top_p": 1.0
+                "top_p": 1.0,
             },
             "is_active": True,
             "created_at": now,
@@ -224,14 +244,19 @@ def upgrade() -> None:
             "max_output_tokens": 8192,
             "input_price_per_1m_tokens": 1.25,
             "output_price_per_1m_tokens": 5.00,
-            "capabilities": ["text_generation", "code_generation", "analysis", "vision"],
+            "capabilities": [
+                "text_generation",
+                "code_generation",
+                "analysis",
+                "vision",
+            ],
             "requires_api_key": True,
             "requires_region": False,
             "requires_project_id": True,
             "default_parameters": {
                 "temperature": 0.7,
                 "max_output_tokens": 4096,
-                "top_p": 1.0
+                "top_p": 1.0,
             },
             "is_active": True,
             "created_at": now,
@@ -246,19 +271,24 @@ def upgrade() -> None:
             "max_output_tokens": 8192,
             "input_price_per_1m_tokens": 0.075,
             "output_price_per_1m_tokens": 0.30,
-            "capabilities": ["text_generation", "code_generation", "analysis", "vision"],
+            "capabilities": [
+                "text_generation",
+                "code_generation",
+                "analysis",
+                "vision",
+            ],
             "requires_api_key": True,
             "requires_region": False,
             "requires_project_id": True,
             "default_parameters": {
                 "temperature": 0.7,
                 "max_output_tokens": 4096,
-                "top_p": 1.0
+                "top_p": 1.0,
             },
             "is_active": True,
             "created_at": now,
             "updated_at": now,
-        }
+        },
     ]
 
     op.bulk_insert(model_definitions_table, models_data)
@@ -277,4 +307,6 @@ def downgrade() -> None:
     op.execute("DELETE FROM users WHERE email = 'test@aideator.local'")
 
     # Remove model definitions
-    op.execute("DELETE FROM model_definitions WHERE provider IN ('openai', 'anthropic', 'google')")
+    op.execute(
+        "DELETE FROM model_definitions WHERE provider IN ('openai', 'anthropic', 'google')"
+    )

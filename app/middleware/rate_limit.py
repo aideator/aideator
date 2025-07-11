@@ -1,6 +1,7 @@
 import time
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -16,7 +17,7 @@ logger = get_logger(__name__)
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Simple in-memory rate limiting middleware."""
 
-    def __init__(self, app):
+    def __init__(self, app: Any) -> None:
         super().__init__(app)
         self.requests: dict[str, list[float]] = defaultdict(list)
         self.cleanup_interval = 60  # seconds
@@ -54,9 +55,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         cutoff = current_time - settings.rate_limit_period
 
         # Filter recent requests
-        recent_requests = [
-            ts for ts in self.requests[client_id] if ts > cutoff
-        ]
+        recent_requests = [ts for ts in self.requests[client_id] if ts > cutoff]
         self.requests[client_id] = recent_requests
 
         # Check limit
@@ -67,7 +66,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.requests[client_id].append(current_time)
         return False, len(recent_requests) + 1
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         """Apply rate limiting."""
         # Skip rate limiting for health checks and metrics
         if request.url.path in ["/health", "/metrics", "/"]:

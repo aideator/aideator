@@ -463,8 +463,8 @@ export function useAPIIntegration() {
     eventSource.onerror = (error) => {
       console.error('Streaming error:', {
         type: error.type,
-        target: error.target?.readyState,
-        url: error.target?.url,
+        target: (error.target as EventSource)?.readyState,
+        url: (error.target as EventSource)?.url,
         readyState: eventSource.readyState,
         timestamp: new Date().toISOString()
       });
@@ -620,4 +620,3 @@ export function useAPIIntegration() {
   };
 }
 
-export default useAPIIntegration;

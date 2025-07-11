@@ -1,3 +1,4 @@
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -24,8 +25,8 @@ logger = setup_logging()
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Manage app lifecycle - database and Redis initialization."""
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Manage app lifecycle - database initialization and background tasks."""
     # Startup
     logger.info(f"Starting {settings.project_name} v{settings.version}")
 
@@ -76,19 +77,19 @@ def create_application() -> FastAPI:
             {"url": "https://api.aideator.com", "description": "Production"},
         ],
         description="""
-        AIdeator is a Kubernetes-native LLM orchestration platform that runs multiple AI agents in isolated containers, 
+        AIdeator is a Kubernetes-native LLM orchestration platform that runs multiple AI agents in isolated containers,
         streaming their thought processes in real-time.
-        
+
         ## Features
-        
+
         * **Container Isolation** - Each agent runs in its own Kubernetes Job
         * **Real-time Streaming** - Server-Sent Events for live agent output
         * **Parallel Execution** - Run N variations concurrently
         * **Result Persistence** - Save and retrieve winning variations
         * **GitHub Integration** - Clone and analyze any public repository
-        
+
         ## Authentication
-        
+
         Most endpoints require an API key passed in the `X-API-Key` header.
         """,
         contact={
@@ -102,7 +103,7 @@ def create_application() -> FastAPI:
     )
 
     # Set custom OpenAPI schema
-    app.openapi = custom_openapi(app)
+    app.openapi = custom_openapi(app)  # type: ignore[method-assign]
 
     # Add middleware in reverse order (last added = first executed)
     app.add_middleware(

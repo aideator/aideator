@@ -72,11 +72,16 @@ export function APIKeyManager({ onKeysChange, className }: APIKeyManagerProps) {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Form state for adding/editing keys
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    name: string;
+    description: string;
+    key: string;
+    provider: 'openai' | 'anthropic' | 'google' | 'custom';
+  }>({
     name: '',
     description: '',
     key: '',
-    provider: 'openai' as const,
+    provider: 'openai',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});

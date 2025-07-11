@@ -18,8 +18,8 @@ export interface ModelPerformanceData {
 interface ModelComparisonChartProps {
   data: ModelPerformanceData[];
   isLoading?: boolean;
-  timeRange?: 'day' | 'week' | 'month' | 'all';
-  onTimeRangeChange?: (range: 'day' | 'week' | 'month' | 'all') => void;
+  timeRange?: 'day' | 'week' | 'month' | 'quarter' | 'year' | 'all';
+  onTimeRangeChange?: (range: 'day' | 'week' | 'month' | 'quarter' | 'year' | 'all') => void;
 }
 
 export function ModelComparisonChart({ 
@@ -37,6 +37,8 @@ export function ModelComparisonChart({
     { value: 'day', label: 'Today' },
     { value: 'week', label: 'This Week' },
     { value: 'month', label: 'This Month' },
+    { value: 'quarter', label: 'This Quarter' },
+    { value: 'year', label: 'This Year' },
     { value: 'all', label: 'All Time' },
   ];
 
@@ -226,4 +228,3 @@ export function ModelComparisonChart({
   );
 }
 
-export default ModelComparisonChart;

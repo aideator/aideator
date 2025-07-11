@@ -81,25 +81,6 @@ const config: Config = {
   plugins: [
     require('tailwindcss-animate'),
   ],
-  // Safelist for dynamic classes that might be purged
-  safelist: [
-    // Agent color classes
-    'bg-agent-1', 'bg-agent-2', 'bg-agent-3', 'bg-agent-4', 'bg-agent-5',
-    'text-agent-1', 'text-agent-2', 'text-agent-3', 'text-agent-4', 'text-agent-5',
-    'border-agent-1', 'border-agent-2', 'border-agent-3', 'border-agent-4', 'border-agent-5',
-    'border-l-agent-1', 'border-l-agent-2', 'border-l-agent-3', 'border-l-agent-4', 'border-l-agent-5',
-    
-    // Agent color variants
-    'bg-agent-1/10', 'bg-agent-2/10', 'bg-agent-3/10', 'bg-agent-4/10', 'bg-agent-5/10',
-    'bg-agent-1/90', 'bg-agent-2/90', 'bg-agent-3/90', 'bg-agent-4/90', 'bg-agent-5/90',
-    'hover:bg-agent-1/10', 'hover:bg-agent-2/10', 'hover:bg-agent-3/10', 'hover:bg-agent-4/10', 'hover:bg-agent-5/10',
-    'hover:bg-agent-1/90', 'hover:bg-agent-2/90', 'hover:bg-agent-3/90', 'hover:bg-agent-4/90', 'hover:bg-agent-5/90',
-    
-    // Legacy color classes that might be dynamically constructed
-    'bg-primary', 'bg-secondary', 'bg-accent', 'bg-destructive',
-    'text-primary', 'text-secondary', 'text-accent', 'text-destructive',
-    'border-primary', 'border-secondary', 'border-accent', 'border-destructive',
-  ],
 }
 
 export default config

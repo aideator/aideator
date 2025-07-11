@@ -74,12 +74,12 @@ export function useAideatorIntegration(): AideatorIntegrationHook {
   // Enhanced startComparison that handles session context
   const startComparison = useCallback(async (prompt: string, models: string[]) => {
     try {
-      let sessionId = sessionManager.currentSession?.session_id;
+      let sessionId = sessionManager.currentSession?.id;
       
       // Create new session if none exists
       if (!sessionId) {
         const newSession = await sessionManager.createNewSession();
-        sessionId = newSession.session_id;
+        sessionId = newSession.id;
         await sessionManager.switchToSession(sessionId);
       }
       
@@ -127,7 +127,7 @@ export function useAideatorIntegration(): AideatorIntegrationHook {
   // Enhanced session deletion
   const deleteSession = useCallback(async (sessionId: string) => {
     // If deleting current session, clear streaming state
-    if (sessionManager.currentSession?.session_id === sessionId) {
+    if (sessionManager.currentSession?.id === sessionId) {
       multiModelStream.stopComparison();
       multiModelStream.clearResults();
     }

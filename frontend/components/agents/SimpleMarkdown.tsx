@@ -109,4 +109,3 @@ export const SimpleMarkdown = memo(({ content, isStreaming = false, className = 
 
 SimpleMarkdown.displayName = 'SimpleMarkdown';
 
-export default SimpleMarkdown;

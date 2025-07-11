@@ -1,0 +1,262 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+  # CI placeholder keys
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || 'sk-ci-placeholder-key' }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || 'sk-ant-ci-placeholder-key' }}
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || 'AIza-ci-placeholder-key' }}
+  SECRET_KEY: 'ci-secret-key-32-chars-minimum-length'
+  ENCRYPTION_KEY: 'ci-encryption-key-32-bytes-long-test'
+  DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/aideator_test'
+
+jobs:
+  # Single job that runs everything on one machine
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aideator_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Set up all dependencies at once
+      - name: Set up Python with uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            **/pyproject.toml
+            **/requirements*.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            network=host
+            image=moby/buildkit:v0.12.0
+
+      - name: Create k3d cluster
+        uses: AbsaOSS/k3d-action@v2
+        with:
+          cluster-name: "aideator-ci"
+          args: >-
+            --registry-create aideator-registry:0.0.0.0:5005
+            --k3s-arg "--disable=traefik@server:0"
+            --agents 1
+            --no-lb
+            --wait
+
+      - name: Install Tilt
+        uses: yokawasa/action-setup-kube-tools@v0.11.1
+        with:
+          tilt: '0.33.13'
+
+      # Install all dependencies
+      - name: Install Python dependencies
+        run: |
+          uv venv
+          echo "VIRTUAL_ENV=$PWD/.venv" >> $GITHUB_ENV
+          echo "$PWD/.venv/bin" >> $GITHUB_PATH
+          uv pip install -e ".[dev]"
+          uv pip install psycopg2-binary
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium firefox
+
+      # Run quick checks first (fail fast)
+      - name: Run linting and type checks
+        run: |
+          # Python
+          ruff check .
+          ruff format . --check
+          mypy app/
+          
+          # Frontend
+          cd frontend
+          npm run type-check
+
+      # Build and start services once
+      - name: Build Docker images
+        run: |
+          docker build -f Dockerfile.optimized --target api --tag localhost:5005/aideator-api:ci .
+          docker build -f Dockerfile.optimized --target agent --tag localhost:5005/aideator-agent:ci .
+          docker push localhost:5005/aideator-api:ci
+          docker push localhost:5005/aideator-agent:ci
+
+      - name: Start services with Tilt CI
+        run: |
+          # Create namespace and secrets
+          kubectl create namespace aideator || true
+          kubectl create secret generic aideator-secret \
+            --from-literal=secret-key="$SECRET_KEY" \
+            -n aideator || true
+          kubectl create secret generic openai-secret \
+            --from-literal=api-key="$OPENAI_API_KEY" \
+            -n aideator || true
+          kubectl create secret generic anthropic-secret \
+            --from-literal=api-key="$ANTHROPIC_API_KEY" \
+            -n aideator || true
+          kubectl create secret generic gemini-secret \
+            --from-literal=api-key="$GEMINI_API_KEY" \
+            -n aideator || true
+          
+          # Start Tilt in background
+          tilt ci --file Tiltfile.ci --timeout 30m &
+          TILT_PID=$!
+          echo $TILT_PID > tilt.pid
+          
+          # Wait for services to be ready
+          echo "Waiting for backend API..."
+          timeout 180 bash -c 'until curl -f http://localhost:8000/api/v1/health 2>/dev/null; do sleep 5; done'
+          echo "✅ Backend API is ready"
+          
+          echo "Waiting for LiteLLM Gateway..."
+          timeout 120 bash -c 'until curl -f http://localhost:4000/health 2>/dev/null; do sleep 5; done'
+          echo "✅ LiteLLM Gateway is ready"
+
+      # Run all tests against the running services
+      - name: Run backend unit tests
+        run: |
+          pytest -m unit \
+            --cov=app \
+            --cov-report=xml:coverage-unit.xml \
+            --cov-report=html:htmlcov-unit \
+            --junit-xml=test-results-unit.xml \
+            -v \
+            -n auto
+
+      - name: Run backend integration tests
+        run: |
+          pytest -m integration \
+            --cov=app \
+            --cov-append \
+            --cov-report=xml:coverage-integration.xml \
+            --junit-xml=test-results-integration.xml \
+            -v
+
+      - name: Run backend E2E tests
+        run: |
+          pytest -m e2e \
+            --cov=app \
+            --cov-append \
+            --cov-report=xml:coverage-e2e.xml \
+            --junit-xml=test-results-e2e.xml \
+            -v
+
+      - name: Run frontend unit tests
+        working-directory: frontend
+        run: |
+          npm test -- --coverage --watchAll=false \
+            --coverageReporters=json --coverageReporters=lcov --coverageReporters=text
+
+      - name: Run frontend E2E tests
+        working-directory: frontend
+        env:
+          CI: true
+          PLAYWRIGHT_BROWSERS_PATH: 0
+          BASE_URL: http://localhost:3001
+          API_URL: http://localhost:8000
+        run: |
+          # Frontend should already be running via Tilt
+          timeout 60 bash -c 'until curl -f http://localhost:3001 2>/dev/null; do echo "Waiting for frontend..."; sleep 5; done'
+          echo "✅ Frontend is ready"
+          
+          # Run E2E tests
+          npm run test:e2e -- \
+            --reporter=html,github,junit \
+            --output=test-results
+
+      # Generate final coverage report
+      - name: Generate combined coverage report
+        run: |
+          coverage combine || true
+          coverage report
+          coverage html
+          coverage xml -o coverage-combined.xml
+
+      # Cleanup
+      - name: Stop Tilt
+        if: always()
+        run: |
+          if [ -f tilt.pid ]; then
+            kill $(cat tilt.pid) || true
+          fi
+          tilt down --delete-namespaces || true
+
+      # Upload artifacts
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            test-results-*.xml
+            frontend/test-results/
+            coverage-*.xml
+            htmlcov*/
+            frontend/coverage/
+            frontend/playwright-report/
+
+      - name: Upload Tilt logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tilt-logs
+          path: |
+            .tilt-dev/logs/
+
+      # Test summary
+      - name: Publish test results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: |
+            test-results-*.xml
+            frontend/test-results/junit.xml
+          check_name: Test Results
+          comment_mode: always
+
+      - name: Comment PR with coverage
+        uses: py-cov-action/python-coverage-comment-action@v3
+        if: github.event_name == 'pull_request'
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MINIMUM_GREEN: 80
+          MINIMUM_ORANGE: 60

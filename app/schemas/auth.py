@@ -1,4 +1,6 @@
-from datetime import datetime
+from __future__ import annotations
+
+from datetime import datetime  # noqa: TC003
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -73,6 +75,29 @@ class Token(BaseModel):
     }
 
 
+class TokenResponse(BaseModel):
+    """Authentication token response with user information."""
+
+    access_token: str = Field(..., description="JWT access token")
+    token_type: str = Field(default="bearer", description="Token type")
+    user: UserResponse = Field(..., description="User information")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                "token_type": "bearer",
+                "user": {
+                    "id": "user_123abc",
+                    "email": "user@example.com",
+                    "is_active": True,
+                    "created_at": "2024-01-01T00:00:00Z",
+                },
+            }
+        }
+    }
+
+
 class UserResponse(BaseModel):
     """User information response."""
 
@@ -99,6 +124,24 @@ class UserResponse(BaseModel):
                 "company": "Acme Corp",
                 "max_runs_per_day": 100,
                 "max_variations_per_run": 5,
+            }
+        },
+    }
+
+
+class UserUpdate(BaseModel):
+    """User update request."""
+
+    full_name: str | None = Field(None, description="User's full name")
+    email: str | None = Field(None, description="User email address")
+    password: str | None = Field(None, description="New password")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "full_name": "Jane Doe",
+                "email": "jane@example.com",
+                "password": "NewSecurePass123",
             }
         }
     }
@@ -162,7 +205,7 @@ class APIKeyResponse(BaseModel):
                 "total_requests": 1500,
                 "total_runs": 42,
             }
-        }
+        },
     }
 
 

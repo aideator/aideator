@@ -99,7 +99,8 @@ class CreateRunRequest(BaseModel):
         """Ensure URL is from allowed Git hosts."""
         url_str = str(v)
         allowed = any(
-            url_str.startswith(f"https://{host}/") for host in settings.allowed_git_hosts
+            url_str.startswith(f"https://{host}/")
+            for host in settings.allowed_git_hosts
         )
         if not allowed:
             raise ValueError(
@@ -121,10 +122,9 @@ class CreateRunRequest(BaseModel):
     def validate_agent_mode(cls, v: str | None) -> str:
         """Validate agent mode."""
         valid_modes = ["litellm", "claude-cli", "gemini-cli", "openai-codex"]
-        if v not in valid_modes + [None]:
+        if v not in [*valid_modes, None]:
             raise ValueError(f"Agent mode must be one of: {', '.join(valid_modes)}")
         return v or "litellm"
-
 
     model_config = {
         "protected_namespaces": (),  # Allow model_ prefixed fields
@@ -136,21 +136,21 @@ class CreateRunRequest(BaseModel):
                     {
                         "model_definition_id": "model_gpt4_openai",
                         "provider_credential_id": "cred_openai_123",
-                        "model_parameters": {"temperature": 0.7}
+                        "model_parameters": {"temperature": 0.7},
                     },
                     {
                         "model_definition_id": "model_claude_3_5_sonnet_anthropic",
                         "provider_credential_id": "cred_anthropic_456",
-                        "model_parameters": {"temperature": 0.5}
+                        "model_parameters": {"temperature": 0.5},
                     },
                     {
                         "model_definition_id": "model_gpt4_openai",
                         "provider_credential_id": "cred_openai_123",
-                        "model_parameters": {"temperature": 0.9}
-                    }
-                ]
+                        "model_parameters": {"temperature": 0.9},
+                    },
+                ],
             }
-        }
+        },
     }
 
 
@@ -175,7 +175,7 @@ class CreateRunResponse(BaseModel):
                 "status": "accepted",
                 "estimated_duration_seconds": 120,
             }
-        }
+        },
     }
 
 
@@ -185,7 +185,9 @@ class RunDetails(BaseModel):
     id: str = Field(..., description="Unique identifier")
     github_url: str = Field(..., description="Repository URL")
     prompt: str = Field(..., description="Agent prompt")
-    model_variants: list[ModelVariantResponse] = Field(..., description="Model variants in this run")
+    model_variants: list[ModelVariantResponse] = Field(
+        ..., description="Model variants in this run"
+    )
     status: RunStatus = Field(..., description="Current status")
     winning_variation_id: int | None = Field(
         None, description="ID of selected variation"
@@ -214,7 +216,7 @@ class RunDetails(BaseModel):
                         "status": "completed",
                         "tokens_used": 150,
                         "cost_usd": 0.004,
-                        "response_time_ms": 2500
+                        "response_time_ms": 2500,
                     }
                 ],
                 "status": "completed",
@@ -226,7 +228,7 @@ class RunDetails(BaseModel):
                 "total_tokens_used": 12500,
                 "total_cost_usd": 0.25,
             }
-        }
+        },
     }
 
 
@@ -260,26 +262,6 @@ class SelectWinnerRequest(BaseModel):
         "json_schema_extra": {
             "example": {
                 "winning_variation_id": 2,
-            }
-        }
-    }
-
-
-class AgentOutputEvent(BaseModel):
-    """Agent output event for SSE streaming."""
-
-    variation_id: int = Field(..., description="Agent variation ID")
-    content: str = Field(..., description="Output content")
-    timestamp: datetime = Field(..., description="Event timestamp")
-    event_type: str = Field(default="agent_output", description="Event type")
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "variation_id": 0,
-                "content": "[Agent 0] Analyzing repository structure...",
-                "timestamp": "2024-01-01T00:00:00Z",
-                "event_type": "agent_output",
             }
         }
     }

@@ -158,14 +158,7 @@ export function useAgentStream(): AgentStreamHook {
     currentRunIdRef.current = runId;
     setCurrentRunId(runId);
 
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
-    const streamUrl = `${apiBase}/api/v1/runs/${runId}/stream`;
-    
-    console.log(`[STREAM-DEBUG] Starting SSE stream:`, {
-      runId,
-      streamUrl,
-      timestamp: new Date().toISOString()
-    });
+    const streamUrl = `http://localhost:8000/api/v1/runs/${runId}/stream`;
 
     try {
       const eventSource = new EventSource(streamUrl, {
@@ -173,12 +166,6 @@ export function useAgentStream(): AgentStreamHook {
       });
 
       eventSource.onopen = () => {
-        console.log('[STREAM-DEBUG] SSE connection opened:', {
-          runId,
-          readyState: eventSource.readyState,
-          url: eventSource.url,
-          timestamp: new Date().toISOString()
-        });
         setConnectionState('connected');
         setError(null);
         // Reset retry count on successful connection
@@ -459,12 +446,7 @@ export function useAgentStream(): AgentStreamHook {
       });
 
     } catch (initError) {
-      console.error('[STREAM-DEBUG] Failed to initialize SSE connection:', {
-        error: initError,
-        runId,
-        streamUrl,
-        timestamp: new Date().toISOString()
-      });
+      // Silent error handling - error is surfaced to user via state
       setError('Failed to start streaming connection');
       setConnectionState('error');
       setIsStreaming(false);

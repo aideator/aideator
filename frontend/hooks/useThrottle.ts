@@ -31,4 +31,3 @@ export function useThrottle<T extends (...args: any[]) => any>(
   }, [callback, delay]) as T;
 }
 
-export default useThrottle;

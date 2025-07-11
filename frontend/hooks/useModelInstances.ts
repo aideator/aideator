@@ -75,11 +75,8 @@ export function useModelInstances() {
         setState(prev => ({ ...prev, isLoading: true, error: null }));
         
         // Fetch models from API - no fallback
-        console.log('Fetching models from API...');
         const models = await getModels();
-        console.log('API returned models:', models);
         const modelInfos = models.map(convertToModelInfo);
-        console.log('Converted to ModelInfo:', modelInfos);
         
         // Load saved instances from localStorage
         let savedInstances: ModelInstance[] = [];
@@ -111,7 +108,7 @@ export function useModelInstances() {
           error: null,
         }));
       } catch (error) {
-        console.error('Failed to fetch models from API:', error);
+        // Silent error handling - error is surfaced to user via state
         // Surface the actual error to the user
         const errorMessage = error instanceof Error ? error.message : 'Failed to load models from API';
         setState(prev => ({
@@ -266,4 +263,3 @@ export function useModelInstances() {
   };
 }
 
-export default useModelInstances;

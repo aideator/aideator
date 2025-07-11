@@ -2,6 +2,7 @@
 API endpoints for provider API key management.
 """
 
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, validator
@@ -19,16 +20,27 @@ provider_key_service = ProviderKeyService()
 # Request/Response Models
 class CreateProviderKeyRequest(BaseModel):
     """Request to create a new provider API key."""
+
     provider: str = Field(..., description="Provider name: openai, anthropic, etc")
     api_key: str = Field(..., min_length=1, description="The API key to store")
     name: str | None = Field(None, description="User-friendly name for the key")
-    model_name: str | None = Field(None, description="Optional: specific model override")
+    model_name: str | None = Field(
+        None, description="Optional: specific model override"
+    )
 
     @validator("provider")
-    def validate_provider(cls, v):
+    def validate_provider(cls, v: str) -> str:
         valid_providers = [
-            "openai", "anthropic", "google", "cohere", "together",
-            "replicate", "huggingface", "azure", "bedrock", "vertex_ai"
+            "openai",
+            "anthropic",
+            "google",
+            "cohere",
+            "together",
+            "replicate",
+            "huggingface",
+            "azure",
+            "bedrock",
+            "vertex_ai",
         ]
         if v.lower() not in valid_providers:
             raise ValueError(f"Provider must be one of: {', '.join(valid_providers)}")
@@ -37,6 +49,7 @@ class CreateProviderKeyRequest(BaseModel):
 
 class UpdateProviderKeyRequest(BaseModel):
     """Request to update a provider API key."""
+
     api_key: str | None = Field(None, description="New API key (if changing)")
     name: str | None = Field(None, description="New name")
     is_active: bool | None = Field(None, description="Active status")
@@ -44,6 +57,7 @@ class UpdateProviderKeyRequest(BaseModel):
 
 class ProviderKeyResponse(BaseModel):
     """Response containing provider key info (without the actual key)."""
+
     id: str
     provider: str
     model_name: str | None
@@ -66,8 +80,12 @@ class ProviderKeyResponse(BaseModel):
             key_hint=db_key.key_hint,
             is_active=db_key.is_active,
             is_valid=db_key.is_valid,
-            last_validated_at=db_key.last_validated_at.isoformat() if db_key.last_validated_at else None,
-            last_used_at=db_key.last_used_at.isoformat() if db_key.last_used_at else None,
+            last_validated_at=db_key.last_validated_at.isoformat()
+            if db_key.last_validated_at
+            else None,
+            last_used_at=db_key.last_used_at.isoformat()
+            if db_key.last_used_at
+            else None,
             total_requests=db_key.total_requests,
             created_at=db_key.created_at.isoformat(),
         )
@@ -78,9 +96,9 @@ async def create_provider_key(
     request: CreateProviderKeyRequest,
     current_user: CurrentUser,
     session: Session = Depends(get_session),
-):
+) -> ProviderKeyResponse:
     """Create a new provider API key."""
-    db_key = await provider_key_service.create_provider_key(
+    db_key = await provider_key_service.create_provider_key_internal(
         session=session,
         user=current_user,
         provider=request.provider,
@@ -98,7 +116,7 @@ async def list_provider_keys(
     session: Session = Depends(get_session),
     provider: str | None = Query(None, description="Filter by provider"),
     include_inactive: bool = Query(False, description="Include inactive keys"),
-):
+) -> list[ProviderKeyResponse]:
     """List all provider keys for the current user."""
     keys = await provider_key_service.list_user_keys(
         session=session,
@@ -115,7 +133,7 @@ async def get_provider_key(
     key_id: str,
     current_user: CurrentUser,
     session: Session = Depends(get_session),
-):
+) -> ProviderKeyResponse:
     """Get details of a specific provider key."""
     keys = await provider_key_service.list_user_keys(
         session=session,
@@ -136,9 +154,9 @@ async def update_provider_key(
     request: UpdateProviderKeyRequest,
     current_user: CurrentUser,
     session: Session = Depends(get_session),
-):
+) -> ProviderKeyResponse:
     """Update a provider API key."""
-    db_key = await provider_key_service.update_provider_key(
+    db_key = await provider_key_service.update_provider_key_internal(
         session=session,
         user=current_user,
         key_id=key_id,
@@ -155,9 +173,9 @@ async def delete_provider_key(
     key_id: str,
     current_user: CurrentUser,
     session: Session = Depends(get_session),
-):
+) -> dict[str, str]:
     """Delete (deactivate) a provider API key."""
-    success = await provider_key_service.delete_provider_key(
+    success = await provider_key_service.delete_provider_key_internal(
         session=session,
         user=current_user,
         key_id=key_id,
@@ -174,7 +192,7 @@ async def validate_provider_key(
     key_id: str,
     current_user: CurrentUser,
     session: Session = Depends(get_session),
-):
+) -> dict[str, str | bool]:
     """Validate a provider API key by making a test call."""
     is_valid = await provider_key_service.validate_provider_key(
         session=session,
@@ -185,12 +203,12 @@ async def validate_provider_key(
     return {
         "status": "success",
         "is_valid": is_valid,
-        "message": "Key is valid" if is_valid else "Key validation failed"
+        "message": "Key is valid" if is_valid else "Key validation failed",
     }
 
 
 @router.get("/providers/list")
-async def list_supported_providers():
+async def list_supported_providers() -> dict[str, Any]:
     """Get list of supported providers and their configuration."""
     return {
         "providers": [
@@ -200,7 +218,7 @@ async def list_supported_providers():
                 "models": ["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"],
                 "requires_api_key": True,
                 "key_format": "sk-...",
-                "documentation_url": "https://platform.openai.com/api-keys"
+                "documentation_url": "https://platform.openai.com/api-keys",
             },
             {
                 "name": "anthropic",
@@ -208,7 +226,7 @@ async def list_supported_providers():
                 "models": ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"],
                 "requires_api_key": True,
                 "key_format": "sk-ant-...",
-                "documentation_url": "https://console.anthropic.com/settings/keys"
+                "documentation_url": "https://console.anthropic.com/settings/keys",
             },
             {
                 "name": "google",
@@ -216,7 +234,7 @@ async def list_supported_providers():
                 "models": ["gemini-pro", "gemini-pro-vision"],
                 "requires_api_key": True,
                 "key_format": "AI...",
-                "documentation_url": "https://makersuite.google.com/app/apikey"
+                "documentation_url": "https://makersuite.google.com/app/apikey",
             },
             {
                 "name": "cohere",
@@ -224,7 +242,7 @@ async def list_supported_providers():
                 "models": ["command", "command-light"],
                 "requires_api_key": True,
                 "key_format": "...",
-                "documentation_url": "https://dashboard.cohere.com/api-keys"
+                "documentation_url": "https://dashboard.cohere.com/api-keys",
             },
             {
                 "name": "together",
@@ -232,7 +250,7 @@ async def list_supported_providers():
                 "models": ["mixtral-8x7b", "llama-2-70b"],
                 "requires_api_key": True,
                 "key_format": "...",
-                "documentation_url": "https://api.together.xyz/settings/api-keys"
-            }
+                "documentation_url": "https://api.together.xyz/settings/api-keys",
+            },
         ]
     }

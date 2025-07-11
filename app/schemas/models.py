@@ -24,9 +24,7 @@ class ProviderCredentialCreate(BaseModel):
             "example": {
                 "provider": "openai",
                 "name": "My OpenAI Production Key",
-                "credentials": {
-                    "api_key": "sk-..."
-                }
+                "credentials": {"api_key": "sk-..."},
             }
         }
 
@@ -63,7 +61,7 @@ class ProviderCredentialResponse(BaseModel):
                 "updated_at": "2024-01-01T00:00:00Z",
                 "last_used_at": "2024-01-01T12:00:00Z",
                 "total_requests": 150,
-                "total_cost_usd": 12.34
+                "total_cost_usd": 12.34,
             }
         }
 
@@ -101,11 +99,15 @@ class ModelDefinitionResponse(BaseModel):
                 "max_output_tokens": 4096,
                 "input_price_per_1m_tokens": 30.0,
                 "output_price_per_1m_tokens": 60.0,
-                "capabilities": ["text_completion", "chat_completion", "function_calling"],
+                "capabilities": [
+                    "text_completion",
+                    "chat_completion",
+                    "function_calling",
+                ],
                 "requires_api_key": True,
                 "requires_region": False,
                 "requires_project_id": False,
-                "is_active": True
+                "is_active": True,
             }
         }
 
@@ -123,10 +125,7 @@ class ModelVariantCreate(BaseModel):
             "example": {
                 "model_definition_id": "model_gpt4_openai",
                 "provider_credential_id": "cred_123abc",
-                "model_parameters": {
-                    "temperature": 0.7,
-                    "max_tokens": 1000
-                }
+                "model_parameters": {"temperature": 0.7, "max_tokens": 1000},
             }
         }
 
@@ -167,7 +166,7 @@ class ModelVariantResponse(BaseModel):
                 "response_time_ms": 2500,
                 "created_at": "2024-01-01T00:00:00Z",
                 "started_at": "2024-01-01T00:00:05Z",
-                "completed_at": "2024-01-01T00:00:10Z"
+                "completed_at": "2024-01-01T00:00:10Z",
             }
         }
 
@@ -187,21 +186,21 @@ class ModelSelectionRequest(BaseModel):
                     {
                         "model_definition_id": "model_gpt4_openai",
                         "provider_credential_id": "cred_openai_123",
-                        "model_parameters": {"temperature": 0.7}
+                        "model_parameters": {"temperature": 0.7},
                     },
                     {
                         "model_definition_id": "model_claude_3_5_sonnet_anthropic",
                         "provider_credential_id": "cred_anthropic_456",
-                        "model_parameters": {"temperature": 0.5}
+                        "model_parameters": {"temperature": 0.5},
                     },
                     {
                         "model_definition_id": "model_gpt4_openai",
                         "provider_credential_id": "cred_openai_123",
-                        "model_parameters": {"temperature": 0.9}
-                    }
+                        "model_parameters": {"temperature": 0.9},
+                    },
                 ]
             }
-        }
+        },
     }
 
 
@@ -224,9 +223,9 @@ class ProviderSummary(BaseModel):
                 "description": "Leading AI research company",
                 "requires_api_key": True,
                 "model_count": 8,
-                "user_has_credentials": True
+                "user_has_credentials": True,
             }
-        }
+        },
     }
 
 
@@ -247,7 +246,7 @@ class ModelCatalogResponse(BaseModel):
                         "description": "Leading AI research company",
                         "requires_api_key": True,
                         "model_count": 8,
-                        "user_has_credentials": True
+                        "user_has_credentials": True,
                     }
                 ],
                 "models": [
@@ -256,10 +255,10 @@ class ModelCatalogResponse(BaseModel):
                         "provider": "openai",
                         "model_name": "gpt-4",
                         "display_name": "GPT-4",
-                        "capabilities": ["text_completion", "chat_completion"]
+                        "capabilities": ["text_completion", "chat_completion"],
                     }
                 ],
-                "capabilities": ["text_completion", "chat_completion", "vision"]
+                "capabilities": ["text_completion", "chat_completion", "vision"],
             }
         }
 
@@ -277,9 +276,9 @@ class ModelRecommendation(BaseModel):
             "example": {
                 "model_definition_id": "model_gpt4_openai",
                 "confidence_score": 0.85,
-                "reasoning": "GPT-4 is excellent for code analysis and complex reasoning tasks"
+                "reasoning": "GPT-4 is excellent for code analysis and complex reasoning tasks",
             }
-        }
+        },
     }
 
 
@@ -289,7 +288,9 @@ class ModelRecommendationRequest(BaseModel):
     prompt: str
     task_type: str | None = None
     budget_preference: str | None = Field(None, pattern="^(low|medium|high)$")
-    performance_preference: str | None = Field(None, pattern="^(speed|quality|balanced)$")
+    performance_preference: str | None = Field(
+        None, pattern="^(speed|quality|balanced)$"
+    )
 
     class Config:
         json_schema_extra = {
@@ -297,7 +298,7 @@ class ModelRecommendationRequest(BaseModel):
                 "prompt": "Analyze this Python code and suggest improvements",
                 "task_type": "code_analysis",
                 "budget_preference": "medium",
-                "performance_preference": "quality"
+                "performance_preference": "quality",
             }
         }
 
@@ -315,9 +316,9 @@ class ModelRecommendationResponse(BaseModel):
                     {
                         "model_definition_id": "model_gpt4_openai",
                         "confidence_score": 0.85,
-                        "reasoning": "GPT-4 is excellent for code analysis"
+                        "reasoning": "GPT-4 is excellent for code analysis",
                     }
                 ],
-                "explanation": "Based on your code analysis task, these models are recommended for their strong reasoning capabilities."
+                "explanation": "Based on your code analysis task, these models are recommended for their strong reasoning capabilities.",
             }
         }

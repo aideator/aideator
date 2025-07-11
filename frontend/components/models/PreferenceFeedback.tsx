@@ -301,4 +301,3 @@ export function PreferenceFeedback({
   );
 }
 
-export default PreferenceFeedback;

@@ -65,8 +65,8 @@ export interface UserPreferenceData {
 interface UserPreferenceDashboardProps {
   data: UserPreferenceData;
   isLoading?: boolean;
-  timeRange?: 'week' | 'month' | 'quarter' | 'year';
-  onTimeRangeChange?: (range: 'week' | 'month' | 'quarter' | 'year') => void;
+  timeRange?: 'day' | 'week' | 'month' | 'quarter' | 'year' | 'all';
+  onTimeRangeChange?: (range: 'day' | 'week' | 'month' | 'quarter' | 'year' | 'all') => void;
 }
 
 export function UserPreferenceDashboard({ 
@@ -79,10 +79,12 @@ export function UserPreferenceDashboard({
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
 
   const timeRanges = [
+    { value: 'day', label: 'Today' },
     { value: 'week', label: 'Last Week' },
     { value: 'month', label: 'Last Month' },
     { value: 'quarter', label: 'Last Quarter' },
     { value: 'year', label: 'Last Year' },
+    { value: 'all', label: 'All Time' },
   ];
 
   const promptCategories = ['all', ...data.preferencesByPromptType.map(p => p.category)];
@@ -418,4 +420,3 @@ export function UserPreferenceDashboard({
   );
 }
 
-export default UserPreferenceDashboard;

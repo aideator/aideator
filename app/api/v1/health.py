@@ -1,6 +1,7 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -40,8 +41,8 @@ async def detailed_health_check(
 
     # Check database
     try:
-        await db.execute("SELECT 1")
-        health_status["checks"]["database"] = True
+        await db.execute(text("SELECT 1"))
+        health_status["checks"]["database"] = "OK"
     except Exception as e:
         health_status["status"] = "degraded"
         health_status["checks"]["database"] = str(e)

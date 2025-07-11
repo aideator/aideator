@@ -107,7 +107,7 @@ export const MemoizedMarkdown = memo(({ content, isStreaming = false, className 
   }, []);
 
   const components = useMemo(() => ({
-    code: CodeBlock,
+    code: CodeBlock as any,
     h1: ({ children }: { children: React.ReactNode }) => (
       <h1 className="font-bold mt-3 mb-2 text-gray-900" style={{ fontSize: '1rem' }}>{children}</h1>
     ),
@@ -129,17 +129,18 @@ export const MemoizedMarkdown = memo(({ content, isStreaming = false, className 
     li: ({ children }: { children: React.ReactNode }) => (
       <li className="text-gray-700" style={{ fontSize: '0.75rem' }}>{children}</li>
     ),
-    blockquote: ({ children }: { children: React.ReactNode }) => (
-      <blockquote className="border-l-4 border-gray-300 pl-3 italic my-2 text-gray-600" style={{ fontSize: '0.75rem' }}>
+    blockquote: ({ children, ...props }: React.ComponentPropsWithoutRef<'blockquote'>) => (
+      <blockquote className="border-l-4 border-gray-300 pl-3 italic my-2 text-gray-600" style={{ fontSize: '0.75rem' }} {...props}>
         {children}
       </blockquote>
     ),
-    a: ({ children, href }: { children: React.ReactNode; href?: string }) => (
+    a: ({ children, href, ...props }: React.ComponentPropsWithoutRef<'a'>) => (
       <a 
         href={href} 
         className="text-blue-600 hover:text-blue-800 underline transition-colors" 
         target="_blank" 
         rel="noopener noreferrer"
+        {...props}
       >
         {children}
       </a>
@@ -179,8 +180,7 @@ export const MemoizedMarkdown = memo(({ content, isStreaming = false, className 
           </pre>
         ) : (
           <ReactMarkdown
-            components={components}
-            onError={() => setMarkdownError(true)}
+            components={components as any}
           >
             {displayedContent}
           </ReactMarkdown>
@@ -203,4 +203,3 @@ export const MemoizedMarkdown = memo(({ content, isStreaming = false, className 
 
 MemoizedMarkdown.displayName = 'MemoizedMarkdown';
 
-export default MemoizedMarkdown;

@@ -28,12 +28,12 @@ from app.core.config import KubernetesEnvironment, Settings, get_settings
 from app.core.dependencies import get_current_active_user, get_current_user
 from app.core.logging import setup_logging
 from app.models.user import APIKey, User
-from app.schemas.auth import APIKeyCreate, UserCreate
-from app.schemas.common import PaginationParams
-from app.schemas.runs import RunCreate
+from app.schemas.auth import CreateAPIKeyRequest, UserCreate
+from app.schemas.runs import CreateRunRequest
 from app.schemas.session import PreferenceCreate, SessionCreate
 
 
+@pytest.mark.unit
 class TestConfigurationManagement:
     """Test configuration and settings management."""
 
@@ -41,9 +41,11 @@ class TestConfigurationManagement:
         """Test creating settings with default values."""
         settings = Settings(
             secret_key="test-secret-key-32-characters-long",
+            encryption_key="test-encryption-key-32-characters-long",
             openai_api_key="sk-test-openai-key",
             anthropic_api_key="sk-ant-test-key",
-            gemini_api_key="AIza-test-key"
+            gemini_api_key="AIza-test-key",
+            debug=False,  # Explicitly set debug to False for test
         )
 
         assert settings.project_name == "AIdeator"
@@ -69,21 +71,21 @@ class TestConfigurationManagement:
         with pytest.raises(ValueError):
             Settings(
                 secret_key="test-secret-key-32-characters-long",
-                openai_api_key="invalid-key"
+                openai_api_key="invalid-key",
             )
 
         # Test invalid Anthropic key
         with pytest.raises(ValueError):
             Settings(
                 secret_key="test-secret-key-32-characters-long",
-                anthropic_api_key="invalid-key"
+                anthropic_api_key="invalid-key",
             )
 
         # Test invalid Gemini key
         with pytest.raises(ValueError):
             Settings(
                 secret_key="test-secret-key-32-characters-long",
-                gemini_api_key="invalid-key"
+                gemini_api_key="invalid-key",
             )
 
         # Test valid keys
@@ -91,17 +93,20 @@ class TestConfigurationManagement:
             secret_key="test-secret-key-32-characters-long",
             openai_api_key="sk-test-key",
             anthropic_api_key="sk-ant-test-key",
-            gemini_api_key="AIza-test-key"
+            gemini_api_key="AIza-test-key",
         )
+        assert settings.openai_api_key is not None
         assert settings.openai_api_key.startswith("sk-")
+        assert settings.anthropic_api_key is not None
         assert settings.anthropic_api_key.startswith("sk-ant-")
+        assert settings.gemini_api_key is not None
         assert settings.gemini_api_key.startswith("AIza")
 
     def test_database_url_async_property(self):
         """Test database URL async property."""
         settings = Settings(
             secret_key="test-secret-key-32-characters-long",
-            database_url="postgresql://user:pass@localhost:5432/db"
+            database_url="postgresql://user:pass@localhost:5432/db",
         )
 
         async_url = settings.database_url_async
@@ -113,7 +118,7 @@ class TestConfigurationManagement:
             secret_key="test-secret-key-32-characters-long",
             openai_api_key="sk-test-key",
             anthropic_api_key="sk-ant-test-key",
-            gemini_api_key="AIza-test-key"
+            gemini_api_key="AIza-test-key",
         )
 
         secrets = settings.get_kubernetes_secrets()
@@ -146,6 +151,7 @@ class TestConfigurationManagement:
         assert settings1 is settings2  # Should be same instance due to lru_cache
 
 
+@pytest.mark.unit
 class TestAuthenticationUtilities:
     """Test authentication utility functions."""
 
@@ -167,6 +173,7 @@ class TestAuthenticationUtilities:
         assert verify_password("wrong", hashed) is False
 
 
+@pytest.mark.unit
 class TestSchemaValidation:
     """Test Pydantic schema validation."""
 
@@ -177,7 +184,7 @@ class TestSchemaValidation:
             "email": "test@example.com",
             "password": "SecurePassword123!",
             "full_name": "Test User",
-            "company": "Test Company"
+            "company": "Test Company",
         }
         user = UserCreate(**user_data)
         assert user.email == "test@example.com"
@@ -186,41 +193,47 @@ class TestSchemaValidation:
         # Invalid email
         with pytest.raises(ValidationError):
             UserCreate(
-                email="invalid-email",
-                password="password",
-                full_name="Test User"
+                email="invalid-email", password="password", full_name="Test User"
             )
 
     def test_run_create_schema(self):
-        """Test RunCreate schema validation."""
+        """Test CreateRunRequest schema validation."""
         # Valid run data
         run_data = {
             "github_url": "https://github.com/test/repo",
-            "prompt": "Test prompt",
-            "variations": 3,
-            "agent_config": {
-                "model": "gpt-4",
-                "temperature": 0.7
-            }
+            "prompt": "Test prompt for the agents",
+            "model_variants": [
+                {
+                    "model_definition_id": "model_gpt4_openai",
+                    "provider_credential_id": "cred_openai_123",
+                    "model_parameters": {"temperature": 0.7},
+                }
+            ],
         }
-        run = RunCreate(**run_data)
-        assert run.github_url == "https://github.com/test/repo"
-        assert run.variations == 3
+        run = CreateRunRequest(**run_data)
+        assert str(run.github_url) == "https://github.com/test/repo"
+        assert len(run.model_variants) == 1
 
-        # Invalid variations count
+        # Invalid empty model_variants
         with pytest.raises(ValidationError):
-            RunCreate(
+            CreateRunRequest(
                 github_url="https://github.com/test/repo",
-                prompt="Test prompt",
-                variations=0  # Should be >= 1
+                prompt="Test prompt for the agents",
+                model_variants=[],  # Should have at least 1
             )
 
         # Invalid URL
         with pytest.raises(ValidationError):
-            RunCreate(
+            CreateRunRequest(
                 github_url="not-a-url",
-                prompt="Test prompt",
-                variations=1
+                prompt="Test prompt for the agents",
+                model_variants=[
+                    {
+                        "model_definition_id": "model_gpt4_openai",
+                        "provider_credential_id": "cred_openai_123",
+                        "model_parameters": {"temperature": 0.7},
+                    }
+                ],
             )
 
     def test_session_create_schema(self):
@@ -228,7 +241,7 @@ class TestSchemaValidation:
         session_data = {
             "title": "Test Session",
             "description": "Test description",
-            "models_used": ["gpt-4", "claude-3-sonnet"]
+            "models_used": ["gpt-4", "claude-3-sonnet"],
         }
         session = SessionCreate(**session_data)
         assert session.title == "Test Session"
@@ -238,7 +251,7 @@ class TestSchemaValidation:
         with pytest.raises(ValidationError):
             SessionCreate(
                 title="A" * 201,  # Too long
-                models_used=["gpt-4"]
+                models_used=["gpt-4"],
             )
 
     def test_preference_create_schema(self):
@@ -247,11 +260,8 @@ class TestSchemaValidation:
             "preferred_model": "claude-3-sonnet",
             "preferred_response_id": "response_123",
             "compared_models": ["gpt-4", "claude-3-sonnet"],
-            "response_quality_scores": {
-                "gpt-4": 4,
-                "claude-3-sonnet": 5
-            },
-            "confidence_score": 4
+            "response_quality_scores": {"gpt-4": 4, "claude-3-sonnet": 5},
+            "confidence_score": 4,
         }
         preference = PreferenceCreate(**preference_data)
         assert preference.preferred_model == "claude-3-sonnet"
@@ -265,8 +275,8 @@ class TestSchemaValidation:
                 compared_models=["gpt-4", "claude-3-sonnet"],
                 response_quality_scores={
                     "gpt-4": 6,  # Invalid score > 5
-                    "claude-3-sonnet": 5
-                }
+                    "claude-3-sonnet": 5,
+                },
             )
 
         # Test insufficient compared models
@@ -275,7 +285,7 @@ class TestSchemaValidation:
                 preferred_model="gpt-4",
                 preferred_response_id="response_123",
                 compared_models=["gpt-4"],  # Need at least 2
-                response_quality_scores={"gpt-4": 5}
+                response_quality_scores={"gpt-4": 5},
             )
 
     def test_api_key_create_schema(self):
@@ -284,33 +294,15 @@ class TestSchemaValidation:
             "name": "Test API Key",
             "description": "For testing purposes",
             "scopes": ["runs:create", "runs:read"],
-            "expires_in_days": 90
+            "expires_in_days": 90,
         }
-        api_key = APIKeyCreate(**api_key_data)
+        api_key = CreateAPIKeyRequest(**api_key_data)
         assert api_key.name == "Test API Key"
         assert len(api_key.scopes) == 2
         assert api_key.expires_in_days == 90
 
-    def test_pagination_params_schema(self):
-        """Test PaginationParams schema validation."""
-        # Default values
-        pagination = PaginationParams()
-        assert pagination.limit == 20
-        assert pagination.offset == 0
 
-        # Custom values
-        pagination = PaginationParams(limit=50, offset=100)
-        assert pagination.limit == 50
-        assert pagination.offset == 100
-
-        # Invalid values
-        with pytest.raises(ValidationError):
-            PaginationParams(limit=-1)  # Negative limit
-
-        with pytest.raises(ValidationError):
-            PaginationParams(offset=-1)  # Negative offset
-
-
+@pytest.mark.unit
 class TestDependencyInjection:
     """Test dependency injection functions."""
 
@@ -324,6 +316,7 @@ class TestDependencyInjection:
         # Full testing would require FastAPI test client with proper setup
 
 
+@pytest.mark.unit
 class TestLoggingUtilities:
     """Test logging setup and utilities."""
 
@@ -337,43 +330,52 @@ class TestLoggingUtilities:
         assert hasattr(logger, "debug")
 
 
+@pytest.mark.unit
 class TestMiddlewareComponents:
     """Test middleware components."""
 
     def test_logging_middleware_import(self):
         """Test that logging middleware can be imported."""
         from app.middleware.logging import LoggingMiddleware
+
         assert LoggingMiddleware is not None
 
     def test_rate_limit_middleware_import(self):
         """Test that rate limit middleware can be imported."""
         from app.middleware.rate_limit import RateLimitMiddleware
+
         assert RateLimitMiddleware is not None
 
 
+@pytest.mark.unit
 class TestUtilityFunctions:
     """Test utility functions and helpers."""
 
     def test_openapi_utilities_import(self):
         """Test that OpenAPI utilities can be imported."""
         from app.utils.openapi import custom_openapi
+
         assert custom_openapi is not None
 
-    @patch("app.utils.openapi.get_settings")
-    def test_custom_openapi_function(self, mock_get_settings):
+    def test_custom_openapi_function(self):
         """Test custom OpenAPI function."""
-        from app.main import app
+        from fastapi import FastAPI
+
         from app.utils.openapi import custom_openapi
 
-        mock_settings = MagicMock()
-        mock_settings.project_name = "AIdeator"
-        mock_settings.version = "1.0.0"
-        mock_get_settings.return_value = mock_settings
+        app = FastAPI(title="Test App", version="1.0.0", description="Test Description")
 
         openapi_func = custom_openapi(app)
         assert callable(openapi_func)
 
+        # Test the function returns a schema
+        schema = openapi_func()
+        assert isinstance(schema, dict)
+        assert "components" in schema
+        assert "securitySchemes" in schema["components"]
 
+
+@pytest.mark.unit
 class TestModelClasses:
     """Test model class definitions and relationships."""
 
@@ -388,7 +390,7 @@ class TestModelClasses:
             is_active=True,
             is_superuser=False,
             created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            updated_at=datetime.utcnow(),
         )
 
         assert user.id == "user_123"
@@ -407,7 +409,7 @@ class TestModelClasses:
             scopes=["runs:create", "runs:read"],
             is_active=True,
             created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(days=90)
+            expires_at=datetime.utcnow() + timedelta(days=90),
         )
 
         assert api_key.id == "key_123"
@@ -428,7 +430,7 @@ class TestModelClasses:
             status="pending",
             created_at=datetime.utcnow(),
             results={},
-            error_message=None
+            error_message=None,
         )
 
         assert run.id == "run_123"
@@ -452,7 +454,7 @@ class TestModelClasses:
             last_activity_at=datetime.utcnow(),
             models_used=["gpt-4", "claude-3-sonnet"],
             total_turns=0,
-            total_cost=0.0
+            total_cost=0.0,
         )
 
         assert session.id == "session_123"

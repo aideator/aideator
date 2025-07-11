@@ -50,7 +50,7 @@ async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Re
     
     // In development, try to auto-login again
     if (process.env.NODE_ENV === 'development') {
-      console.log('Token expired, attempting dev auto-login...')
+      // Token expired - attempting dev auto-login
       // Note: We can't use the AuthContext here, so we'll just clear and let the app re-authenticate
       window.location.reload()
     }
@@ -61,7 +61,6 @@ async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Re
 
 // Authenticated versions of API functions
 export async function createRun(data: api.CreateRunRequest): Promise<api.CreateRunResponse> {
-  console.log("Making authenticated request to create run")
   
   try {
     const response = await fetchWithAuth(`${API_BASE_URL}/api/v1/runs`, {
@@ -71,13 +70,13 @@ export async function createRun(data: api.CreateRunRequest): Promise<api.CreateR
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: "Unknown error" }))
-      console.error("API Error Response:", errorData)
+      // Error details are included in the thrown error
       throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`)
     }
 
     return response.json()
   } catch (error) {
-    console.error("Create run error:", error)
+    // Error handling - re-throw with context
     if (error instanceof TypeError && error.message.includes("Failed to fetch")) {
       throw new Error(
         "Cannot connect to backend. Make sure the server is running on localhost:8000 and CORS is configured.",
@@ -88,7 +87,6 @@ export async function createRun(data: api.CreateRunRequest): Promise<api.CreateR
 }
 
 export async function createPrompt(data: api.CreatePromptRequest): Promise<api.CreatePromptResponse> {
-  console.log("Making authenticated request to create prompt")
   
   try {
     const response = await fetchWithAuth(`${API_BASE_URL}/api/v1/prompts`, {
@@ -98,7 +96,7 @@ export async function createPrompt(data: api.CreatePromptRequest): Promise<api.C
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: "Unknown error" }))
-      console.error("API Error Response:", errorData)
+      // Error details are included in the thrown error
       throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`)
     }
 
@@ -124,7 +122,7 @@ export async function createSession(data: api.CreateSessionRequest = {}): Promis
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: "Unknown error" }))
-      console.error("API Error Response:", errorData)
+      // Error details are included in the thrown error
       throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`)
     }
 
@@ -150,7 +148,7 @@ export async function recordPreference(data: api.PreferenceRequest): Promise<voi
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: "Unknown error" }))
-      console.error("API Error Response:", errorData)
+      // Error details are included in the thrown error
       throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`)
     }
   } catch (error) {
@@ -172,7 +170,7 @@ export async function getSessions(): Promise<api.Session[]> {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: "Unknown error" }))
-      console.error("API Error Response:", errorData)
+      // Error details are included in the thrown error
       throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`)
     }
 
@@ -198,7 +196,7 @@ export async function getSessionDetails(sessionId: string): Promise<api.SessionD
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: "Unknown error" }))
-      console.error("API Error Response:", errorData)
+      // Error details are included in the thrown error
       throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`)
     }
 
@@ -221,7 +219,7 @@ export async function getModelCatalog(): Promise<api.ModelCatalogResponse> {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: "Unknown error" }))
-      console.error("API Error Response:", errorData)
+      // Error details are included in the thrown error
       throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`)
     }
 
@@ -254,7 +252,7 @@ export async function getModels(params?: {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: "Unknown error" }))
-      console.error("API Error Response:", errorData)
+      // Error details are included in the thrown error
       throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`)
     }
 
@@ -277,7 +275,7 @@ export async function getPreferenceStats(): Promise<api.PreferenceStats> {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: "Unknown error" }))
-      console.error("API Error Response:", errorData)
+      // Error details are included in the thrown error
       throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`)
     }
 
@@ -301,7 +299,7 @@ export async function getPromptDetails(promptId: string): Promise<api.PromptDeta
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: "Unknown error" }))
-      console.error("API Error Response:", errorData)
+      // Error details are included in the thrown error
       throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`)
     }
 
@@ -327,7 +325,7 @@ export async function updateSession(sessionId: string, data: { title: string }):
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: "Unknown error" }))
-      console.error("API Error Response:", errorData)
+      // Error details are included in the thrown error
       throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`)
     }
   } catch (error) {
@@ -350,7 +348,7 @@ export async function deleteSession(sessionId: string): Promise<void> {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: "Unknown error" }))
-      console.error("API Error Response:", errorData)
+      // Error details are included in the thrown error
       throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`)
     }
   } catch (error) {
@@ -375,7 +373,7 @@ export async function selectWinner(runId: string, variationId: number): Promise<
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: "Unknown error" }))
-      console.error("API Error Response:", errorData)
+      // Error details are included in the thrown error
       throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`)
     }
   } catch (error) {
@@ -396,7 +394,7 @@ export async function getRunStatus(runId: string) {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: "Unknown error" }))
-      console.error("API Error Response:", errorData)
+      // Error details are included in the thrown error
       throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`)
     }
 

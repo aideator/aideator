@@ -275,4 +275,3 @@ export function usePreferenceStore() {
   };
 }
 
-export default usePreferenceStore;

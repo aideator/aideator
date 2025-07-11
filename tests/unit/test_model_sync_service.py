@@ -37,7 +37,7 @@ class TestModelSyncService:
                 "data": [
                     {"id": "gpt-4", "object": "model"},
                     {"id": "claude-3-opus-20240229", "object": "model"},
-                    {"id": "gemini-pro", "object": "model"}
+                    {"id": "gemini-pro", "object": "model"},
                 ]
             },
             "model_info": {
@@ -54,8 +54,8 @@ class TestModelSyncService:
                             "output_cost_per_token": 0.00006,
                             "supports_function_calling": True,
                             "supports_vision": False,
-                            "supports_streaming": True
-                        }
+                            "supports_streaming": True,
+                        },
                     },
                     {
                         "model_name": "claude-3-opus-20240229",
@@ -69,11 +69,16 @@ class TestModelSyncService:
                             "output_cost_per_token": 0.000075,
                             "supports_function_calling": True,
                             "supports_vision": True,
-                            "supports_streaming": True
-                        }
-                    }
+                            "supports_streaming": True,
+                        },
+                    },
+                    {
+                        "model_name": "gemini-pro",
+                        "litellm_params": {"model": "gemini-pro"},
+                        "model_info": {},
+                    },
                 ]
-            }
+            },
         }
 
     @pytest.mark.asyncio
@@ -85,26 +90,35 @@ class TestModelSyncService:
             mock_client.return_value.__aenter__.return_value = mock_instance
 
             # Mock the two API calls
-            mock_instance.get = AsyncMock(side_effect=[
-                Mock(
-                    json=Mock(return_value=mock_litellm_response["models"]),
-                    raise_for_status=Mock()
-                ),
-                Mock(
-                    json=Mock(return_value=mock_litellm_response["model_info"]),
-                    raise_for_status=Mock()
-                )
-            ])
+            mock_instance.get = AsyncMock(
+                side_effect=[
+                    Mock(
+                        json=Mock(return_value=mock_litellm_response["models"]),
+                        raise_for_status=Mock(),
+                    ),
+                    Mock(
+                        json=Mock(return_value=mock_litellm_response["model_info"]),
+                        raise_for_status=Mock(),
+                    ),
+                ]
+            )
 
             # Call the method
             models = await sync_service._fetch_models_from_proxy()
 
             # Verify API calls were made
             assert mock_instance.get.call_count == 2
-            assert models == mock_litellm_response["model_info"]["data"]
+
+            # The method merges models from both endpoints
+            # It should have the 2 from model_info plus gemini-pro from models
+            assert len(models) == 3
+            model_names = {m["model_name"] for m in models}
+            assert model_names == {"gpt-4", "claude-3-opus-20240229", "gemini-pro"}
 
     @pytest.mark.asyncio
-    async def test_sync_models_success(self, sync_service, mock_session, mock_litellm_response):
+    async def test_sync_models_success(
+        self, sync_service, mock_session, mock_litellm_response
+    ):
         """Test successful model sync."""
         # Mock the fetch method
         sync_service._fetch_models_from_proxy = AsyncMock(
@@ -120,12 +134,14 @@ class TestModelSyncService:
 
         # Verify sync log
         assert sync_log.status == "success"
-        assert sync_log.models_discovered == 2
-        assert sync_log.models_added == 2
+        assert sync_log.models_discovered == 3
+        assert sync_log.models_added == 3
         assert sync_log.completed_at is not None
 
     @pytest.mark.asyncio
-    async def test_sync_models_update_existing(self, sync_service, mock_session, mock_litellm_response):
+    async def test_sync_models_update_existing(
+        self, sync_service, mock_session, mock_litellm_response
+    ):
         """Test updating existing models."""
         # Mock the fetch method
         sync_service._fetch_models_from_proxy = AsyncMock(
@@ -138,7 +154,7 @@ class TestModelSyncService:
             litellm_provider="openai",
             display_name="GPT-4",
             is_active=True,
-            last_seen_at=datetime.utcnow()
+            last_seen_at=datetime.utcnow(),
         )
         mock_session.exec.return_value.first.return_value = existing_model
         mock_session.exec.return_value.all.return_value = [existing_model]
@@ -163,14 +179,14 @@ class TestModelSyncService:
                 model_name="gpt-4",
                 litellm_provider="openai",
                 display_name="GPT-4",
-                is_active=True
+                is_active=True,
             ),
             ModelDefinitionDB(
                 model_name="claude-3",
                 litellm_provider="anthropic",
                 display_name="Claude 3",
-                is_active=True
-            )
+                is_active=True,
+            ),
         ]
         mock_session.exec.return_value.first.return_value = None
         mock_session.exec.return_value.all.return_value = existing_models
@@ -222,18 +238,25 @@ class TestModelSyncService:
         assert "vision" in sync_service._generate_description("unknown", model_info)
 
         # Test embedding model
-        assert "Embedding" in sync_service._generate_description("text-embedding-ada", {})
+        assert "Embedding" in sync_service._generate_description(
+            "text-embedding-ada", {}
+        )
 
         # Test large context model
         model_info = {"max_tokens": 150000}
-        assert "Large context" in sync_service._generate_description("unknown", model_info)
+        assert "Large context" in sync_service._generate_description(
+            "unknown", model_info
+        )
 
     def test_determine_category(self, sync_service):
         """Test category determination."""
         assert sync_service._determine_category("text-embedding-ada", {}) == "embedding"
         assert sync_service._determine_category("gpt-4", {}) == "advanced"
         assert sync_service._determine_category("code-llama", {}) == "code"
-        assert sync_service._determine_category("unknown", {"supports_vision": True}) == "vision"
+        assert (
+            sync_service._determine_category("unknown", {"supports_vision": True})
+            == "vision"
+        )
         assert sync_service._determine_category("gpt-3.5-turbo", {}) == "general"
 
     def test_generate_tags(self, sync_service):
@@ -242,7 +265,7 @@ class TestModelSyncService:
             "supports_function_calling": True,
             "supports_vision": True,
             "supports_streaming": True,
-            "max_tokens": 150000
+            "max_tokens": 150000,
         }
 
         tags = sync_service._generate_tags("gpt-4", model_info)
@@ -269,9 +292,17 @@ class TestModelSyncService:
 
     def test_get_api_key_env_var(self, sync_service):
         """Test API key environment variable mapping."""
-        assert sync_service._get_api_key_env_var({"litellm_provider": "openai"}) == "OPENAI_API_KEY"
-        assert sync_service._get_api_key_env_var({"litellm_provider": "anthropic"}) == "ANTHROPIC_API_KEY"
-        assert sync_service._get_api_key_env_var({"litellm_provider": "unknown"}) is None
+        assert (
+            sync_service._get_api_key_env_var({"litellm_provider": "openai"})
+            == "OPENAI_API_KEY"
+        )
+        assert (
+            sync_service._get_api_key_env_var({"litellm_provider": "anthropic"})
+            == "ANTHROPIC_API_KEY"
+        )
+        assert (
+            sync_service._get_api_key_env_var({"litellm_provider": "unknown"}) is None
+        )
 
 
 if __name__ == "__main__":

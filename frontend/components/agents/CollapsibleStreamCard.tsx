@@ -280,4 +280,3 @@ export function CollapsibleStreamCard({
   );
 }
 
-export default CollapsibleStreamCard;

@@ -31,15 +31,13 @@ class TestGetCurrentUser:
     async def test_get_current_user_success(self, mock_authenticate):
         """Test successful user authentication."""
         # Mock user
-        mock_user = User(
-            id="user_123",
-            email="test@example.com",
-            is_active=True
-        )
+        mock_user = User(id="user_123", email="test@example.com", is_active=True)
         mock_authenticate.return_value = mock_user
 
         # Mock credentials and session
-        mock_credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="token")
+        mock_credentials = HTTPAuthorizationCredentials(
+            scheme="Bearer", credentials="token"
+        )
         mock_db = AsyncMock(spec=AsyncSession)
 
         # Call the function
@@ -56,7 +54,9 @@ class TestGetCurrentUser:
         mock_authenticate.side_effect = AuthError("Invalid token")
 
         # Mock credentials and session
-        mock_credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="invalid")
+        mock_credentials = HTTPAuthorizationCredentials(
+            scheme="Bearer", credentials="invalid"
+        )
         mock_db = AsyncMock(spec=AsyncSession)
 
         # Should raise AuthError
@@ -71,11 +71,7 @@ class TestGetCurrentActiveUser:
     async def test_get_current_active_user_success(self):
         """Test with active user."""
         # Mock active user
-        mock_user = User(
-            id="user_123",
-            email="test@example.com",
-            is_active=True
-        )
+        mock_user = User(id="user_123", email="test@example.com", is_active=True)
 
         # Call the function
         result = await get_current_active_user(mock_user)
@@ -86,33 +82,27 @@ class TestGetCurrentActiveUser:
     async def test_get_current_active_user_inactive(self):
         """Test with inactive user."""
         # Mock inactive user
-        mock_user = User(
-            id="user_123",
-            email="test@example.com",
-            is_active=False
-        )
+        mock_user = User(id="user_123", email="test@example.com", is_active=False)
 
         # Should raise 403 Forbidden
         with pytest.raises(HTTPException) as exc_info:
             await get_current_active_user(mock_user)
 
-        assert exc_info.value.status_code == 403
-        assert exc_info.value.detail == "Inactive user"
+        exc = exc_info.value
+        assert isinstance(exc, HTTPException)
+        assert exc.status_code == 403
+        assert exc.detail == "Inactive user"
 
 
 @pytest.mark.asyncio
 class TestGetCurrentUserFromAPIKey:
     """Test get_current_user_from_api_key dependency."""
 
-    @patch("app.core.dependencies.get_user_from_api_key")
+    @patch("app.core.auth.get_user_from_api_key")
     async def test_api_key_from_header_success(self, mock_get_user):
         """Test successful authentication with API key from header."""
         # Mock user
-        mock_user = User(
-            id="user_123",
-            email="test@example.com",
-            is_active=True
-        )
+        mock_user = User(id="user_123", email="test@example.com", is_active=True)
         mock_get_user.return_value = mock_user
 
         # Mock session
@@ -120,24 +110,18 @@ class TestGetCurrentUserFromAPIKey:
 
         # Call with header API key
         result = await get_current_user_from_api_key(
-            x_api_key="test-api-key",
-            api_key=None,
-            db=mock_db
+            x_api_key="test-api-key", api_key=None, db=mock_db
         )
 
         # Verify
         assert result is mock_user
         mock_get_user.assert_called_once_with("test-api-key", mock_db)
 
-    @patch("app.core.dependencies.get_user_from_api_key")
+    @patch("app.core.auth.get_user_from_api_key")
     async def test_api_key_from_query_success(self, mock_get_user):
         """Test successful authentication with API key from query parameter."""
         # Mock user
-        mock_user = User(
-            id="user_123",
-            email="test@example.com",
-            is_active=True
-        )
+        mock_user = User(id="user_123", email="test@example.com", is_active=True)
         mock_get_user.return_value = mock_user
 
         # Mock session
@@ -145,24 +129,18 @@ class TestGetCurrentUserFromAPIKey:
 
         # Call with query API key
         result = await get_current_user_from_api_key(
-            x_api_key=None,
-            api_key="test-api-key",
-            db=mock_db
+            x_api_key=None, api_key="test-api-key", db=mock_db
         )
 
         # Verify
         assert result is mock_user
         mock_get_user.assert_called_once_with("test-api-key", mock_db)
 
-    @patch("app.core.dependencies.get_user_from_api_key")
+    @patch("app.core.auth.get_user_from_api_key")
     async def test_api_key_header_takes_precedence(self, mock_get_user):
         """Test that header API key takes precedence over query."""
         # Mock user
-        mock_user = User(
-            id="user_123",
-            email="test@example.com",
-            is_active=True
-        )
+        mock_user = User(id="user_123", email="test@example.com", is_active=True)
         mock_get_user.return_value = mock_user
 
         # Mock session
@@ -170,9 +148,7 @@ class TestGetCurrentUserFromAPIKey:
 
         # Call with both header and query API key
         result = await get_current_user_from_api_key(
-            x_api_key="header-key",
-            api_key="query-key",
-            db=mock_db
+            x_api_key="header-key", api_key="query-key", db=mock_db
         )
 
         # Should use header key
@@ -186,16 +162,16 @@ class TestGetCurrentUserFromAPIKey:
         # Should raise 401 Unauthorized
         with pytest.raises(HTTPException) as exc_info:
             await get_current_user_from_api_key(
-                x_api_key=None,
-                api_key=None,
-                db=mock_db
+                x_api_key=None, api_key=None, db=mock_db
             )
 
-        assert exc_info.value.status_code == 401
-        assert exc_info.value.detail == "API key required"
-        assert exc_info.value.headers == {"WWW-Authenticate": "API-Key"}
+        exc = exc_info.value
+        assert isinstance(exc, HTTPException)
+        assert exc.status_code == 401
+        assert exc.detail == "API key required"
+        assert exc.headers == {"WWW-Authenticate": "API-Key"}
 
-    @patch("app.core.dependencies.get_user_from_api_key")
+    @patch("app.core.auth.get_user_from_api_key")
     async def test_api_key_invalid(self, mock_get_user):
         """Test error when API key is invalid."""
         # Mock no user found
@@ -206,20 +182,14 @@ class TestGetCurrentUserFromAPIKey:
         # Should raise AuthError
         with pytest.raises(AuthError, match="Invalid API key"):
             await get_current_user_from_api_key(
-                x_api_key="invalid-key",
-                api_key=None,
-                db=mock_db
+                x_api_key="invalid-key", api_key=None, db=mock_db
             )
 
-    @patch("app.core.dependencies.get_user_from_api_key")
+    @patch("app.core.auth.get_user_from_api_key")
     async def test_api_key_inactive_user(self, mock_get_user):
         """Test error when user is inactive."""
         # Mock inactive user
-        mock_user = User(
-            id="user_123",
-            email="test@example.com",
-            is_active=False
-        )
+        mock_user = User(id="user_123", email="test@example.com", is_active=False)
         mock_get_user.return_value = mock_user
 
         mock_db = AsyncMock(spec=AsyncSession)
@@ -227,13 +197,13 @@ class TestGetCurrentUserFromAPIKey:
         # Should raise 403 Forbidden
         with pytest.raises(HTTPException) as exc_info:
             await get_current_user_from_api_key(
-                x_api_key="test-key",
-                api_key=None,
-                db=mock_db
+                x_api_key="test-key", api_key=None, db=mock_db
             )
 
-        assert exc_info.value.status_code == 403
-        assert exc_info.value.detail == "Inactive user"
+        exc = exc_info.value
+        assert isinstance(exc, HTTPException)
+        assert exc.status_code == 403
+        assert exc.detail == "Inactive user"
 
 
 @pytest.mark.asyncio
@@ -244,15 +214,13 @@ class TestGetOptionalCurrentUser:
     async def test_optional_user_with_valid_credentials(self, mock_authenticate):
         """Test with valid credentials returns user."""
         # Mock user
-        mock_user = User(
-            id="user_123",
-            email="test@example.com",
-            is_active=True
-        )
+        mock_user = User(id="user_123", email="test@example.com", is_active=True)
         mock_authenticate.return_value = mock_user
 
         # Mock credentials and session
-        mock_credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="token")
+        mock_credentials = HTTPAuthorizationCredentials(
+            scheme="Bearer", credentials="token"
+        )
         mock_db = AsyncMock(spec=AsyncSession)
 
         # Call the function
@@ -279,7 +247,9 @@ class TestGetOptionalCurrentUser:
         mock_authenticate.side_effect = AuthError("Invalid token")
 
         # Mock credentials and session
-        mock_credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="invalid")
+        mock_credentials = HTTPAuthorizationCredentials(
+            scheme="Bearer", credentials="invalid"
+        )
         mock_db = AsyncMock(spec=AsyncSession)
 
         # Call the function

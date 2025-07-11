@@ -54,11 +54,7 @@ class TestGetUserFromToken:
         mock_decode.return_value = {"sub": "user_123"}
 
         # Mock user
-        mock_user = User(
-            id="user_123",
-            email="test@example.com",
-            is_active=True
-        )
+        mock_user = User(id="user_123", email="test@example.com", is_active=True)
 
         # Mock database session
         mock_db = AsyncMock(spec=AsyncSession)
@@ -79,11 +75,7 @@ class TestGetUserFromToken:
         mock_decode.return_value = {"sub": "user_123"}
 
         # Mock inactive user
-        mock_user = User(
-            id="user_123",
-            email="test@example.com",
-            is_active=False
-        )
+        mock_user = User(id="user_123", email="test@example.com", is_active=False)
 
         # Mock database session
         mock_db = AsyncMock(spec=AsyncSession)
@@ -163,11 +155,7 @@ class TestGetUserFromAPIKey:
         mock_verify.return_value = True
 
         # Mock user
-        mock_user = User(
-            id="user_123",
-            email="test@example.com",
-            is_active=True
-        )
+        mock_user = User(id="user_123", email="test@example.com", is_active=True)
 
         # Mock API key
         mock_api_key = APIKey(
@@ -177,7 +165,7 @@ class TestGetUserFromAPIKey:
             is_active=True,
             expires_at=datetime.utcnow() + timedelta(days=30),
             total_requests=5,
-            last_used_at=datetime.utcnow() - timedelta(hours=1)
+            last_used_at=datetime.utcnow() - timedelta(hours=1),
         )
 
         # Mock database session
@@ -209,7 +197,7 @@ class TestGetUserFromAPIKey:
             key_hash="hashed_key",
             is_active=True,
             expires_at=datetime.utcnow() - timedelta(days=1),  # Expired
-            total_requests=5
+            total_requests=5,
         )
 
         # Mock database session
@@ -231,11 +219,7 @@ class TestGetUserFromAPIKey:
         mock_verify.return_value = True
 
         # Mock user
-        mock_user = User(
-            id="user_123",
-            email="test@example.com",
-            is_active=True
-        )
+        mock_user = User(id="user_123", email="test@example.com", is_active=True)
 
         # Mock API key without expiry
         mock_api_key = APIKey(
@@ -244,7 +228,7 @@ class TestGetUserFromAPIKey:
             key_hash="hashed_key",
             is_active=True,
             expires_at=None,  # No expiry
-            total_requests=0
+            total_requests=0,
         )
 
         # Mock database session
@@ -267,11 +251,7 @@ class TestGetUserFromAPIKey:
         mock_verify.return_value = True
 
         # Mock inactive user
-        mock_user = User(
-            id="user_123",
-            email="test@example.com",
-            is_active=False
-        )
+        mock_user = User(id="user_123", email="test@example.com", is_active=False)
 
         # Mock API key
         mock_api_key = APIKey(
@@ -280,7 +260,7 @@ class TestGetUserFromAPIKey:
             key_hash="hashed_key",
             is_active=True,
             expires_at=None,
-            total_requests=0
+            total_requests=0,
         )
 
         # Mock database session
@@ -336,8 +316,7 @@ class TestAuthenticateUser:
 
         # Mock credentials
         credentials = HTTPAuthorizationCredentials(
-            scheme="Bearer",
-            credentials="jwt_token"
+            scheme="Bearer", credentials="jwt_token"
         )
 
         mock_db = AsyncMock(spec=AsyncSession)
@@ -362,8 +341,7 @@ class TestAuthenticateUser:
 
         # Mock credentials
         credentials = HTTPAuthorizationCredentials(
-            scheme="Bearer",
-            credentials="aid_sk_test_key"
+            scheme="Bearer", credentials="aid_sk_test_key"
         )
 
         mock_db = AsyncMock(spec=AsyncSession)
@@ -378,7 +356,9 @@ class TestAuthenticateUser:
 
     @patch("app.core.auth.get_user_from_token")
     @patch("app.core.auth.get_user_from_api_key")
-    async def test_authenticate_invalid_credentials(self, mock_get_api_key, mock_get_token):
+    async def test_authenticate_invalid_credentials(
+        self, mock_get_api_key, mock_get_token
+    ):
         """Test authentication with invalid credentials."""
         # Mock no user from either method
         mock_get_token.return_value = None
@@ -386,8 +366,7 @@ class TestAuthenticateUser:
 
         # Mock credentials
         credentials = HTTPAuthorizationCredentials(
-            scheme="Bearer",
-            credentials="invalid_credentials"
+            scheme="Bearer", credentials="invalid_credentials"
         )
 
         mock_db = AsyncMock(spec=AsyncSession)
@@ -396,7 +375,9 @@ class TestAuthenticateUser:
         with pytest.raises(AuthError) as exc_info:
             await authenticate_user(credentials, mock_db)
 
-        assert exc_info.value.detail == "Invalid credentials"
+        exc = exc_info.value
+        assert isinstance(exc, AuthError)
+        assert exc.detail == "Invalid credentials"
 
 
 class TestPasswordFunctions:

@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
 from sqlalchemy import JSON, Column
 from sqlalchemy import Enum as SQLEnum
@@ -37,14 +38,14 @@ class Run(SQLModel, table=True):
     completed_at: datetime | None = Field(default=None)
 
     # Configuration
-    agent_config: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    agent_config: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
 
     # User information
     user_id: str | None = Field(default=None, index=True)
     api_key_id: str | None = Field(default=None, index=True)
 
     # Results
-    results: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    results: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     error_message: str | None = Field(default=None)
 
     # Statistics

@@ -1,35 +1,45 @@
 import secrets
 from datetime import datetime, timedelta
+from typing import Any
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import jwt
+from sqlalchemy import and_, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import col
 
-from app.core.auth import get_password_hash, verify_password
+from app.core.auth import (
+    get_password_hash,
+    verify_password,
+)
 from app.core.config import get_settings
 from app.core.database import get_session
-from app.core.dependencies import CurrentUser
+from app.core.dependencies import get_current_user
 from app.core.logging import get_logger
 from app.models.user import APIKey, User
 from app.schemas.auth import (
     APIKeyResponse,
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
-    Token,
+    TokenResponse,
     UserCreate,
     UserLogin,
     UserResponse,
+    UserUpdate,
 )
 
 settings = get_settings()
 logger = get_logger(__name__)
 router = APIRouter()
+bearer_scheme = HTTPBearer()
 
 
-def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
+def create_access_token(
+    data: dict[str, Any], expires_delta: timedelta | None = None
+) -> str:
     """Create JWT access token."""
-    from jose import jwt
-
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
@@ -37,8 +47,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
         expire = datetime.utcnow() + timedelta(minutes=15)
 
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
-    return encoded_jwt
+    return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
 
 
 def generate_api_key() -> str:
@@ -48,85 +57,249 @@ def generate_api_key() -> str:
     return f"{prefix}{key}"
 
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=UserResponse)
 async def register(
     user_data: UserCreate,
+    request: Request,
     db: AsyncSession = Depends(get_session),
-) -> User:
+) -> UserResponse:
     """Register a new user."""
-    # Check if user exists
-    result = await db.execute(select(User).where(User.email == user_data.email))
-    if result.scalar_one_or_none():
+    # Check if user already exists
+    query = select(User).where(col(User.email) == user_data.email)
+    result = await db.execute(query)
+    existing_user = result.scalar_one_or_none()
+
+    if existing_user:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered",
+            status_code=400, detail="User with this email already exists"
         )
 
-    # Create user
+    # Create new user
     user = User(
-        id=f"user_{secrets.token_urlsafe(12)}",
+        id=str(uuid4()),
         email=user_data.email,
-        hashed_password=get_password_hash(user_data.password),
         full_name=user_data.full_name,
-        company=user_data.company,
+        hashed_password=get_password_hash(user_data.password),
+        is_active=True,
+        created_at=datetime.utcnow(),
     )
 
     db.add(user)
     await db.commit()
     await db.refresh(user)
 
-    logger.info("user_registered", user_id=user.id, email=user.email)
-
-    return user
+    return UserResponse.model_validate(user)
 
 
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=TokenResponse)
 async def login(
-    credentials: UserLogin,
+    user_credentials: UserLogin,
+    request: Request,
     db: AsyncSession = Depends(get_session),
-) -> Token:
-    """Login and receive access token."""
-    # Find user
-    result = await db.execute(select(User).where(User.email == credentials.email))
+) -> TokenResponse:
+    """Authenticate user and return access token."""
+    # Create a temporary HTTPAuthorizationCredentials object with the email as the token
+    # This is a temporary fix - we should create a proper authenticate_user function
+    # that takes email and password directly
+
+    # For now, let's authenticate manually
+    query = select(User).where(col(User.email) == user_credentials.email)
+    result = await db.execute(query)
     user = result.scalar_one_or_none()
 
-    if not user or not verify_password(credentials.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-        )
+    if not user or not verify_password(user_credentials.password, user.hashed_password):
+        user = None
 
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Inactive user",
-        )
+    if not user:
+        raise HTTPException(status_code=401, detail="Incorrect email or password")
 
-    # Create token
-    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
-    access_token = create_access_token(
-        data={"sub": user.id}, expires_delta=access_token_expires
-    )
+    # Create access token
+    access_token = create_access_token(data={"sub": user.email, "user_id": user.id})
 
-    logger.info("user_login", user_id=user.id)
-
-    return Token(
+    return TokenResponse(
         access_token=access_token,
         token_type="bearer",
-        expires_in=settings.access_token_expire_minutes * 60,
+        user=UserResponse.model_validate(user),
     )
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_me(current_user: CurrentUser) -> User:
+async def get_current_user_info(
+    current_user: User = Depends(get_current_user),
+) -> UserResponse:
     """Get current user information."""
-    return current_user
+    return UserResponse.model_validate(current_user)
 
 
-@router.post("/api-keys", response_model=CreateAPIKeyResponse, status_code=status.HTTP_201_CREATED)
+@router.put("/me", response_model=UserResponse)
+async def update_current_user(
+    user_update: UserUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+) -> UserResponse:
+    """Update current user information."""
+    # Update user fields
+    if user_update.full_name is not None:
+        current_user.full_name = user_update.full_name
+
+    if user_update.email is not None:
+        # Check if email is already taken
+        query = select(User).where(
+            and_(
+                col(User.email) == user_update.email,
+                col(User.id) != current_user.id,
+            )
+        )
+        result = await db.execute(query)
+        existing_user = result.scalar_one_or_none()
+
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Email already taken")
+
+        current_user.email = user_update.email
+
+    if user_update.password is not None:
+        current_user.hashed_password = get_password_hash(user_update.password)
+
+    current_user.updated_at = datetime.utcnow()
+
+    await db.commit()
+    await db.refresh(current_user)
+
+    return UserResponse.model_validate(current_user)
+
+
+@router.get("/users", response_model=list[UserResponse])
+async def list_users(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+) -> list[UserResponse]:
+    """List all users (admin only)."""
+    # Simple admin check - in production, you'd have proper role management
+    if not current_user.is_superuser:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    query = select(User).order_by(desc(col(User.created_at)))
+    result = await db.execute(query)
+    users = result.scalars().all()
+
+    return [UserResponse.model_validate(user) for user in users]
+
+
+@router.get("/users/{user_id}", response_model=UserResponse)
+async def get_user(
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+) -> UserResponse:
+    """Get user by ID (admin only)."""
+    # Simple admin check - in production, you'd have proper role management
+    if not current_user.is_superuser and current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    query = select(User).where(col(User.id) == user_id)
+    result = await db.execute(query)
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return UserResponse.model_validate(user)
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    """Delete user (admin only)."""
+    # Simple admin check - in production, you'd have proper role management
+    if not current_user.is_superuser:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    query = select(User).where(col(User.id) == user_id)
+    result = await db.execute(query)
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+
+    await db.delete(user)
+    await db.commit()
+
+    return {"message": "User deleted successfully"}
+
+
+@router.post("/change-password")
+async def change_password(
+    current_password: str,
+    new_password: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    """Change user password."""
+    # Verify current password
+    if not verify_password(current_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Incorrect current password")
+
+    # Update password
+    current_user.hashed_password = get_password_hash(new_password)
+    current_user.updated_at = datetime.utcnow()
+
+    await db.commit()
+
+    return {"message": "Password changed successfully"}
+
+
+@router.post("/logout")
+async def logout(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+) -> dict[str, str]:
+    """Logout user (invalidate token)."""
+    # In a real implementation, you would add the token to a blacklist
+    # For now, we just return success
+    return {"message": "Logged out successfully"}
+
+
+@router.get("/profile")
+async def get_profile(
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Get detailed user profile."""
+    return {
+        "user": {
+            "id": current_user.id,
+            "email": current_user.email,
+            "full_name": current_user.full_name,
+            "is_active": current_user.is_active,
+            "is_superuser": current_user.is_superuser,
+            "created_at": current_user.created_at,
+            "updated_at": current_user.updated_at,
+        },
+        "preferences": {
+            "timezone": "UTC",  # Default for now
+            "language": "en",  # Default for now
+        },
+        "statistics": {
+            "total_sessions": 0,  # Would come from database
+            "total_requests": 0,  # Would come from database
+            "total_cost": 0.0,  # Would come from database
+        },
+    }
+
+
+@router.post(
+    "/api-keys",
+    response_model=CreateAPIKeyResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_api_key(
     request: CreateAPIKeyRequest,
-    current_user: CurrentUser,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ) -> CreateAPIKeyResponse:
     """Create a new API key."""
@@ -157,36 +330,34 @@ async def create_api_key(
 
     return CreateAPIKeyResponse(
         api_key=api_key,
-        key_info=key_record,
+        key_info=APIKeyResponse.model_validate(key_record),
     )
 
 
 @router.get("/api-keys", response_model=list[APIKeyResponse])
 async def list_api_keys(
-    current_user: CurrentUser,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ) -> list[APIKey]:
     """List user's API keys."""
     result = await db.execute(
         select(APIKey)
         .where(APIKey.user_id == current_user.id)
-        .order_by(APIKey.created_at.desc())
+        .order_by(desc(APIKey.created_at))
     )
-    keys = result.scalars().all()
-    return keys
+    return list(result.scalars().all())
 
 
 @router.delete("/api-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_api_key(
     key_id: str,
-    current_user: CurrentUser,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ) -> None:
     """Delete an API key."""
     result = await db.execute(
         select(APIKey).where(
-            APIKey.id == key_id,
-            APIKey.user_id == current_user.id,
+            (APIKey.id == key_id) & (APIKey.user_id == current_user.id)
         )
     )
     key = result.scalar_one_or_none()
@@ -206,7 +377,7 @@ async def delete_api_key(
 @router.get("/dev/test-login", include_in_schema=False)
 async def dev_test_login(
     db: AsyncSession = Depends(get_session),
-) -> dict:
+) -> dict[str, str]:
     """
     Development endpoint for automatic test user login.
     WARNING: This endpoint is only available in development mode.
@@ -231,7 +402,7 @@ async def dev_test_login(
             full_name="Test User",
             company="AIdeator Development",
             is_active=True,
-            is_superuser=False
+            is_superuser=False,
         )
         db.add(user)
         await db.commit()
@@ -250,14 +421,12 @@ async def dev_test_login(
     # Remove old development key if exists
     await db.execute(
         select(APIKey).where(
-            APIKey.user_id == user.id,
-            APIKey.name == "Development Test Key"
+            (APIKey.user_id == user.id) & (APIKey.name == "Development Test Key")
         )
     )
     old_keys = await db.execute(
         select(APIKey).where(
-            APIKey.user_id == user.id,
-            APIKey.name == "Development Test Key"
+            (APIKey.user_id == user.id) & (APIKey.name == "Development Test Key")
         )
     )
     for old_key in old_keys.scalars().all():

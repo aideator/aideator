@@ -19,7 +19,9 @@ class TestProviderKeyServiceImportFix:
             # Verify that the logger is properly imported from the correct module
             assert logger is not None
             assert hasattr(logger, "info")  # structlog logger should have info method
-            assert hasattr(logger, "warning")  # structlog logger should have warning method
+            assert hasattr(
+                logger, "warning"
+            )  # structlog logger should have warning method
             assert hasattr(logger, "error")  # structlog logger should have error method
 
             # Verify that ProviderKeyService class exists and can be instantiated
@@ -51,7 +53,9 @@ class TestProviderKeyServiceImportFix:
         assert hasattr(logger, "debug")
 
     @patch("app.services.provider_key_service.get_encryption_service")
-    def test_provider_key_service_initialization_with_fixed_logger(self, mock_get_encryption):
+    def test_provider_key_service_initialization_with_fixed_logger(
+        self, mock_get_encryption
+    ):
         """Test that ProviderKeyService can be initialized with the fixed logger import."""
         from app.services.provider_key_service import ProviderKeyService
 
@@ -79,7 +83,6 @@ class TestProviderKeyServiceImportFix:
         with patch.object(logger, "info") as mock_info:
             with patch.object(logger, "warning") as mock_warning:
                 with patch.object(logger, "error") as mock_error:
-
                     # These should not raise AttributeError
                     logger.info("Test info message")
                     logger.warning("Test warning message")
@@ -99,7 +102,7 @@ class TestProviderKeyServiceImportFix:
         modules_to_clear = [
             "app.services.provider_key_service",
             "app.core.logging",
-            "app.core.config"
+            "app.core.config",
         ]
 
         original_modules = {}
@@ -110,7 +113,9 @@ class TestProviderKeyServiceImportFix:
 
         try:
             # Try to import the module fresh
-            provider_key_module = importlib.import_module("app.services.provider_key_service")
+            provider_key_module = importlib.import_module(
+                "app.services.provider_key_service"
+            )
 
             # Verify basic functionality
             assert hasattr(provider_key_module, "ProviderKeyService")

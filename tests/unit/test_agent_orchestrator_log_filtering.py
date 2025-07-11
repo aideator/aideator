@@ -44,14 +44,14 @@ class TestAgentOrchestratorLogFiltering:
                 "message": "Streaming LLM response complete",
                 "step": "streaming_complete",
                 "chunks_received": 749,
-                "total_length": 3620
+                "total_length": 3620,
             },
             "regular_log": {
                 "timestamp": "2025-07-10T17:17:06.123456",
                 "run_id": "run-7bbffdbd77fa45658023a0a08db2a486",
                 "variation_id": "1",
                 "level": "INFO",
-                "message": "Starting LLM generation"
+                "message": "Starting LLM generation",
             },
             "step_log": {
                 "timestamp": "2025-07-10T17:17:07.234567",
@@ -59,17 +59,19 @@ class TestAgentOrchestratorLogFiltering:
                 "variation_id": "1",
                 "level": "DEBUG",
                 "message": "Processing repository",
-                "step": "repo_analysis"
+                "step": "repo_analysis",
             },
             "plain_text": "This is plain text output from the agent.",
             "non_log_json": {
                 "result": "This is JSON but not a log entry",
-                "data": "Some data"
-            }
+                "data": "Some data",
+            },
         }
 
     @pytest.mark.asyncio
-    async def test_streaming_complete_log_is_filtered(self, orchestrator, sample_log_entries):
+    async def test_streaming_complete_log_is_filtered(
+        self, orchestrator, sample_log_entries
+    ):
         """Test that streaming_complete logs are filtered out."""
         run_id = "test-run-123"
         job_name = "test-job"
@@ -191,7 +193,9 @@ class TestAgentOrchestratorLogFiltering:
         mixed_content = [
             json.dumps(sample_log_entries["regular_log"]),  # Should be filtered
             sample_log_entries["plain_text"],  # Should pass through
-            json.dumps(sample_log_entries["streaming_complete_log"]),  # Should be filtered
+            json.dumps(
+                sample_log_entries["streaming_complete_log"]
+            ),  # Should be filtered
             json.dumps(sample_log_entries["non_log_json"]),  # Should pass through
             json.dumps(sample_log_entries["step_log"]),  # Should be filtered
         ]
@@ -214,7 +218,9 @@ class TestAgentOrchestratorLogFiltering:
         assert calls[1][0][2] == json.dumps(sample_log_entries["non_log_json"])
 
     @pytest.mark.asyncio
-    async def test_log_without_step_but_with_timestamp_level_filtered(self, orchestrator):
+    async def test_log_without_step_but_with_timestamp_level_filtered(
+        self, orchestrator
+    ):
         """Test that logs with timestamp+level but no step are still filtered."""
         run_id = "test-run-123"
         job_name = "test-job"
@@ -226,7 +232,7 @@ class TestAgentOrchestratorLogFiltering:
             "run_id": "run-test",
             "variation_id": "1",
             "level": "INFO",
-            "message": "Some regular log message"
+            "message": "Some regular log message",
             # No step field
         }
 
@@ -253,7 +259,7 @@ class TestAgentOrchestratorLogFiltering:
             "run_id": "run-test",
             "variation_id": "1",
             "message": "Some step message",
-            "step": "some_step"
+            "step": "some_step",
             # No timestamp or level
         }
 
@@ -293,19 +299,22 @@ class TestAgentOrchestratorLogFiltering:
 
     def test_log_filtering_conditions(self, sample_log_entries):
         """Test the log filtering conditions directly."""
+
         # Helper function to test filtering logic
         def should_filter(log_entry):
-            return ("timestamp" in log_entry and "level" in log_entry) or "step" in log_entry
+            return (
+                "timestamp" in log_entry and "level" in log_entry
+            ) or "step" in log_entry
 
         # Test cases
-        assert should_filter(sample_log_entries["streaming_complete_log"]) == True
-        assert should_filter(sample_log_entries["regular_log"]) == True
-        assert should_filter(sample_log_entries["step_log"]) == True
-        assert should_filter(sample_log_entries["non_log_json"]) == False
+        assert should_filter(sample_log_entries["streaming_complete_log"])
+        assert should_filter(sample_log_entries["regular_log"])
+        assert should_filter(sample_log_entries["step_log"])
+        assert not should_filter(sample_log_entries["non_log_json"])
 
         # Edge cases
-        assert should_filter({"timestamp": "123", "level": "INFO"}) == True
-        assert should_filter({"step": "some_step"}) == True
-        assert should_filter({"timestamp": "123"}) == False
-        assert should_filter({"level": "INFO"}) == False
-        assert should_filter({"some": "other", "fields": "here"}) == False
+        assert should_filter({"timestamp": "123", "level": "INFO"})
+        assert should_filter({"step": "some_step"})
+        assert not should_filter({"timestamp": "123"})
+        assert not should_filter({"level": "INFO"})
+        assert not should_filter({"some": "other", "fields": "here"})

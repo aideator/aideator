@@ -6,6 +6,7 @@ Uses Fernet symmetric encryption with key derivation from a master key.
 
 import base64
 import os
+from typing import cast
 
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
@@ -17,7 +18,7 @@ class EncryptionService:
 
     def __init__(self, master_key: str | None = None):
         """Initialize encryption service with master key.
-        
+
         Args:
             master_key: Base64-encoded master key. If not provided, uses ENCRYPTION_KEY env var.
         """
@@ -31,7 +32,7 @@ class EncryptionService:
 
     def _create_cipher(self, master_key: str) -> Fernet:
         """Create Fernet cipher from master key.
-        
+
         Uses PBKDF2 to derive a proper encryption key from the master key.
         """
         # Use a fixed salt for deterministic key derivation
@@ -51,10 +52,10 @@ class EncryptionService:
 
     def encrypt_api_key(self, api_key: str) -> tuple[str, str]:
         """Encrypt an API key and return encrypted value and hint.
-        
+
         Args:
             api_key: The plaintext API key to encrypt
-            
+
         Returns:
             Tuple of (encrypted_key, key_hint) where key_hint is last 4 chars
         """
@@ -72,10 +73,10 @@ class EncryptionService:
 
     def decrypt_api_key(self, encrypted_key: str) -> str:
         """Decrypt an API key.
-        
+
         Args:
             encrypted_key: The encrypted API key
-            
+
         Returns:
             The decrypted API key
         """
@@ -93,7 +94,7 @@ class EncryptionService:
     @staticmethod
     def generate_master_key() -> str:
         """Generate a new master encryption key.
-        
+
         Returns:
             Base64-encoded master key suitable for ENCRYPTION_KEY env var
         """
@@ -101,11 +102,11 @@ class EncryptionService:
 
     def rotate_key(self, old_encrypted: str, new_master_key: str) -> str:
         """Rotate an encrypted value to use a new master key.
-        
+
         Args:
             old_encrypted: Value encrypted with current master key
             new_master_key: New master key to use
-            
+
         Returns:
             Value encrypted with new master key
         """
@@ -129,4 +130,5 @@ def get_encryption_service() -> EncryptionService:
     global _encryption_service
     if _encryption_service is None:
         _encryption_service = EncryptionService()
-    return _encryption_service
+    # Type narrowing for type checker
+    return cast("EncryptionService", _encryption_service)

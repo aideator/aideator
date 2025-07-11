@@ -7,9 +7,4 @@ from .kubernetes_service import KubernetesService
 from .model_catalog import ModelCatalogService
 from .sse_manager import SSEManager
 
-__all__ = [
-    "KubernetesService",
-    "ModelCatalogService",
-    "SSEManager",
-    "auth_service"
-]
+__all__ = ["KubernetesService", "ModelCatalogService", "SSEManager", "auth_service"]

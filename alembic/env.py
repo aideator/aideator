@@ -38,10 +38,12 @@ target_metadata = SQLModel.metadata
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
 
+
 def get_database_url():
     """Get database URL from settings."""
     settings = get_settings()
     return settings.database_url_async
+
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.
@@ -78,6 +80,8 @@ def do_run_migrations(connection: Connection) -> None:
 async def run_async_migrations() -> None:
     """Run async migrations."""
     configuration = config.get_section(config.config_ini_section)
+    if configuration is None:
+        configuration = {}
     configuration["sqlalchemy.url"] = get_database_url()
 
     connectable = async_engine_from_config(

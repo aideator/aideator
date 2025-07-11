@@ -181,14 +181,10 @@ export function useModelSelection() {
         // Try to fetch models from API
         let modelInfos: ModelInfo[] = [];
         try {
-          console.log('Fetching models from API...');
           const models = await getModels();
-          console.log('API returned models:', models);
           modelInfos = models.map(convertToModelInfo);
-          console.log('Converted to ModelInfo:', modelInfos);
         } catch (error) {
           // If API fails (e.g., not authenticated), use default models
-          console.warn('Failed to fetch models from API, using defaults:', error);
           modelInfos = DEFAULT_MODELS;
         }
         
@@ -432,4 +428,3 @@ export function useModelSelection() {
   };
 }
 
-export default useModelSelection;
