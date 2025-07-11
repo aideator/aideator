@@ -44,7 +44,11 @@ export function RunDetails({ runId }: { runId: string }) {
   const [isConnected, setIsConnected] = useState(false)
 
   useEffect(() => {
-    const eventSource = new EventSource(`http://localhost:8000/api/v1/runs/${runId}/stream`)
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+    const streamUrl = `${apiBase}/api/v1/runs/${runId}/stream`;
+    console.log(`Starting SSE stream to:`, streamUrl);
+    
+    const eventSource = new EventSource(streamUrl)
     setIsConnected(true)
 
     eventSource.onopen = () => {
@@ -125,13 +129,18 @@ export function RunDetails({ runId }: { runId: string }) {
           <div className="flex items-center mt-1 space-x-2">
             <StatusBadge status={runStatus?.status || "starting"} />
             {isConnected && (
-              <span className="text-sm text-muted-foreground flex items-center">
-                <span className="relative mr-2 flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+              <div className="flex items-center gap-4">
+                <span className="text-sm text-muted-foreground flex items-center">
+                  <span className="relative mr-2 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                  </span>
+                  Connected to stream
                 </span>
-                Connected to stream
-              </span>
+                <Badge variant="outline" className="text-xs">
+                  Redis Streaming
+                </Badge>
+              </div>
             )}
           </div>
         </div>

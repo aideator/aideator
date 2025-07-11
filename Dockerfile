@@ -5,6 +5,10 @@ FROM python:3.11-slim AS base
 RUN apt-get update && apt-get install -y \
     git \
     curl \
+    build-essential \
+    libssl-dev \
+    libffi-dev \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js
@@ -77,6 +81,9 @@ USER agentuser
 
 # Set working directory to workspace
 WORKDIR /workspace
+
+# Add /app to Python path so agent imports work
+ENV PYTHONPATH="/app:$PYTHONPATH"
 
 # Run agent
 CMD ["python", "-u", "/app/agent/main.py"]

@@ -15,6 +15,7 @@ from app.middleware.logging import LoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.tasks.model_sync_task import model_sync_task
 
+from app.services.redis_service import redis_service
 # Using Kubernetes service for container orchestration
 from app.utils.openapi import custom_openapi
 
@@ -24,7 +25,7 @@ logger = setup_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Manage app lifecycle - database initialization and background tasks."""
+    """Manage app lifecycle - database and Redis initialization."""
     # Startup
     logger.info(f"Starting {settings.project_name} v{settings.version}")
 
@@ -39,9 +40,20 @@ async def lifespan(app: FastAPI):
     # Kubernetes connections are handled via kubectl
     # No persistent connection needed at the server level
 
+    # Initialize Redis (required)
+    try:
+        await redis_service.connect()
+        logger.info("Redis connected successfully")
+    except Exception as e:
+        logger.error(f"Redis connection failed: {e}")
+        raise RuntimeError("Redis connection is required for streaming. Please ensure Redis is available.")
+    
     yield
 
     # Shutdown
+    await redis_service.disconnect()
+    logger.info("Redis disconnected")
+    
     logger.info("Shutting down application")
 
     # Stop model sync task
@@ -134,10 +146,13 @@ def create_application() -> FastAPI:
     @app.get("/health", tags=["System"])
     async def health_check() -> dict[str, Any]:
         """Health check endpoint."""
+        redis_healthy = await redis_service.health_check()
+        
         return {
-            "status": "healthy",
+            "status": "healthy" if redis_healthy else "degraded",
             "version": settings.version,
-            "orchestration": "kubernetes",  # Using Kubernetes for orchestration
+            "orchestration": "kubernetes",
+            "redis": "healthy" if redis_healthy else "unhealthy",
         }
 
     return app

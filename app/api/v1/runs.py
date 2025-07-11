@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Optional, List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
@@ -10,7 +11,7 @@ from app.core.database import get_session
 from app.core.dependencies import CurrentUserAPIKey
 from app.core.deps import get_orchestrator
 from app.core.logging import get_logger
-from app.models.run import Run, RunStatus
+from app.models.run import Run, RunStatus, AgentOutput
 from app.models.session import Session, Turn
 from app.schemas.common import PaginatedResponse
 from app.schemas.runs import (
@@ -188,7 +189,6 @@ async def create_run(
         agent_config=None,  # agent_config is stored in the run record
         agent_mode=request.agent_mode,
         db_session=db,
-        use_batch_job=False,  # Use individual jobs for now
     )
 
     return CreateRunResponse(
@@ -363,3 +363,70 @@ async def cancel_run(
     await db.commit()
 
     logger.info("run_cancelled", run_id=run_id)
+
+
+@router.get(
+    "/{run_id}/outputs",
+    response_model=List[dict],
+    summary="Poll for agent outputs",
+    description="Get agent outputs since a given timestamp",
+)
+async def get_agent_outputs(
+    run_id: str,
+    since: Optional[datetime] = Query(None, description="ISO timestamp to get outputs after"),
+    variation_id: Optional[int] = Query(None, description="Filter by variation ID"),
+    output_type: Optional[str] = Query(None, description="Filter by output type"),
+    limit: int = Query(100, le=1000, description="Maximum number of outputs to return"),
+    db: AsyncSession = Depends(get_session),
+    current_user: Optional[User] = Depends(get_current_user_from_api_key),
+) -> List[dict]:
+    """
+    Poll for new agent outputs since a given timestamp.
+    
+    This endpoint replaces the SSE streaming with database polling.
+    Frontend should call this every 0.5 seconds with the last received timestamp.
+    """
+    # Verify run exists and user has access
+    query = select(Run).where(Run.id == run_id)
+    if current_user:
+        query = query.where(Run.user_id == current_user.id)
+    
+    result = await db.execute(query)
+    run = result.scalar_one_or_none()
+    
+    if not run:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Run not found",
+        )
+    
+    # Build query for outputs
+    outputs_query = select(AgentOutput).where(AgentOutput.run_id == run_id)
+    
+    # Apply filters
+    if since:
+        outputs_query = outputs_query.where(AgentOutput.timestamp > since)
+    if variation_id is not None:
+        outputs_query = outputs_query.where(AgentOutput.variation_id == variation_id)
+    if output_type:
+        outputs_query = outputs_query.where(AgentOutput.output_type == output_type)
+    
+    # Order by timestamp and limit
+    outputs_query = outputs_query.order_by(AgentOutput.timestamp).limit(limit)
+    
+    # Execute query
+    result = await db.execute(outputs_query)
+    outputs = result.scalars().all()
+    
+    # Convert to response format
+    return [
+        {
+            "id": output.id,
+            "run_id": output.run_id,
+            "variation_id": output.variation_id,
+            "content": output.content,
+            "timestamp": output.timestamp.isoformat(),
+            "output_type": output.output_type,
+        }
+        for output in outputs
+    ]

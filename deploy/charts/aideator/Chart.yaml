@@ -16,4 +16,8 @@ maintainers:
   - name: AIdeator Team
     email: team@aideator.com
 
-dependencies: []
+dependencies:
+  - name: redis
+    version: "21.2.9"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled

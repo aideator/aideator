@@ -17,6 +17,9 @@ import aiofiles
 import git
 from litellm import acompletion
 from tenacity import retry, stop_after_attempt, wait_exponential
+import aiofiles
+import redis.asyncio as redis
+from agent.services.database_service import DatabaseService
 
 
 class AIdeatorAgent:
@@ -57,6 +60,41 @@ class AIdeatorAgent:
         # Check available API keys for graceful error handling
         self.available_api_keys = self._check_available_api_keys()
 
+        
+        # Redis setup (optional - currently using database for messaging)
+        self.redis_url = os.getenv("REDIS_URL")
+        # if not self.redis_url:
+        #     print(json.dumps({
+        #         "timestamp": datetime.utcnow().isoformat(),
+        #         "run_id": self.run_id,
+        #         "variation_id": self.variation_id,
+        #         "level": "ERROR",
+        #         "message": "REDIS_URL environment variable not set"
+        #     }), flush=True)
+        #     raise RuntimeError("REDIS_URL is required for agent operation")
+        
+        self.redis_client = None  # Will be initialized in async context
+        self.db_service = DatabaseService(self.run_id, int(self.variation_id))
+    
+    async def _init_redis(self):
+        """Initialize Redis connection in async context."""
+        # Currently unused - using database for messaging
+        # try:
+        #     self.log(f"[REDIS-CONNECT] Connecting to Redis at: {self.redis_url}", "INFO")
+        #     self.redis_client = redis.from_url(self.redis_url, decode_responses=True)
+        #     self.log("[REDIS-CONNECT] Redis client created, testing connection...", "DEBUG")
+        #     await self.redis_client.ping()
+        #     self.log("[REDIS-CONNECT] Redis ping successful", "DEBUG")
+        #     # Test publish to verify permissions
+        #     test_channel = f"run:{self.run_id}:test"
+        #     test_result = await self.redis_client.publish(test_channel, "test")
+        #     self.log(f"[REDIS-CONNECT] Test publish successful, {test_result} subscribers", "DEBUG")
+        #     self.log("Redis connected successfully", "INFO", redis_url=self.redis_url)
+        # except Exception as e:
+        #     self.log(f"[REDIS-CONNECT] Redis connection failed: {e}", "ERROR")
+        #     raise RuntimeError(f"Failed to connect to Redis: {e}")
+        pass
+    
     def _setup_file_logging(self):
         """Setup file-only logging to avoid stdout pollution."""
         # Create a logger that only writes to file
@@ -223,8 +261,8 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
 
     def log(self, message: str, level: str = "INFO", **kwargs):
         """
-        Structured logging with JSON output.
-        This goes to stdout for kubectl logs streaming.
+        Structured logging with JSON output to Redis.
+        Note: This is synchronous for now, Redis publish happens in publish_output
         """
         log_entry = {
             "timestamp": datetime.utcnow().isoformat(),
@@ -234,10 +272,11 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             "message": message,
             **kwargs
         }
-
-        # Output to stdout for streaming
-        print(json.dumps(log_entry), flush=True)
-
+        
+        # For now, just print to stdout for debugging
+        if os.getenv("DEBUG") == "true":
+            print(json.dumps(log_entry), flush=True)
+        
         # Also log to file
         self.file_logger.log(
             getattr(logging, level, logging.INFO),
@@ -247,8 +286,69 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
     def log_progress(self, message: str, detail: str = ""):
         """Log progress updates for user visibility."""
         self.log(f"⚡ {message}", "INFO", detail=detail)
-
-    def log_error(self, error: str, exception: Exception | None = None):
+    
+    async def publish_output(self, content: str):
+        """Publish agent output to database (was Redis)."""
+        # Currently unused - using database for messaging
+        # try:
+        #     if not self.redis_client:
+        #         self.log("[REDIS-PUB] Redis client not initialized", "ERROR")
+        #         return
+        #         
+        #     channel = f"run:{self.run_id}:output:{self.variation_id}"
+        #     message = json.dumps({
+        #         "content": content,
+        #         "timestamp": datetime.utcnow().isoformat(),
+        #         "variation_id": self.variation_id
+        #     })
+        #     self.log(f"[REDIS-PUB] Publishing to channel: {channel}", "DEBUG")
+        #     self.log(f"[REDIS-PUB] Message size: {len(message)} bytes", "DEBUG")
+        #     result = await self.redis_client.publish(channel, message)
+        #     self.log(f"[REDIS-PUB] Published successfully, {result} subscribers received message", "INFO")
+        # except Exception as e:
+        #     # Don't fail if Redis publish fails
+        #     self.log(f"[REDIS-PUB] Failed to publish output to Redis: {e}", "ERROR")
+        #     self.file_logger.warning(f"Failed to publish output to Redis: {e}")
+        
+        # Use database service instead
+        try:
+            success = await self.db_service.publish_output(content)
+            if success:
+                self.log(f"[DB-PUB] Published output to database", "DEBUG")
+            else:
+                self.log(f"[DB-PUB] Failed to publish output to database", "WARNING")
+        except Exception as e:
+            self.log(f"[DB-PUB] Error publishing to database: {e}", "ERROR")
+    
+    async def publish_status(self, status: str, metadata: Optional[Dict[str, Any]] = None):
+        """Publish status update to database (was Redis)."""
+        # Currently unused - using database for messaging
+        # try:
+        #     if not self.redis_client:
+        #         return
+        #         
+        #     channel = f"run:{self.run_id}:status"
+        #     message = json.dumps({
+        #         "status": status,
+        #         "timestamp": datetime.utcnow().isoformat(),
+        #         "variation_id": self.variation_id,
+        #         "metadata": metadata or {}
+        #     })
+        #     await self.redis_client.publish(channel, message)
+        # except Exception as e:
+        #     self.file_logger.warning(f"Failed to publish status to Redis: {e}")
+        
+        # Use database service instead
+        try:
+            success = await self.db_service.publish_status(status, metadata)
+            if success:
+                self.log(f"[DB-PUB] Published status '{status}' to database", "DEBUG")
+            else:
+                self.log(f"[DB-PUB] Failed to publish status to database", "WARNING")
+        except Exception as e:
+            self.log(f"[DB-PUB] Error publishing status to database: {e}", "ERROR")
+    
+    def log_error(self, error: str, exception: Optional[Exception] = None):
         """Log errors with details."""
         error_data = {"error": error}
         if exception:
@@ -258,19 +358,18 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
 
     async def run(self) -> None:
         """Main agent execution flow."""
-        self.log("🚀 Starting AIdeator Agent", "INFO", config=self.config)
-
-        # Log available API keys for debugging
-        self.log("🔑 API Key availability check", "INFO", available_keys=self.available_api_keys)
-
-        # Validate model credentials before proceeding
-        is_valid, error_msg = self._validate_model_credentials(self.config["model"])
-        if not is_valid:
-            # Output the user-friendly error message
-            print(error_msg, flush=True)
-            self.log_error(f"Missing API key for model {self.config['model']}", None)
-            raise RuntimeError(f"Missing API key for model {self.config['model']}")
-
+        # Initialize Redis first (currently disabled for database messaging)
+        await self._init_redis()
+        
+        # Initialize database connection
+        db_connected = await self.db_service.connect()
+        if db_connected:
+            self.log("✅ Database connected for output persistence", "INFO")
+        else:
+            self.log("⚠️  Database not connected, outputs will not be persisted", "WARNING")
+        
+        self.log(f"🚀 Starting AIdeator Agent", "INFO", config=self.config)
+        
         # Log agent mode
         agent_mode = os.getenv("AGENT_MODE", "litellm")
         self.log(f"🎯 Agent mode: {agent_mode}", "INFO", agent_mode=agent_mode)
@@ -888,18 +987,46 @@ async def main():
     """Main entry point."""
     agent = AIdeatorAgent()
     try:
+        # Run the agent
         await agent.run()
-        # Log completion and exit immediately
-        agent.log("✅ Agent completed successfully", "INFO", status="completed")
-        agent.log("🏁 Exiting agent container", "INFO")
+        
+        # Publish completion status
+        await agent.publish_status("variation_completed", {
+            "variation_id": agent.variation_id,
+            "success": True
+        })
+        
+        # Sleep for 600 seconds (10 minutes) before exit on success
+        agent.log("⏱️ Sleeping for 600 seconds before exit", "INFO")
+        await asyncio.sleep(600)
+        
+        # Clean up connections
+        if agent.redis_client:
+            await agent.redis_client.close()
+        await agent.db_service.disconnect()
         sys.exit(0)
     except Exception as e:
         # Ensure error is visible in logs
         agent.log(f"💥 Fatal error: {e!s}", "ERROR",
                  exception_type=type(e).__name__)
-        # Log failure and exit immediately
-        agent.log("❌ Agent failed", "INFO", status="failed")
-        agent.log("🏁 Exiting agent container", "INFO")
+        
+        # Publish failure status
+        if agent.redis_client:
+            await agent.publish_status("variation_failed", {
+                "variation_id": agent.variation_id,
+                "error": str(e),
+                "error_type": type(e).__name__
+            })
+        
+        # Sleep for 600 seconds even on error
+        agent.log("⏱️ Sleeping for 600 seconds before exit (after error)", "INFO")
+        await asyncio.sleep(600)
+        
+        # Clean up connections
+        if agent.redis_client:
+            await agent.redis_client.close()
+        await agent.db_service.disconnect()
+            
         sys.exit(1)
 
 

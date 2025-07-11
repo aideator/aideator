@@ -9,6 +9,7 @@ from app.api.v1 import (
     runs,
     sessions,
     streams,
+    admin_messaging,
 )
 from app.api.v1.endpoints import admin, provider_keys
 
@@ -25,3 +26,4 @@ api_router.include_router(models.router, prefix="/models", tags=["Models"])
 api_router.include_router(credentials.router, prefix="/credentials", tags=["Credentials"])
 api_router.include_router(provider_keys.router, prefix="/provider-keys", tags=["Provider Keys"])
 api_router.include_router(admin.router, prefix="/admin", tags=["Admin"])
+api_router.include_router(admin_messaging.router, prefix="/admin-messaging", tags=["Admin Messaging"])

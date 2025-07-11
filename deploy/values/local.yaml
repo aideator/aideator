@@ -72,3 +72,7 @@ env:
 # Enable PostgreSQL for local development
 postgresql:
   enabled: true
+
+# Redis configuration override for student project
+redis:
+  enabled: false  # We use the simple Tiltfile Redis instead

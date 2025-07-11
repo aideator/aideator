@@ -127,6 +127,10 @@ rbac:
       resources: ["jobs"]
       verbs: ["create", "get", "list", "watch", "delete"]
 
+# Redis configuration (disabled for student project - using Tiltfile Redis)
+redis:
+  enabled: false  # Student project uses simple Redis from Tiltfile
+
 # LiteLLM Gateway configuration
 litellm:
   enabled: true

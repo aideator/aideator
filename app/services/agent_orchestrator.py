@@ -1,5 +1,5 @@
 """
-Agent orchestrator using Kubernetes jobs and kubectl log streaming.
+Agent orchestrator using Kubernetes jobs with Redis-based streaming.
 """
 
 import asyncio
@@ -14,7 +14,7 @@ from app.core.logging import get_logger
 from app.models.run import Run, RunStatus
 from app.schemas.runs import AgentConfig
 from app.services.kubernetes_service import KubernetesService
-from app.services.sse_manager import SSEManager, sse_manager
+from app.services.redis_service import redis_service
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -23,10 +23,44 @@ settings = get_settings()
 class AgentOrchestrator:
     """Orchestrates LLM agents using Kubernetes jobs."""
 
-    def __init__(self, kubernetes_service: KubernetesService, sse_manager_instance: SSEManager = None):
+    def __init__(self, kubernetes_service: KubernetesService):
         self.kubernetes = kubernetes_service
-        self.sse = sse_manager_instance or sse_manager
         self.active_runs: dict[str, dict[str, Any]] = {}
+        self._job_count_lock = asyncio.Lock()
+        self._total_active_jobs = 0
+
+    async def _check_concurrency_limits(self, requested_jobs: int) -> bool:
+        """Check if we can create the requested number of jobs.
+        
+        Returns True if within limits, False otherwise.
+        """
+        async with self._job_count_lock:
+            # Check run limit
+            if len(self.active_runs) >= settings.max_concurrent_runs:
+                logger.warning(f"Max concurrent runs limit reached: {settings.max_concurrent_runs}")
+                return False
+
+            # Check job limit
+            if self._total_active_jobs + requested_jobs > settings.max_concurrent_jobs:
+                logger.warning(
+                    f"Would exceed max concurrent jobs: {self._total_active_jobs} + {requested_jobs} > {settings.max_concurrent_jobs}"
+                )
+                return False
+
+            return True
+
+    async def _increment_job_count(self, count: int) -> None:
+        """Increment the active job count."""
+        async with self._job_count_lock:
+            self._total_active_jobs += count
+            logger.info(f"Active jobs: {self._total_active_jobs}")
+
+    async def _decrement_job_count(self, count: int) -> None:
+        """Decrement the active job count."""
+        async with self._job_count_lock:
+            self._total_active_jobs -= count
+            self._total_active_jobs = max(0, self._total_active_jobs)  # Ensure non-negative
+            logger.info(f"Active jobs: {self._total_active_jobs}")
 
     async def execute_variations(
         self,
@@ -37,7 +71,6 @@ class AgentOrchestrator:
         agent_config: AgentConfig | None = None,
         agent_mode: str | None = None,
         db_session: AsyncSession | None = None,
-        use_batch_job: bool = True,
     ) -> None:
         """Execute N agent variations using Kubernetes jobs."""
         logger.info(
@@ -47,10 +80,21 @@ class AgentOrchestrator:
             repo_url=repo_url,
         )
 
-        # Log that we're starting - this will help debug if the task is running
-        logger.info(f"🚀 ORCHESTRATOR STARTING: run_id={run_id}, variations={variations}")
+        # Check concurrency limits before starting
+        if not await self._check_concurrency_limits(variations):
+            raise RuntimeError(
+                f"Cannot start run: would exceed concurrency limits. "
+                f"Active runs: {len(self.active_runs)}/{settings.max_concurrent_runs}, "
+                f"Active jobs: {self._total_active_jobs}/{settings.max_concurrent_jobs}"
+            )
 
-        # Store run metadata BEFORE waiting for SSE connections
+        # Update run status
+        if db_session:
+            await self._update_run_status(
+                db_session, run_id, RunStatus.RUNNING
+            )
+
+        # Store run metadata and increment job count
         self.active_runs[run_id] = {
             "repo_url": repo_url,
             "prompt": prompt,
@@ -61,25 +105,25 @@ class AgentOrchestrator:
             "jobs": []
         }
 
-        # Wait for SSE connections to be established
-        await self._wait_for_sse_connections(run_id, max_wait_seconds=10)
-
-        # Update run status
-        if db_session:
-            await self._update_run_status(
-                db_session, run_id, RunStatus.RUNNING
-            )
-
         try:
-            if use_batch_job:
-                await self._execute_batch_job(run_id, repo_url, prompt, variations, agent_mode, db_session)
-            else:
-                await self._execute_individual_jobs(run_id, repo_url, prompt, variations, agent_mode, db_session)
+            # Increment job count
+            await self._increment_job_count(variations)
+
+            await self._execute_individual_jobs(run_id, repo_url, prompt, variations, agent_mode, db_session)
 
         except Exception as e:
             logger.error(f"Error executing variations for run {run_id}: {e}")
-            await self._send_error_event(run_id, str(e))
             self.active_runs[run_id]["status"] = "failed"
+            
+            # Publish error to Redis
+            await redis_service.publish_status(
+                run_id,
+                "failed",
+                {"error": str(e)}
+            )
+
+            # Decrement job count on failure
+            await self._decrement_job_count(variations)
 
             # Update database status
             if db_session:
@@ -89,33 +133,6 @@ class AgentOrchestrator:
             # Clean up run metadata after some time
             asyncio.create_task(self._cleanup_run_metadata(run_id, delay=3600))
 
-    async def _execute_batch_job(
-        self,
-        run_id: str,
-        repo_url: str,
-        prompt: str,
-        variations: int,
-        agent_mode: str | None = None,
-        db_session: AsyncSession | None = None,
-    ) -> None:
-        """Execute agents using a single batch job."""
-        # Create batch job
-        job_name = await self.kubernetes.create_batch_job(
-            run_id=run_id,
-            repo_url=repo_url,
-            prompt=prompt,
-            variations=variations,
-            parallelism=min(variations, 3)  # Max 3 parallel
-        )
-
-        self.active_runs[run_id]["jobs"].append(job_name)
-        self.active_runs[run_id]["status"] = "running"
-
-        # Send start event
-        await self._send_status_event(run_id, "started", f"Batch job {job_name} created")
-
-        # Stream logs from batch job
-        await self._stream_batch_job_logs(run_id, job_name, db_session)
 
     async def _execute_individual_jobs(
         self,
@@ -142,143 +159,56 @@ class AgentOrchestrator:
         self.active_runs[run_id]["jobs"] = [job[0] for job in jobs]
         self.active_runs[run_id]["status"] = "running"
 
-        # Send start event
-        await self._send_status_event(run_id, "started", f"Created {len(jobs)} agent jobs")
+        # Publish start event to Redis
+        await redis_service.publish_status(
+            run_id,
+            "started",
+            {"message": f"Created {len(jobs)} agent jobs", "jobs": [job[0] for job in jobs]}
+        )
+        
+        # Monitor job statuses
+        completed_variations = set()
+        failed_variations = set()
+        
+        # Wait for all jobs to complete
+        while len(completed_variations) + len(failed_variations) < variations:
+            await asyncio.sleep(5)  # Check every 5 seconds
+            
+            for job_name, variation_id in jobs:
+                if variation_id in completed_variations or variation_id in failed_variations:
+                    continue
+                    
+                status = await self.kubernetes.get_job_status(job_name)
+                
+                if status["status"] == "completed":
+                    completed_variations.add(variation_id)
+                    await redis_service.publish_status(
+                        run_id,
+                        "variation_completed",
+                        {"variation_id": variation_id, "job_name": job_name}
+                    )
+                elif status["status"] == "failed":
+                    failed_variations.add(variation_id)
+                    await redis_service.publish_status(
+                        run_id,
+                        "variation_failed",
+                        {"variation_id": variation_id, "job_name": job_name, "error": "Job failed"}
+                    )
 
-        # Stream logs from all jobs concurrently
-        tasks = []
-        for job_name, variation_id in jobs:
-            task = asyncio.create_task(
-                self._stream_job_logs(run_id, job_name, variation_id)
-            )
-            tasks.append(task)
-
-        # Wait for all streaming tasks to complete
-        await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Send run completion event to frontend
-        await self.sse.send_run_complete(run_id, "completed")
+        # Publish run completion
+        await redis_service.publish_status(
+            run_id,
+            "completed",
+            {
+                "completed_variations": list(completed_variations),
+                "failed_variations": list(failed_variations),
+                "total_variations": variations
+            }
+        )
 
         # Update database status
         if db_session:
             await self._update_run_status(db_session, run_id, RunStatus.COMPLETED)
-
-    async def _stream_batch_job_logs(
-        self,
-        run_id: str,
-        job_name: str,
-        db_session: AsyncSession | None = None
-    ) -> None:
-        """Stream logs from a batch job."""
-        try:
-            async for log_line in self.kubernetes.stream_batch_job_logs(job_name, run_id):
-                try:
-                    log_entry = json.loads(log_line)
-                    # Skip JSON log entries - only process non-log content
-                    if "timestamp" in log_entry and "level" in log_entry:
-                        # This is a structured log, skip it
-                        logger.debug(f"Agent log: {log_entry.get('message', log_entry)}")
-                        continue
-                    # If it's JSON but not a log, send it
-                    if "variation_id" in log_entry:
-                        await self.sse.send_agent_output(run_id, log_entry["variation_id"], json.dumps(log_entry))
-                    else:
-                        await self.sse.send_agent_output(run_id, 0, json.dumps(log_entry))
-                except json.JSONDecodeError:
-                    # This is plain text content (markdown), send it
-                    await self.sse.send_agent_output(run_id, 0, log_line)
-
-            # Log streaming has ended, now check if batch job completed successfully
-            logger.info(f"Log streaming ended for batch job {job_name}, checking job status...")
-
-            # Wait a moment for job status to be updated
-            await asyncio.sleep(2)
-
-            # Check job status
-            job_status = await self.kubernetes.get_job_status(job_name)
-            logger.info(f"Batch job {job_name} final status: {job_status}")
-
-            # Send completion event
-            await self._send_status_event(
-                run_id,
-                "completed",
-                f"Batch job {job_name} completed with status: {job_status.get('status', 'unknown')}"
-            )
-            self.active_runs[run_id]["status"] = "completed"
-
-            # Send SSE completion events to frontend
-            # For batch jobs, we need to send completion for all variations
-            variations = self.active_runs[run_id].get("variations", 1)
-            for i in range(variations):
-                await self.sse.send_agent_complete(run_id, i)
-            await self.sse.send_run_complete(run_id, "completed")
-
-            # Update database status
-            if db_session:
-                await self._update_run_status(db_session, run_id, RunStatus.COMPLETED)
-
-        except Exception as e:
-            logger.error(f"Error streaming batch job logs for run {run_id}: {e}")
-            await self._send_error_event(run_id, f"Log streaming error: {e!s}")
-            self.active_runs[run_id]["status"] = "failed"
-
-            # Send SSE error events to frontend
-            variations = self.active_runs[run_id].get("variations", 1)
-            for i in range(variations):
-                await self.sse.send_agent_error(run_id, i, str(e))
-            await self.sse.send_run_complete(run_id, "failed")
-
-            # Update database status
-            if db_session:
-                await self._update_run_status(db_session, run_id, RunStatus.FAILED)
-
-    async def _stream_job_logs(self, run_id: str, job_name: str, variation_id: int) -> None:
-        """Stream logs from an individual job."""
-        try:
-            async for log_line in self.kubernetes.stream_job_logs(job_name, run_id, variation_id):
-                logger.debug(f"Raw log line: {log_line[:100]}...")  # Debug: Log first 100 chars
-
-                try:
-                    log_entry = json.loads(log_line)
-                    # Skip JSON log entries - only process non-log content
-                    # Check for structured log markers: timestamp + level OR step field
-                    if ("timestamp" in log_entry and "level" in log_entry) or "step" in log_entry:
-                        # This is a structured log, skip it
-                        logger.debug(f"Agent log filtered: {log_entry.get('message', str(log_entry)[:50])}")
-                        continue
-                    # If it's JSON but not a log, send it
-                    logger.info(f"Sending JSON content via SSE: {json.dumps(log_entry)[:50]}...")
-                    await self.sse.send_agent_output(run_id, variation_id, json.dumps(log_entry))
-                except json.JSONDecodeError:
-                    # This is plain text content (markdown), send it
-                    logger.info(f"Sending plain text via SSE: {log_line[:50]}...")
-                    await self.sse.send_agent_output(run_id, variation_id, log_line)
-
-            # Log streaming has ended, now check if job completed successfully
-            logger.info(f"Log streaming ended for job {job_name}, checking job status...")
-
-            # Wait a moment for job status to be updated
-            await asyncio.sleep(2)
-
-            # Check job status
-            job_status = await self.kubernetes.get_job_status(job_name)
-            logger.info(f"Job {job_name} final status: {job_status}")
-
-            # Send job completion event
-            await self._send_status_event(
-                run_id,
-                "job_completed",
-                f"Job {job_name} (variation {variation_id}) completed with status: {job_status.get('status', 'unknown')}"
-            )
-
-            # Send SSE completion event to frontend
-            await self.sse.send_agent_complete(run_id, variation_id)
-
-        except Exception as e:
-            logger.error(f"Error streaming job logs for {job_name}: {e}")
-            await self._send_error_event(run_id, f"Job {job_name} error: {e!s}")
-            # Send SSE error event to frontend
-            await self.sse.send_agent_error(run_id, variation_id, str(e))
 
     async def get_run_status(self, run_id: str) -> dict[str, Any]:
         """Get the status of a run."""
@@ -322,18 +252,15 @@ class AgentOrchestrator:
 
         # Update run status
         run_data["status"] = "cancelled"
-        await self._send_status_event(run_id, "cancelled", "Run cancelled by user")
+        
+        # Publish cancellation to Redis
+        await redis_service.publish_status(
+            run_id,
+            "cancelled",
+            {"message": "Run cancelled by user"}
+        )
 
         return success
-
-    async def _send_status_event(self, run_id: str, status: str, message: str) -> None:
-        """Send a status event via SSE."""
-        # Log the status internally but don't send to agent output
-        logger.info(f"Run {run_id} status: {status} - {message}")
-
-    async def _send_error_event(self, run_id: str, error: str) -> None:
-        """Send an error event via SSE."""
-        await self.sse.send_agent_error(run_id, 0, error)
 
     async def _cleanup_run_metadata(self, run_id: str, delay: int = 3600) -> None:
         """Clean up run metadata after a delay."""
@@ -347,6 +274,11 @@ class AgentOrchestrator:
                 # Delete associated jobs
                 for job_name in run_data["jobs"]:
                     await self.kubernetes.delete_job(job_name)
+
+                # Decrement job count
+                variations = run_data.get("variations", 0)
+                if variations > 0:
+                    await self._decrement_job_count(variations)
 
                 # Remove from active runs
                 del self.active_runs[run_id]

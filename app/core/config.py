@@ -55,22 +55,23 @@ class Settings(BaseSettings):
     agent_timeout: int = 300  # 5 minutes
     default_agent_model: str = "gpt-4o-mini"
     debug_agent_container: bool = False  # Enable debug logs for agent containers
+    
+    # Concurrency limits
+    max_concurrent_runs: int = Field(default=10, ge=1, le=50)
+    max_concurrent_jobs: int = Field(default=20, ge=1, le=100)  # Total jobs across all runs
 
     # Repository Configuration
     clone_timeout: int = 300  # 5 minutes
     max_repo_size_mb: int = Field(default=100, ge=1, le=500)
     allowed_git_hosts: list[str] = ["github.com", "gitlab.com"]
 
-    # SSE Configuration
-    sse_ping_interval: int = 30
-    sse_retry_timeout: int = 3000
-    sse_max_connections: int = 100
-
-    # Redis (optional, for production)
-    redis_url: str | None = None
+    # Redis Configuration (required)
+    redis_url: str  # Required for streaming
     redis_password: str | None = None
     redis_db: int = 0
     redis_decode_responses: bool = True
+    redis_ttl_seconds: int = 3600  # 1 hour TTL for messages
+    redis_max_connections: int = 100
 
     # Monitoring
     enable_metrics: bool = True
@@ -143,6 +144,12 @@ class Settings(BaseSettings):
         """Validate Gemini API key format."""
         if v is not None and not v.startswith("AIza"):
             raise ValueError("Invalid Gemini API key format")
+    @field_validator("redis_url")
+    @classmethod
+    def validate_redis_url(cls, v: str) -> str:
+        """Validate Redis URL format."""
+        if not (v.startswith("redis://") or v.startswith("rediss://")):
+            raise ValueError("Redis URL must start with redis:// or rediss://")
         return v
 
     @model_validator(mode="after")

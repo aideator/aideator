@@ -5,11 +5,17 @@
 AIdeator is a Kubernetes-native LLM orchestration platform that runs multiple AI agents in isolated containers, streaming their thought processes in real-time.
 
 ```
-┌─────────────────┐    HTTP/SSE     ┌─────────────────┐    kubectl logs    ┌─────────────────┐
-│   Next.js       │ ───────────────▶│   FastAPI       │ ──────────────────▶│  Kubernetes     │
+┌─────────────────┐    HTTP/SSE     ┌─────────────────┐    Redis Pub/Sub   ┌─────────────────┐
+│   Next.js       │ ───────────────▶│   FastAPI       │ ◀─────────────────▶│  Kubernetes     │
 │   Frontend      │                 │   Backend       │                    │  Agent Jobs     │
 │   (Port 3000)   │                 │   (Port 8000)   │                    │                 │
 └─────────────────┘                 └─────────────────┘                    └─────────────────┘
+                                            │
+                                            ▼
+                                    ┌─────────────────┐
+                                    │     Redis       │
+                                    │   (Port 6379)   │
+                                    └─────────────────┘
 ```
 
 ## Tech Stack
@@ -26,7 +32,7 @@ AIdeator is a Kubernetes-native LLM orchestration platform that runs multiple AI
 - **SQLite + SQLModel** - Lightweight database with async ORM
 - **Pydantic** - Data validation and serialization
 - **Kubernetes Jobs** - Isolated agent execution with automatic cleanup
-- **kubectl** - Native log streaming and resource management
+- **Redis** - Pub/sub messaging for real-time streaming
 
 ### Infrastructure
 - **Kubernetes** - Container orchestration and job management
@@ -61,7 +67,7 @@ app/                      # FastAPI backend
 ├── services/            # Business logic
 │   ├── kubernetes_service.py    # Job orchestration
 │   ├── agent_orchestrator.py   # Multi-agent management
-│   └── sse_manager.py          # Real-time streaming
+│   └── redis_service.py        # Pub/sub messaging
 └── main.py              # Application entry
 
 deploy/
@@ -81,7 +87,7 @@ deploy/
 ### Key Workflows
 
 1. **Job Submission** → Create Kubernetes Job → Agent container execution
-2. **Log Streaming** → kubectl logs -f → SSE to client → Real-time output
+2. **Real-time Streaming** → Agent publishes to Redis → Backend subscribes → SSE to client
 3. **Job Management** → Status tracking → TTL cleanup → Resource limits
 4. **Development** → Tilt up → Hot reload → Port forwarding (automatic)
 
@@ -102,15 +108,15 @@ class KubernetesService:
         # Apply via kubectl
         subprocess.run(["kubectl", "apply", "-f", "-"], input=job_manifest)
         
-    async def stream_job_logs(self, job_name: str) -> AsyncGenerator[str, None]:
-        # Stream logs via kubectl
+    async def monitor_job_status(self, job_name: str) -> dict:
+        # Monitor job status via kubectl
         process = await asyncio.create_subprocess_exec(
-            "kubectl", "logs", "-f", f"job/{job_name}",
+            "kubectl", "get", "job", job_name, "-o", "json",
             stdout=asyncio.subprocess.PIPE
         )
         
-        async for line in process.stdout:
-            yield line.decode().strip()
+        stdout, _ = await process.communicate()
+        return json.loads(stdout.decode())
 ```
 
 ## Design System
@@ -165,16 +171,16 @@ async for chunk in await acompletion(
 ):
     if chunk.choices and chunk.choices[0].delta.content:
         chunk_text = chunk.choices[0].delta.content
-        # This gets logged and streamed via kubectl logs
-        print(chunk_text, end='', flush=True)
+        # Publish to Redis for streaming
+        await redis_client.publish(f"run:{run_id}:output:{variation_id}", chunk_text)
 ```
 
-### SSE Pipeline
-1. Agent outputs to stdout
-2. Kubernetes captures in pod logs
-3. kubectl logs -f streams to FastAPI
-4. FastAPI forwards as Server-Sent Events
-5. Frontend receives and displays in real-time
+### Streaming Pipeline
+1. Agent publishes output to Redis channels
+2. Backend subscribes to Redis pub/sub
+3. Messages converted to Server-Sent Events
+4. Frontend receives and displays in real-time
+5. Redis handles reconnection and buffering
 
 ## Development Patterns
 

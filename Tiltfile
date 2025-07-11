@@ -158,7 +158,66 @@ local_resource(
     resource_deps=["cluster-check"]
 )
 
-# Phase 5: Deploy with Helm (depends on secrets)
+# Phase 5: Deploy Redis
+# SECURITY TRADEOFF: No authentication for ease of development
+# In production, use Redis AUTH and ACLs
+k8s_yaml(blob("""
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aideator-redis
+  namespace: aideator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        # SECURITY TRADEOFF: No password for development ease
+        command: ["redis-server", "--save", "", "--appendonly", "no"]
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          tcpSocket:
+            port: 6379
+          initialDelaySeconds: 30
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aideator-redis
+  namespace: aideator
+spec:
+  type: ClusterIP
+  ports:
+  - port: 6379
+    targetPort: 6379
+    protocol: TCP
+  selector:
+    app: redis
+"""))
+
+# Phase 6: Deploy with Helm (depends on secrets and Redis)
 k8s_yaml(helm(
     'deploy/charts/aideator',
     name='aideator',
@@ -166,11 +225,43 @@ k8s_yaml(helm(
     values=['deploy/values/local.yaml']
 ))
 
-# Phase 6: Expose services and ensure dependencies
+# Phase 7: Expose services and ensure dependencies
+# Redis resource with port forwarding for development access
+k8s_resource(
+    'aideator-redis',
+    port_forwards=['6379:6379'],
+    labels=['backend'],
+    resource_deps=['create-secrets']
+)
+
 k8s_resource(
     'aideator',
     port_forwards=['8000:8000'],
     labels=['api'],
+    resource_deps=['create-secrets', 'aideator-redis']
+)
+
+# LiteLLM Gateway port forwarding
+k8s_resource(
+    'aideator-litellm',
+    port_forwards=['4000:4000'],
+    labels=['gateway'],
+    resource_deps=['create-secrets']
+)
+
+# PostgreSQL port forwarding (optional for development)
+k8s_resource(
+    'aideator-postgresql',
+    port_forwards=['5432:5432'],
+    labels=['database'],
+    resource_deps=['create-secrets']
+)
+
+# Redis port forwarding (optional for development)
+k8s_resource(
+    'aideator-redis',
+    port_forwards=['6379:6379'],
+    labels=['cache'],
     resource_deps=['create-secrets']
 )
 
@@ -198,7 +289,7 @@ k8s_resource(
     resource_deps=['create-secrets']
 )
 
-# Phase 7: Find an available port for frontend
+# Phase 8: Find an available port for frontend
 # Check if user specified a port, otherwise find an available one
 user_specified_port = os.getenv('FRONTEND_PORT', '')
 if user_specified_port:
@@ -213,7 +304,7 @@ else:
     elif frontend_port != '3000':
         print("⚠️  Port 3000 is in use, using port " + frontend_port + " instead")
 
-# Phase 8: Frontend (optional - runs outside container for hot reload)
+# Phase 9: Frontend (optional - runs outside container for hot reload)
 # Use a script that checks if install is needed before running
 frontend_cmd = '''
 cd frontend && \
