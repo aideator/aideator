@@ -21,6 +21,7 @@ class EventType(str, Enum):
     AGENT_COMPLETE = "agent_complete"
     RUN_COMPLETE = "run_complete"
     HEARTBEAT = "heartbeat"
+    AGENT_LOG = "agent_log"
 
 
 @dataclass
@@ -164,6 +165,18 @@ class SSEManager:
             data={
                 "variation_id": variation_id,
                 "error": error,
+                "timestamp": datetime.utcnow().isoformat(),
+            },
+        )
+        await self.broadcast(run_id, event)
+
+    async def send_agent_log(self, run_id: str, variation_id: int, log_entry: dict) -> None:
+        """Send agent log event."""
+        event = SSEEvent(
+            event_type=EventType.AGENT_LOG,
+            data={
+                "variation_id": variation_id,
+                "log": log_entry,
                 "timestamp": datetime.utcnow().isoformat(),
             },
         )

@@ -11,6 +11,7 @@ export interface StreamMessage {
 
 export interface AgentStreamState {
   streams: Map<number, string[]>;
+  logs: Map<number, any[]>;
   isStreaming: boolean;
   error: string | null;
   connectionState: 'disconnected' | 'connecting' | 'connected' | 'error';
@@ -20,6 +21,7 @@ export interface AgentStreamHook extends AgentStreamState {
   startStream: (runId: string, backend?: 'kubectl' | 'redis') => void;
   stopStream: () => void;
   clearStreams: () => void;
+  clearLogs: (variationId?: number) => void;
   selectAgent: (variationId: number) => Promise<void>;
   pauseStream: (variationId?: number) => void;
   resumeStream: (variationId?: number) => void;
@@ -28,6 +30,7 @@ export interface AgentStreamHook extends AgentStreamState {
 
 export function useAgentStream(): AgentStreamHook {
   const [streams, setStreams] = useState<Map<number, string[]>>(new Map());
+  const [logs, setLogs] = useState<Map<number, any[]>>(new Map());
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [connectionState, setConnectionState] = useState<AgentStreamState['connectionState']>('disconnected');
@@ -122,10 +125,23 @@ export function useAgentStream(): AgentStreamHook {
 
   const clearStreams = useCallback(() => {
     setStreams(new Map());
+    setLogs(new Map());
     setError(null);
     // Destroy all stream buffers
     streamBuffersRef.current.forEach(buffer => buffer.destroy());
     streamBuffersRef.current.clear();
+  }, []);
+
+  const clearLogs = useCallback((variationId?: number) => {
+    if (variationId !== undefined) {
+      setLogs(prev => {
+        const next = new Map(prev);
+        next.delete(variationId);
+        return next;
+      });
+    } else {
+      setLogs(new Map());
+    }
   }, []);
 
   const startStream = useCallback((runId: string, backend?: 'kubectl' | 'redis') => {
@@ -140,7 +156,7 @@ export function useAgentStream(): AgentStreamHook {
 
     // Check which streaming backend to use - prefer parameter, then localStorage, then env var
     const storedBackend = typeof window !== 'undefined' ? localStorage.getItem('streamingBackend') : null;
-    const streamingBackend = backend || storedBackend || process.env.NEXT_PUBLIC_STREAMING_BACKEND || 'redis';
+    const streamingBackend = backend || storedBackend || process.env.NEXT_PUBLIC_STREAMING_BACKEND || 'kubectl';
     const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
     
     // Use Redis endpoint if configured, otherwise use kubectl endpoint
@@ -277,6 +293,41 @@ export function useAgentStream(): AgentStreamHook {
           });
         } catch (parseError) {
           console.error('[STREAM-DEBUG] Failed to parse agent_error event:', {
+            error: parseError,
+            rawData: event.data
+          });
+        }
+      });
+
+      // Handle agent log events
+      eventSource.addEventListener('agent_log', (event) => {
+        console.log('[STREAM-DEBUG] Received agent_log event:', {
+          eventType: event.type,
+          eventData: event.data,
+          timestamp: new Date().toISOString()
+        });
+        
+        try {
+          const data = JSON.parse(event.data);
+          const variationId = typeof data.variation_id === 'string' ? parseInt(data.variation_id, 10) : data.variation_id;
+          const logEntry = data.log;
+          
+          console.log('[STREAM-DEBUG] Processing agent log:', {
+            variation_id: variationId,
+            level: logEntry.level,
+            message: logEntry.message,
+            timestamp: logEntry.timestamp
+          });
+          
+          // Add log to logs state
+          setLogs(prevLogs => {
+            const newLogs = new Map(prevLogs);
+            const existing = newLogs.get(variationId) || [];
+            newLogs.set(variationId, [...existing, logEntry]);
+            return newLogs;
+          });
+        } catch (parseError) {
+          console.error('[STREAM-DEBUG] Failed to parse agent_log event:', {
             error: parseError,
             rawData: event.data
           });
@@ -501,12 +552,14 @@ export function useAgentStream(): AgentStreamHook {
 
   return {
     streams,
+    logs,
     isStreaming,
     error,
     connectionState,
     startStream,
     stopStream,
     clearStreams,
+    clearLogs,
     selectAgent,
     pauseStream,
     resumeStream,

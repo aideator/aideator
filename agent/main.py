@@ -114,10 +114,11 @@ class AIdeatorAgent:
         if self.redis_client:
             try:
                 channel = f"run:{self.run_id}:logs:{self.variation_id}"
-                self.redis_client.publish(channel, json.dumps(log_entry))
+                result = self.redis_client.publish(channel, json.dumps(log_entry))
+                print(f"[AGENT-REDIS-LOG] Published log to channel {channel}, {result} subscribers", flush=True)
             except Exception as e:
                 # Don't fail if Redis publish fails
-                pass
+                print(f"[AGENT-REDIS-LOG] Failed to publish log to Redis: {e}", flush=True)
         
         # Also log to file
         self.file_logger.log(

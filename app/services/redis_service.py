@@ -162,10 +162,17 @@ class RedisService:
                         message_type = parts[2]  # output, logs, or status
                         logger.info(f"[REDIS-SUB] Processing {message_type} message from channel: {channel}")
                         
+                        # Special logging for log messages
+                        if message_type == "logs":
+                            logger.info(f"[REDIS-SUB] LOG MESSAGE RECEIVED on channel: {channel}")
+                            logger.info(f"[REDIS-SUB] Raw log data: {message['data'][:200]}...")
+                        
                         # Parse the data
                         try:
                             data = json.loads(message["data"])
                             logger.debug(f"[REDIS-SUB] Parsed JSON data: {data}")
+                            if message_type == "logs":
+                                logger.info(f"[REDIS-SUB] Parsed log data: {data}")
                         except json.JSONDecodeError:
                             # If not JSON, treat as plain text
                             logger.warning(f"[REDIS-SUB] Failed to parse JSON, treating as plain text: {message['data']}")

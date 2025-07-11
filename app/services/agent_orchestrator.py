@@ -73,7 +73,6 @@ class AgentOrchestrator:
         agent_config: AgentConfig | None = None,
         agent_mode: str | None = None,
         db_session: AsyncSession | None = None,
-        use_batch_job: bool = True,
     ) -> None:
         """Execute N agent variations using Kubernetes jobs."""
         logger.info(
@@ -112,10 +111,7 @@ class AgentOrchestrator:
             # Increment job count
             await self._increment_job_count(variations)
 
-            if use_batch_job:
-                await self._execute_batch_job(run_id, repo_url, prompt, variations, agent_mode, db_session)
-            else:
-                await self._execute_individual_jobs(run_id, repo_url, prompt, variations, agent_mode, db_session)
+            await self._execute_individual_jobs(run_id, repo_url, prompt, variations, agent_mode, db_session)
 
         except Exception as e:
             logger.error(f"Error executing variations for run {run_id}: {e}")
@@ -133,33 +129,6 @@ class AgentOrchestrator:
             # Clean up run metadata after some time
             asyncio.create_task(self._cleanup_run_metadata(run_id, delay=3600))
 
-    async def _execute_batch_job(
-        self,
-        run_id: str,
-        repo_url: str,
-        prompt: str,
-        variations: int,
-        agent_mode: str | None = None,
-        db_session: AsyncSession | None = None,
-    ) -> None:
-        """Execute agents using a single batch job."""
-        # Create batch job
-        job_name = await self.kubernetes.create_batch_job(
-            run_id=run_id,
-            repo_url=repo_url,
-            prompt=prompt,
-            variations=variations,
-            parallelism=min(variations, 3)  # Max 3 parallel
-        )
-
-        self.active_runs[run_id]["jobs"].append(job_name)
-        self.active_runs[run_id]["status"] = "running"
-
-        # Send start event
-        await self._send_status_event(run_id, "started", f"Batch job {job_name} created")
-
-        # Stream logs from batch job
-        await self._stream_batch_job_logs(run_id, job_name, db_session)
 
     async def _execute_individual_jobs(
         self,
@@ -207,60 +176,6 @@ class AgentOrchestrator:
         if db_session:
             await self._update_run_status(db_session, run_id, RunStatus.COMPLETED)
 
-    async def _stream_batch_job_logs(
-        self,
-        run_id: str,
-        job_name: str,
-        db_session: AsyncSession | None = None
-    ) -> None:
-        """Stream logs from a batch job."""
-        try:
-            async for log_line in self.kubernetes.stream_batch_job_logs(job_name, run_id):
-                try:
-                    log_entry = json.loads(log_line)
-                    # Skip JSON log entries - only process non-log content
-                    if "timestamp" in log_entry and "level" in log_entry:
-                        # This is a structured log, skip it
-                        logger.debug(f"Agent log: {log_entry.get('message', log_entry)}")
-                        continue
-                    # If it's JSON but not a log, send it
-                    if "variation_id" in log_entry:
-                        await self.sse.send_agent_output(run_id, log_entry["variation_id"], json.dumps(log_entry))
-                    else:
-                        await self.sse.send_agent_output(run_id, 0, json.dumps(log_entry))
-                except json.JSONDecodeError:
-                    # This is plain text content (markdown), send it
-                    await self.sse.send_agent_output(run_id, 0, log_line)
-
-            # Send completion event
-            await self._send_status_event(run_id, "completed", f"Batch job {job_name} completed")
-            self.active_runs[run_id]["status"] = "completed"
-
-            # Send SSE completion events to frontend
-            # For batch jobs, we need to send completion for all variations
-            variations = self.active_runs[run_id].get("variations", 1)
-            for i in range(variations):
-                await self.sse.send_agent_complete(run_id, i)
-            await self.sse.send_run_complete(run_id, "completed")
-
-            # Update database status
-            if db_session:
-                await self._update_run_status(db_session, run_id, RunStatus.COMPLETED)
-
-        except Exception as e:
-            logger.error(f"Error streaming batch job logs for run {run_id}: {e}")
-            await self._send_error_event(run_id, f"Log streaming error: {e!s}")
-            self.active_runs[run_id]["status"] = "failed"
-
-            # Send SSE error events to frontend
-            variations = self.active_runs[run_id].get("variations", 1)
-            for i in range(variations):
-                await self.sse.send_agent_error(run_id, i, str(e))
-            await self.sse.send_run_complete(run_id, "failed")
-
-            # Update database status
-            if db_session:
-                await self._update_run_status(db_session, run_id, RunStatus.FAILED)
 
     async def _stream_job_logs(self, run_id: str, job_name: str, variation_id: int) -> None:
         """Stream logs from an individual job."""
@@ -268,10 +183,11 @@ class AgentOrchestrator:
             async for log_line in self.kubernetes.stream_job_logs(job_name, run_id, variation_id):
                 try:
                     log_entry = json.loads(log_line)
-                    # Skip JSON log entries - only process non-log content
+                    # Check if this is a structured log entry
                     if "timestamp" in log_entry and "level" in log_entry:
-                        # This is a structured log, skip it
-                        logger.debug(f"Agent log: {log_entry.get('message', log_entry)}")
+                        # This is a structured log, send as agent_log event
+                        logger.info(f"[LOG-DEBUG] Sending agent_log event: variation_id={variation_id}, level={log_entry.get('level')}, message={log_entry.get('message', '')[:100]}")
+                        await self.sse.send_agent_log(run_id, variation_id, log_entry)
                         # Publish to Redis logs channel if available
                         if settings.redis_url:
                             try:

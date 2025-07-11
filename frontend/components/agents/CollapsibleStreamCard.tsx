@@ -4,21 +4,26 @@ import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { useAgentColor } from '@/hooks/useAgentStream';
 import { Clock, Zap, CheckCircle, Loader2, ChevronDown, ChevronUp, Maximize2, Minimize2 } from 'lucide-react';
 import { MemoizedMarkdown } from './MemoizedMarkdown';
+import { LogViewer } from './LogViewer';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface CollapsibleStreamCardProps {
   variationId: number;
   content: string[];
+  logs?: any[];
   isStreaming: boolean;
   onSelect: () => void;
+  onClearLogs?: () => void;
   className?: string;
 }
 
 export function CollapsibleStreamCard({ 
   variationId, 
   content, 
+  logs = [],
   isStreaming, 
   onSelect,
+  onClearLogs,
   className = '' 
 }: CollapsibleStreamCardProps) {
   const agentColor = useAgentColor(variationId);
@@ -244,6 +249,15 @@ export function CollapsibleStreamCard({
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Log Viewer */}
+        {isExpanded && (
+          <LogViewer 
+            logs={logs}
+            maxHeight={isFullscreen ? '300px' : '200px'}
+            onClear={onClearLogs}
+          />
+        )}
 
         {/* Footer */}
         {isExpanded && (

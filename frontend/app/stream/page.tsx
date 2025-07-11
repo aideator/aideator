@@ -72,12 +72,14 @@ export default function StreamPage() {
   // Streaming state
   const {
     streams,
+    logs,
     isStreaming,
     error: streamError,
     connectionState,
     startStream,
     stopStream,
     clearStreams,
+    clearLogs,
     selectAgent,
   } = useAgentStream();
 
@@ -499,10 +501,12 @@ export default function StreamPage() {
         {/* TODO: Future enhancement - Add diff view mode to compare 2-4 models side by side */}
         <StreamGrid
           streams={streams}
+          logs={logs}
           isStreaming={isStreaming}
           connectionState={connectionState}
           error={streamError}
           onSelectAgent={handleSelectAgent}
+          onClearLogs={clearLogs}
           maxVariations={variations}
         />
 

@@ -79,7 +79,6 @@ async def create_run(
         agent_config=request.agent_config,
         agent_mode=request.agent_mode,
         db_session=db,
-        use_batch_job=False,  # Use individual jobs for now
     )
     
     return CreateRunResponse(

@@ -221,6 +221,31 @@ async def stream_run_redis(
                                 })
                             }
                     
+                    elif message["type"] == "log":
+                        # Extract variation_id from channel
+                        parts = message["channel"].split(":")
+                        logger.debug(f"[REDIS-STREAM] Log channel parts: {parts}")
+                        if len(parts) >= 4:
+                            variation_id = parts[3]
+                            logger.info(f"[REDIS-STREAM] Extracted variation_id {variation_id} from log channel")
+                            data = message["data"]
+                            
+                            logger.info(f"[REDIS-STREAM] Yielding agent_log event for run {run_id}, variation {variation_id}")
+                            logger.info(f"[REDIS-STREAM] Log data structure: {data}")
+                            logger.info(f"[REDIS-STREAM] Log data type: {type(data)}")
+                            
+                            # Send the log entry directly like kubectl does
+                            event_data = {
+                                "variation_id": variation_id,
+                                **data  # Spread the log entry fields directly
+                            }
+                            logger.info(f"[REDIS-STREAM] Final event data: {event_data}")
+                            
+                            yield {
+                                "event": "agent_log", 
+                                "data": json.dumps(event_data)
+                            }
+                    
                     elif message["type"] == "status":
                         data = message["data"]
                         status = data.get("status", "unknown")

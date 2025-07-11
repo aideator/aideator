@@ -6,19 +6,23 @@ import { AlertCircle, Wifi, WifiOff, TrendingUp } from 'lucide-react';
 
 interface StreamGridProps {
   streams: Map<number, string[]>;
+  logs: Map<number, any[]>;
   isStreaming: boolean;
   connectionState: 'disconnected' | 'connecting' | 'connected' | 'error';
   error: string | null;
   onSelectAgent: (variationId: number) => void;
+  onClearLogs?: (variationId: number) => void;
   maxVariations?: number;
 }
 
 export function StreamGrid({ 
   streams, 
+  logs,
   isStreaming, 
   connectionState,
   error,
   onSelectAgent,
+  onClearLogs,
   maxVariations = 5 
 }: StreamGridProps) {
   
@@ -79,6 +83,7 @@ export function StreamGrid({
       }`}>
         {variationIds.map((variationId) => {
           const content = streams.get(variationId) || [];
+          const logEntries = logs.get(variationId) || [];
           const hasContent = content.length > 0;
           const isThisAgentStreaming = isStreaming && (hasContent || streams.has(variationId));
           
@@ -87,8 +92,10 @@ export function StreamGrid({
               <CollapsibleStreamCard
                 variationId={variationId}
                 content={content}
+                logs={logEntries}
                 isStreaming={isThisAgentStreaming}
                 onSelect={() => onSelectAgent(variationId)}
+                onClearLogs={onClearLogs ? () => onClearLogs(variationId) : undefined}
                 className="h-full"
               />
             </div>
