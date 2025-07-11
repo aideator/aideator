@@ -86,8 +86,10 @@ Before any suggestion that changes dependencies, environment, or tools:
 - **Backend**: FastAPI with async/await patterns
 - **Database**: SQLite with SQLModel ORM
 - **Container Orchestration**: Kubernetes Jobs with Helm
-- **Streaming**: Server-Sent Events (SSE) via Redis pub/sub
+- **Streaming**: Server-Sent Events (SSE) via Redis pub/sub (Redis-only architecture)
 - **Testing**: Pytest (backend), Jest + Playwright (frontend)
+- **Package Management**: pip with requirements.txt and pyproject.toml
+- **Development**: Tilt for Kubernetes orchestration, k3d for local cluster
 
 ---
 
@@ -100,9 +102,8 @@ tilt down               # Stop environment
 cd frontend && npm run dev  # Frontend only
 
 # Database
-
-# Type Generation
-python -m app.generate_types  # After model changes
+# Tables are created automatically on startup via SQLModel
+# Alembic is installed but migration setup is in progress
 
 # Testing
 pytest                   # Backend tests
@@ -134,8 +135,13 @@ frontend/              # Next.js 15 frontend
   components/          # React components
   hooks/               # Custom React hooks
   
-agent/                 # AI agent container code
-  main.py              # Agent entrypoint
+agent/                 # AI agent container code (modular structure in progress)
+  main.py              # Agent entrypoint (monolithic implementation)
+  analyzers/           # Codebase analysis modules
+  config.py           # Configuration management
+  providers/          # LLM provider implementations (Claude CLI, LiteLLM)
+  services/           # Core services (logging, Redis, repository)
+  utils/              # Utility functions
   
 deploy/               # Kubernetes deployment
   charts/aideator/    # Helm chart
@@ -143,6 +149,14 @@ deploy/               # Kubernetes deployment
   
 k8s/                  # Kubernetes templates
   jobs/               # Job YAML templates
+  configmaps/         # ConfigMap templates
+
+_docs/                # Project documentation
+docs/                 # Implementation notes
+prompts/              # AI prompt templates
+scripts/              # Database and testing scripts
+tests/                # Backend tests
+alembic/              # Database migrations (setup in progress)
 ```
 
 ---
@@ -191,7 +205,8 @@ timeout 20 curl -N http://localhost:8000/api/v1/runs/${RUN_ID}/stream
 1. Modify agent code
 2. Touch `agent/main.py` to trigger rebuild
 3. Wait 10-15 seconds for Tilt
-4. Check logs: `kubectl logs -f job/agent-job-dev-test -n aideator`
+4. Monitor Redis output: `redis-cli monitor`
+5. View agent logs (if needed): `kubectl logs -f job/agent-job-dev-test -n aideator`
 
 ### Debugging Streaming Issues
 1. Check Redis connectivity with `redis-cli ping`
@@ -271,11 +286,25 @@ kubectl create secret generic openai-secret \
   -n aideator
 ```
 
-### Streaming Pipeline Architecture
-1. Agent publishes to Redis pub/sub channels
-2. Backend subscribes to Redis channels
-3. Messages converted to SSE events
-4. Frontend consumes SSE and displays in real-time
+### Streaming Pipeline Architecture (Redis-only)
+
+**Recent Evolution**: The project has moved from dual kubectl/Redis streaming to a simplified Redis-only architecture.
+
+**Current Flow**:
+1. **Agent Side**:
+   - Publishes outputs to channel: `run:{run_id}:output:{variation_id}`
+   - Publishes logs to: `run:{run_id}:logs:{variation_id}`
+   - Publishes status to: `run:{run_id}:status`
+   - Falls back to stdout if Redis unavailable
+
+2. **Backend Side**:
+   - RedisService manages pub/sub connections
+   - SSE endpoints subscribe directly to Redis channels
+   - No kubectl log streaming (removed for simplification)
+
+3. **Frontend Side**:
+   - Consumes SSE events in real-time
+   - Handles reconnection automatically
 
 ### Common Pitfalls
 - Always use timeout when testing SSE endpoints
@@ -283,4 +312,6 @@ kubectl create secret generic openai-secret \
 - Wait 10+ seconds for Tilt rebuilds
 - Use complete Tailwind class names (no interpolation)
 - Create openai-secret before first deployment
+- Redis is REQUIRED - agents will fail without it
+- Monitor Redis channels when debugging streaming issues
 - Verify both kubectl logs AND SSE show same output

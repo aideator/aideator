@@ -79,5 +79,8 @@ USER agentuser
 # Set working directory to workspace
 WORKDIR /workspace
 
+# Add /app to Python path so agent imports work
+ENV PYTHONPATH="/app:$PYTHONPATH"
+
 # Run agent
 CMD ["python", "-u", "/app/agent/main.py"]

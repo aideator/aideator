@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { useAgentStream } from "@/hooks/useAgentStream";
+// import { useAgentStream } from "@/hooks/useAgentStream";
+import { useAgentPolling as useAgentStream } from "@/hooks/useAgentPolling";
 import { useRepositoryList } from "@/hooks/useRepositoryList";
 import { useAgentMode } from "@/hooks/useAgentMode";
 import { StreamGrid } from "@/components/agents/StreamGrid";
@@ -62,7 +63,7 @@ export default function StreamPage() {
   const {
     streams,
     logs,
-    isStreaming,
+    isPolling: isPolling,
     error: streamError,
     connectionState,
     startStream,
@@ -102,7 +103,7 @@ export default function StreamPage() {
       console.log("Run created:", response);
       setCurrentRunId(response.run_id);
 
-      // Start streaming
+      // Start polling
       startStream(response.run_id);
 
       // Collapse config panel to maximize screen space
@@ -175,29 +176,40 @@ export default function StreamPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
       <div className="container mx-auto px-4 py-8 max-w-7xl">
+        {/* Admin Link */}
+        <div className="flex justify-end mb-4">
+          <a
+            href="/admin"
+            className="text-sm text-gray-600 hover:text-gray-900 flex items-center space-x-1"
+          >
+            <Settings2 className="h-4 w-4" />
+            <span>Admin Dashboard</span>
+          </a>
+        </div>
+        
         {/* Header - Compact when streaming */}
         <motion.header
           layout
-          className={`text-center ${isStreaming && !isConfigExpanded ? "mb-6" : "mb-12"}`}
+          className={`text-center ${isPolling && !isConfigExpanded ? "mb-6" : "mb-12"}`}
         >
           <motion.div
             layout
             className={`inline-flex items-center justify-center rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-xl ${
-              isStreaming && !isConfigExpanded
+              isPolling && !isConfigExpanded
                 ? "w-12 h-12 mb-3"
                 : "w-20 h-20 mb-6"
             }`}
           >
             <BrainCircuit
               className={`${
-                isStreaming && !isConfigExpanded ? "h-6 w-6" : "h-10 w-10"
+                isPolling && !isConfigExpanded ? "h-6 w-6" : "h-10 w-10"
               }`}
             />
           </motion.div>
           <motion.h1
             layout
             className={`font-bold text-gray-900 ${
-              isStreaming && !isConfigExpanded
+              isPolling && !isConfigExpanded
                 ? "text-3xl mb-2"
                 : "text-5xl mb-3"
             }`}
@@ -205,7 +217,7 @@ export default function StreamPage() {
             aideator
           </motion.h1>
           <AnimatePresence>
-            {(!isStreaming || isConfigExpanded) && (
+            {(!isPolling || isConfigExpanded) && (
               <motion.p
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
@@ -261,7 +273,7 @@ export default function StreamPage() {
               </div>
             </div>
             <div className="flex items-center gap-4">
-              {!isConfigExpanded && !isStreaming && (
+              {!isConfigExpanded && !isPolling && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -309,7 +321,7 @@ export default function StreamPage() {
                         <Select
                           value={githubUrl}
                           onValueChange={handleSelectChange}
-                          disabled={isStreaming}
+                          disabled={isPolling}
                         >
                           <SelectTrigger className="w-full">
                             <SelectValue />
@@ -377,7 +389,7 @@ export default function StreamPage() {
                         onChange={(e) =>
                           setVariations(parseInt(e.target.value))
                         }
-                        disabled={isStreaming}
+                        disabled={isPolling}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
                       >
                         {[1, 2, 3, 4, 5].map((num) => (
@@ -405,7 +417,7 @@ export default function StreamPage() {
                       placeholder="Describe what you want the agents to do with this repository..."
                       value={prompt}
                       onChange={(e) => setPrompt(e.target.value)}
-                      disabled={isStreaming}
+                      disabled={isPolling}
                       rows={4}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all resize-none"
                     />
@@ -423,7 +435,7 @@ export default function StreamPage() {
 
                   {/* Action Buttons */}
                   <div className="flex items-center gap-4 mt-6">
-                    {!isStreaming ? (
+                    {!isPolling ? (
                       <button
                         onClick={handleStartGeneration}
                         disabled={
@@ -449,7 +461,7 @@ export default function StreamPage() {
                     {hasActiveStreams && (
                       <button
                         onClick={clearStreams}
-                        disabled={isStreaming}
+                        disabled={isPolling}
                         className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Clear Results
@@ -467,7 +479,7 @@ export default function StreamPage() {
         <StreamGrid
           streams={streams}
           logs={logs}
-          isStreaming={isStreaming}
+          isPolling={isPolling}
           connectionState={connectionState}
           error={streamError}
           onSelectAgent={handleSelectAgent}
@@ -477,7 +489,7 @@ export default function StreamPage() {
 
         {/* Floating Stop Button - shows when streaming and config is collapsed */}
         <AnimatePresence>
-          {isStreaming && !isConfigExpanded && (
+          {isPolling && !isConfigExpanded && (
             <motion.div
               initial={{ opacity: 0, scale: 0.8, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}

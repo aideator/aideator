@@ -23,8 +23,9 @@ settings = get_settings()
 
 @router.get(
     "/{run_id}/stream",
-    summary="Stream agent outputs via Redis",
+    summary="Stream agent outputs via Redis (currently disabled)",
     response_class=StreamingResponse,
+    deprecated=True,
 )
 async def stream_run(
     run_id: str,
@@ -75,20 +76,23 @@ async def stream_run(
         
         async def redis_listener():
             """Listen to Redis messages and put them in the queue."""
-            logger.info(f"[REDIS-STREAM] Starting Redis listener for run {run_id}")
-            try:
-                logger.info(f"[REDIS-STREAM] Subscribing to Redis channels for run {run_id}")
-                message_count = 0
-                async for message in redis_service.subscribe_to_run(run_id):
-                    message_count += 1
-                    logger.info(f"[REDIS-STREAM] Received message #{message_count} from Redis: type={message.get('type')}, channel={message.get('channel')}")
-                    await event_queue.put(("message", message))
-            except Exception as e:
-                logger.error(f"[REDIS-STREAM] Redis listener error: {e}")
-                await event_queue.put(("error", str(e)))
-            finally:
-                logger.info(f"[REDIS-STREAM] Redis listener completed for run {run_id}")
-                await event_queue.put(("complete", None))
+            # Currently unused - using database polling instead
+            logger.info(f"[REDIS-STREAM] Redis streaming disabled, using database polling")
+            await event_queue.put(("error", "SSE streaming is deprecated. Please use the polling endpoint /api/v1/runs/{run_id}/outputs instead."))
+            # logger.info(f"[REDIS-STREAM] Starting Redis listener for run {run_id}")
+            # try:
+            #     logger.info(f"[REDIS-STREAM] Subscribing to Redis channels for run {run_id}")
+            #     message_count = 0
+            #     async for message in redis_service.subscribe_to_run(run_id):
+            #         message_count += 1
+            #         logger.info(f"[REDIS-STREAM] Received message #{message_count} from Redis: type={message.get('type')}, channel={message.get('channel')}")
+            #         await event_queue.put(("message", message))
+            # except Exception as e:
+            #     logger.error(f"[REDIS-STREAM] Redis listener error: {e}")
+            #     await event_queue.put(("error", str(e)))
+            # finally:
+            #     logger.info(f"[REDIS-STREAM] Redis listener completed for run {run_id}")
+            #     await event_queue.put(("complete", None))
         
         async def heartbeat_sender():
             """Send periodic heartbeats to keep connection alive."""

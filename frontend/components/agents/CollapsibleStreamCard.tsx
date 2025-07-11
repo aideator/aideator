@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { useAgentColor } from '@/hooks/useAgentStream';
+// import { useAgentColor } from '@/hooks/useAgentStream';
+import { useAgentColor } from '@/hooks/useAgentPolling';
 import { Clock, Zap, CheckCircle, Loader2, ChevronDown, ChevronUp, Maximize2, Minimize2 } from 'lucide-react';
 import { MemoizedMarkdown } from './MemoizedMarkdown';
 import { LogViewer } from './LogViewer';
