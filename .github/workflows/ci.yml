@@ -1,0 +1,329 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: localhost:5005
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+  # Use placeholder API keys for CI
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || 'sk-ci-placeholder-key' }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || 'sk-ant-ci-placeholder-key' }}
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || 'AIza-ci-placeholder-key' }}
+  SECRET_KEY: 'ci-secret-key-32-chars-minimum-length'
+
+jobs:
+  # Build and push images job
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install k3d
+        run: |
+          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+          k3d version
+
+      - name: Create k3d cluster with registry
+        run: |
+          k3d cluster create aideator-ci \
+            --registry-create aideator-registry:0.0.0.0:5005 \
+            --k3s-arg "--disable=traefik@server:0" \
+            --wait
+          
+          # Verify cluster is ready
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Build API image
+        run: |
+          docker build \
+            --target api \
+            --tag $REGISTRY/aideator-api:ci \
+            --cache-from type=gha \
+            --cache-to type=gha,mode=max \
+            .
+          docker push $REGISTRY/aideator-api:ci
+
+      - name: Build Agent image
+        run: |
+          docker build \
+            --target agent \
+            --tag $REGISTRY/aideator-agent:ci \
+            --cache-from type=gha \
+            --cache-to type=gha,mode=max \
+            .
+          docker push $REGISTRY/aideator-agent:ci
+
+      - name: Save cluster config
+        run: |
+          mkdir -p $HOME/.kube
+          k3d kubeconfig get aideator-ci > $HOME/.kube/config
+          echo "KUBECONFIG=$HOME/.kube/config" >> $GITHUB_ENV
+
+  # Backend tests
+  backend-tests:
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        test-type: [unit, integration, e2e]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          uv pip install --system -e ".[dev]"
+
+      - name: Run linting
+        if: matrix.test-type == 'unit'
+        run: |
+          uv run ruff check .
+          uv run ruff format . --check
+          uv run mypy app/
+
+      - name: Run ${{ matrix.test-type }} tests
+        run: |
+          uv run pytest -m ${{ matrix.test-type }} \
+            --cov=app \
+            --cov-report=xml \
+            --cov-report=html \
+            --junit-xml=test-results-${{ matrix.test-type }}.xml \
+            -v
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results-${{ matrix.test-type }}
+          path: |
+            test-results-*.xml
+            htmlcov/
+            coverage.xml
+
+  # Frontend tests
+  frontend-tests:
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run type checking
+        working-directory: frontend
+        run: npm run type-check
+
+      - name: Run unit tests
+        working-directory: frontend
+        run: npm test -- --coverage --watchAll=false
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Install k3d
+        run: |
+          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+          k3d version
+
+      - name: Restore k3d cluster
+        run: |
+          k3d cluster create aideator-ci \
+            --registry-use aideator-registry:5005 \
+            --k3s-arg "--disable=traefik@server:0" \
+            --wait
+          
+          mkdir -p $HOME/.kube
+          k3d kubeconfig get aideator-ci > $HOME/.kube/config
+          echo "KUBECONFIG=$HOME/.kube/config" >> $GITHUB_ENV
+
+      - name: Install Tilt
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/tilt-dev/tilt/master/scripts/install.sh | bash
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Start services with Tilt
+        run: |
+          # Create namespace
+          kubectl create namespace aideator || true
+          
+          # Create secrets
+          kubectl create secret generic aideator-secret \
+            --from-literal=secret-key="$SECRET_KEY" \
+            -n aideator || true
+          
+          kubectl create secret generic openai-secret \
+            --from-literal=api-key="$OPENAI_API_KEY" \
+            -n aideator || true
+          
+          kubectl create secret generic anthropic-secret \
+            --from-literal=api-key="$ANTHROPIC_API_KEY" \
+            -n aideator || true
+          
+          kubectl create secret generic gemini-secret \
+            --from-literal=api-key="$GEMINI_API_KEY" \
+            -n aideator || true
+          
+          # Start Tilt in CI mode (headless)
+          tilt ci --timeout 10m &
+          TILT_PID=$!
+          
+          # Wait for services to be ready
+          timeout 300 bash -c 'until curl -f http://localhost:8000/api/v1/health; do sleep 5; done'
+          echo "Backend is ready"
+          
+          # Save Tilt PID for cleanup
+          echo $TILT_PID > tilt.pid
+
+      - name: Run Playwright E2E tests
+        working-directory: frontend
+        env:
+          CI: true
+          PLAYWRIGHT_BROWSERS_PATH: 0
+        run: |
+          # Run tests with proper CI configuration
+          npm run test:e2e -- --reporter=html,github
+
+      - name: Stop Tilt
+        if: always()
+        run: |
+          if [ -f tilt.pid ]; then
+            kill $(cat tilt.pid) || true
+          fi
+          tilt down --delete-namespaces || true
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 30
+
+      - name: Upload test coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/
+
+  # Integration test with full stack
+  integration:
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-tests]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install k3d
+        run: |
+          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+          k3d version
+
+      - name: Create k3d cluster
+        run: |
+          k3d cluster create aideator-ci \
+            --registry-create aideator-registry:0.0.0.0:5005 \
+            --k3s-arg "--disable=traefik@server:0" \
+            --wait
+
+      - name: Install Tilt
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/tilt-dev/tilt/master/scripts/install.sh | bash
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Run integration smoke test
+        run: |
+          # Build images
+          docker build --target api --tag localhost:5005/aideator-api:ci .
+          docker build --target agent --tag localhost:5005/aideator-agent:ci .
+          docker push localhost:5005/aideator-api:ci
+          docker push localhost:5005/aideator-agent:ci
+          
+          # Start Tilt
+          tilt ci --timeout 10m &
+          TILT_PID=$!
+          
+          # Wait for services
+          timeout 300 bash -c 'until curl -f http://localhost:8000/api/v1/health; do sleep 5; done'
+          
+          # Run basic API tests
+          curl -f http://localhost:8000/api/v1/health | grep '"status":"healthy"'
+          curl -f http://localhost:8000/docs
+          
+          # Test LiteLLM Gateway
+          timeout 60 bash -c 'until curl -f http://localhost:4000/health; do sleep 5; done'
+          
+          # Cleanup
+          kill $TILT_PID || true
+          tilt down --delete-namespaces
+
+      - name: Cleanup
+        if: always()
+        run: |
+          k3d cluster delete aideator-ci || true
+
+  # Report test results
+  test-summary:
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-tests, integration]
+    if: always()
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Publish test results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: |
+            **/test-results-*.xml
+          check_name: Test Results
+          comment_mode: always
+
+      - name: Comment PR with coverage
+        uses: py-cov-action/python-coverage-comment-action@v3
+        if: github.event_name == 'pull_request'
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MINIMUM_GREEN: 80
+          MINIMUM_ORANGE: 60

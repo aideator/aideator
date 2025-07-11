@@ -1,0 +1,89 @@
+# AIdeator CI Tiltfile - Optimized for CI/CD environments
+# This file is used when running `tilt ci` in GitHub Actions
+
+# Load the main Tiltfile
+load('./Tiltfile', 'frontend_port')
+
+# CI-specific configuration
+update_settings(
+    # Disable UI features not needed in CI
+    suppress_unused_image_warnings=True,
+    # Set max parallel updates for faster CI
+    max_parallel_updates=4,
+)
+
+# Override some settings for CI
+config.define_bool('ci')
+config.set_enabled_resources([
+    'aideator',
+    'aideator-litellm',
+    'aideator-postgresql',
+    'aideator-redis',
+    'create-secrets',
+    'cluster-check',
+])
+
+# Disable frontend local resource in CI (we test it separately)
+config.clear_enabled_resources(['frontend'])
+
+# Set CI-specific timeouts
+config.define_int('startup_timeout', args=False, usage='Timeout for service startup')
+cfg = config.parse()
+if cfg.get('startup_timeout'):
+    # Use the configured timeout
+    local_resource('wait-for-services',
+        cmd='echo "Waiting for services with timeout: {}s"'.format(cfg['startup_timeout']),
+        resource_deps=['aideator', 'aideator-litellm']
+    )
+
+# Add health check verification
+local_resource(
+    'verify-health',
+    cmd='''
+    echo "Verifying service health..."
+    for i in {1..60}; do
+        if curl -f http://localhost:8000/api/v1/health 2>/dev/null | grep -q '"status":"healthy"'; then
+            echo "✅ API is healthy"
+            exit 0
+        fi
+        echo "Waiting for API to be healthy... ($i/60)"
+        sleep 5
+    done
+    echo "❌ API health check failed"
+    exit 1
+    ''',
+    resource_deps=['aideator'],
+    labels=['verification']
+)
+
+# Add LiteLLM Gateway health check
+local_resource(
+    'verify-litellm',
+    cmd='''
+    echo "Verifying LiteLLM Gateway health..."
+    for i in {1..60}; do
+        if curl -f http://localhost:4000/health 2>/dev/null; then
+            echo "✅ LiteLLM Gateway is healthy"
+            exit 0
+        fi
+        echo "Waiting for LiteLLM Gateway to be healthy... ($i/60)"
+        sleep 5
+    done
+    echo "❌ LiteLLM Gateway health check failed"
+    exit 1
+    ''',
+    resource_deps=['aideator-litellm'],
+    labels=['verification']
+)
+
+# CI mode summary
+print("""
+🚀 AIdeator CI Mode Enabled
+===========================
+- Frontend local resource disabled (tested separately)
+- Health checks enabled for API and LiteLLM Gateway
+- Max parallel updates: 4
+- Suppress unused image warnings: True
+
+Services will be verified before tests run.
+""")
