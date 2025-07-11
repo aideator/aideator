@@ -2,10 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional
-from datetime import datetime
-import asyncio
-import json
 
 from app.core.config import get_settings
 from app.core.database import get_session
@@ -38,7 +34,7 @@ async def stream_run(
 
     Event Types:
     - `agent_output`: Output from an agent variation
-    - `agent_error`: Error from an agent variation  
+    - `agent_error`: Error from an agent variation
     - `agent_complete`: Agent variation finished
     - `run_complete`: All agents finished
     - `heartbeat`: Keep-alive signal
@@ -113,7 +109,7 @@ async def stream_debug_logs(
     query = select(Run).where(Run.id == run_id)
     if current_user:
         query = query.where(Run.user_id == current_user.id)
-    
+
     result = await db.execute(query)
     run = result.scalar_one_or_none()
 
@@ -129,29 +125,30 @@ async def stream_debug_logs(
         variation_id=variation_id,
         user_id=current_user.id if current_user else None,
     )
-    
+
     # Import here to avoid circular imports
     from app.services.kubernetes_service import KubernetesService
+
     kubernetes_service = KubernetesService()
-    
+
     async def debug_event_generator():
         """Generate debug events from raw kubectl logs."""
         logger.info(f"[DEBUG-STREAM] Starting debug stream for run {run_id}")
-        
+
         try:
             # Get the job name
             job_name = f"agent-{run_id}-{variation_id}"
-            
+
             # Stream raw logs
             async for log_line in kubernetes_service.stream_raw_debug_logs(job_name):
                 yield f"data: {log_line}\n\n"
-                
+
         except Exception as e:
             logger.error(f"[DEBUG-STREAM] Error streaming debug logs: {e}")
             yield f"data: [ERROR] {e}\n\n"
         finally:
             logger.info(f"[DEBUG-STREAM] Debug stream completed for run {run_id}")
-    
+
     # Create SSE response
     return StreamingResponse(
         debug_event_generator(),

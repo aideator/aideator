@@ -8,11 +8,10 @@ import json
 import os
 import subprocess
 import tempfile
+from collections.abc import AsyncGenerator
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-
-import yaml
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -34,7 +33,7 @@ class KubernetesService:
 
     def _escape_yaml_string(self, value: str) -> str:
         """Properly escape a string for YAML to prevent injection attacks.
-        
+
         Uses JSON encoding which is valid YAML and handles all special cases.
         """
         # JSON strings are valid YAML and handle all escaping properly
@@ -70,7 +69,7 @@ class KubernetesService:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(job_yaml)
             job_file = f.name
-        
+
         # Debug: Log the YAML content
         logger.debug(f"Generated YAML for job {job_name}:\n{job_yaml}")
 
@@ -96,8 +95,6 @@ class KubernetesService:
             # Clean up temporary file
             os.unlink(job_file)
 
-
-
     async def stream_job_logs(
         self,
         job_name: str,
@@ -119,8 +116,6 @@ class KubernetesService:
         for pod in pods:
             async for log_line in self._stream_pod_logs(pod, run_id, variation_id):
                 yield log_line
-
-
 
     async def delete_job(self, job_name: str) -> bool:
         """Delete a Kubernetes job."""

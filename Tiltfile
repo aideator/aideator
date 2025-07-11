@@ -27,6 +27,9 @@ docker_build(
         'requirements.txt',
         'scripts/',
         'prompts/',
+        'alembic/',
+        'alembic.ini',
+        'k8s/',
     ],
     live_update=[
         sync('app/', '/app/app/'),
@@ -35,49 +38,37 @@ docker_build(
     ],
 )
 
-# docker_build(
-#     'aideator-agent',
-#     context='.',
-#     dockerfile='agent/Dockerfile',
-#     only=[
-#         'agent/',
-#         'pyproject.toml',
-#         'requirements.txt',
-#         'prompts/',
-#         'scripts/',
-#     ],
-#     live_update=[
-#         sync('agent/', '/app/agent/'),
-#         sync('prompts/', '/app/prompts/'),
-#         run('cd /app && pip install -e .', trigger=['pyproject.toml', 'requirements.txt']),
-#     ],
-# )
+# Agent image removed from Tilt - will be built separately for dynamic job spawning
+
+# Ensure cluster is ready before creating secrets
+local_resource(
+    'cluster-ready',
+    cmd='kubectl cluster-info',
+    labels=['infrastructure'],
+)
 
 # Secrets management
 local_resource(
     'create-secrets',
     cmd='./scripts/manage-secrets.sh create',
     deps=['.env', 'scripts/manage-secrets.sh'],
+    resource_deps=['cluster-ready'],
+    labels=['infrastructure'],
 )
 
-# Deploy Helm chart
-helm_resource(
-    'aideator',
+# Generate and apply Helm chart YAML  
+yaml = helm(
     'deploy/charts/aideator',
     namespace='aideator',
-    flags=['--values=deploy/values/local.yaml'],
-    deps=[
-        'deploy/charts/aideator/Chart.yaml',
-        'deploy/charts/aideator/values.yaml',
-        'deploy/charts/aideator/templates',
-        'deploy/values/local.yaml',
-    ],
-    image_deps=['aideator-api'],
-    image_keys=[
-        ('image.repository', 'image.tag'),
-    ],
-    resource_deps=['create-secrets'],
+    values=['deploy/values/local.yaml']
 )
+k8s_yaml(yaml)
+
+# Configure individual resources with images and port forwards
+k8s_resource('aideator-fastapi', port_forwards='8000:8000', labels=['backend'], new_name='api')
+k8s_resource('chart-aideator-postgresql', port_forwards='5432:5432', labels=['database'], new_name='database')
+k8s_resource('chart-redis-master', port_forwards='6379:6379', labels=['cache'], new_name='redis')
+k8s_resource('chart-aideator-litellm', port_forwards='4000:4000', labels=['ai-gateway'], new_name='litellm')
 
 # Frontend development (runs locally)
 local_resource(
@@ -94,31 +85,6 @@ local_resource(
         'frontend/coverage/',
     ],
     labels=['frontend'],
-)
-
-# Port forwards for services
-k8s_resource(
-    'aideator-api',
-    port_forwards=['8000:8000'],
-    labels=['backend'],
-)
-
-k8s_resource(
-    'aideator-redis',
-    port_forwards=['6379:6379'],
-    labels=['infrastructure'],
-)
-
-k8s_resource(
-    'aideator-postgresql',
-    port_forwards=['5432:5432'],
-    labels=['infrastructure'],
-)
-
-k8s_resource(
-    'aideator-litellm',
-    port_forwards=['4000:4000'],
-    labels=['infrastructure'],
 )
 
 # Development job template for testing agents

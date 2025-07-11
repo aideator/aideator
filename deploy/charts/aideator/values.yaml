@@ -68,23 +68,10 @@ app:
   # secretKey: $(openssl rand -hex 32)
   # encryptionKey: $(openssl rand -base64 32)
   secretKey: "dev-secret-key-32-chars-minimum!!"
-  encryptionKey: "VGhpc0lzQURldmVsb3BtZW50S2V5T25seUZvclRlc3Rpbmc="  # Base64 encoded dev key
+  encryptionKey: "dev-encryption-key-32-chars-minimum-for-aes"  # Development key
 
-# Secrets
-secrets:
-  # OpenRouter removed - using LiteLLM with direct OpenAI SDK
-  openai:
-    name: openai-secret
-    key: api-key
-    optional: false
-  anthropic:
-    name: anthropic-secret
-    key: api-key
-    optional: false
-  gemini:
-    name: gemini-secret
-    key: api-key
-    optional: false
+# Secrets (API keys stored in database, not Kubernetes secrets)
+secrets: {}
 
 # Resources for FastAPI
 resources:
@@ -127,9 +114,9 @@ rbac:
       resources: ["jobs"]
       verbs: ["create", "get", "list", "watch", "delete"]
 
-# Redis configuration (disabled for student project - using Tiltfile Redis)
+# Redis configuration
 redis:
-  enabled: false  # Student project uses simple Redis from Tiltfile
+  enabled: true
 
 # LiteLLM Gateway configuration
 litellm:
@@ -154,7 +141,7 @@ litellm:
   database:
     enabled: true
     # Will use PostgreSQL if enabled, otherwise SQLite
-    url: "postgresql://aideator:aideator123@aideator-postgresql:5432/aideator"
+    url: "postgresql://aideator:aideator123@chart-aideator-postgresql:5432/aideator"
   
   # Redis cache configuration
   cache:
@@ -201,33 +188,25 @@ litellm:
       memory: "2Gi"
       cpu: "1000m"
 
-# Redis configuration
+# Redis configuration (Bitnami chart)
 redis:
-  image:
-    repository: redis
-    tag: 7-alpine
-    pullPolicy: IfNotPresent
-  
-  # Authentication
+  enabled: true
+  # Simple single-instance deployment
+  architecture: standalone
   auth:
     enabled: false
-    # password: "redis-password"
-  
-  # Persistence
-  persistence:
-    enabled: true
-    accessMode: ReadWriteOnce
-    size: 1Gi
-    # storageClass: ""
-  
-  # Resources
-  resources:
-    requests:
-      memory: "128Mi"
-      cpu: "100m"
-    limits:
-      memory: "256Mi"
-      cpu: "200m"
+  master:
+    persistence:
+      enabled: false  # In-memory only
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "256Mi"
+        cpu: "200m"
+  replica:
+    replicaCount: 0  # No replicas needed
 
 # PostgreSQL configuration
 postgresql:

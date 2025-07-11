@@ -30,7 +30,7 @@ class TestAgentOrchestratorLogFiltering:
     @pytest.fixture
     def orchestrator(self, mock_kubernetes_service, mock_sse_manager):
         """Agent orchestrator instance."""
-        return AgentOrchestrator(mock_kubernetes_service, mock_sse_manager)
+        return AgentOrchestrator(mock_kubernetes_service)
 
     @pytest.fixture
     def sample_log_entries(self):

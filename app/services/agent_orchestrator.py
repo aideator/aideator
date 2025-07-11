@@ -35,13 +35,15 @@ class AgentOrchestrator:
 
     async def _check_concurrency_limits(self, requested_jobs: int) -> bool:
         """Check if we can create the requested number of jobs.
-        
+
         Returns True if within limits, False otherwise.
         """
         async with self._job_count_lock:
             # Check run limit
             if len(self.active_runs) >= settings.max_concurrent_runs:
-                logger.warning(f"Max concurrent runs limit reached: {settings.max_concurrent_runs}")
+                logger.warning(
+                    f"Max concurrent runs limit reached: {settings.max_concurrent_runs}"
+                )
                 return False
 
             # Check job limit
@@ -63,7 +65,9 @@ class AgentOrchestrator:
         """Decrement the active job count."""
         async with self._job_count_lock:
             self._total_active_jobs -= count
-            self._total_active_jobs = max(0, self._total_active_jobs)  # Ensure non-negative
+            self._total_active_jobs = max(
+                0, self._total_active_jobs
+            )  # Ensure non-negative
             logger.info(f"Active jobs: {self._total_active_jobs}")
 
     async def execute_variations(
@@ -118,7 +122,7 @@ class AgentOrchestrator:
         except Exception as e:
             logger.error(f"Error executing variations for run {run_id}: {e}")
             self.active_runs[run_id]["status"] = "failed"
-            
+
             # Send error event via SSE
             await self.sse.send_run_complete(run_id, "failed")
 
@@ -132,8 +136,6 @@ class AgentOrchestrator:
         finally:
             # Clean up run metadata after some time
             asyncio.create_task(self._cleanup_run_metadata(run_id, delay=3600))
-
-
 
     async def _execute_individual_jobs(
         self,
@@ -180,8 +182,6 @@ class AgentOrchestrator:
         # Update database status
         if db_session:
             await self._update_run_status(db_session, run_id, RunStatus.COMPLETED)
-
-
 
     async def _stream_job_logs(
         self, run_id: str, job_name: str, variation_id: int
@@ -283,7 +283,7 @@ class AgentOrchestrator:
 
         # Update run status
         run_data["status"] = "cancelled"
-        
+
         # Send cancellation event via SSE
         await self.sse.send_run_complete(run_id, "cancelled")
 
@@ -336,9 +336,9 @@ class AgentOrchestrator:
 
         # For simplicity, just add a short delay to allow connections to establish
         await asyncio.sleep(1.0)
-        
+
         logger.info(f"SSE preparation complete for run {run_id}")
-        
+
         # Send connected message to all variations
         variations = self.active_runs.get(run_id, {}).get("variations", 1)
         for variation_id in range(variations):

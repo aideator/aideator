@@ -49,10 +49,12 @@ class Settings(BaseSettings):
     max_prompt_length: int = Field(default=2000, ge=10, le=5000)
     default_agent_model: str = "gpt-4o-mini"
     debug_agent_container: bool = False  # Enable debug logs for agent containers
-    
+
     # Concurrency limits
     max_concurrent_runs: int = Field(default=10, ge=1, le=50)
-    max_concurrent_jobs: int = Field(default=20, ge=1, le=100)  # Total jobs across all runs
+    max_concurrent_jobs: int = Field(
+        default=20, ge=1, le=100
+    )  # Total jobs across all runs
 
     # Repository Configuration
     allowed_git_hosts: list[str] = ["github.com", "gitlab.com"]
@@ -146,11 +148,15 @@ class Settings(BaseSettings):
         """Validate Gemini API key format."""
         if v is not None and not v.startswith("AIza"):
             raise ValueError("Invalid Gemini API key format")
+        return v
+
     @field_validator("redis_url")
     @classmethod
     def validate_redis_url(cls, v: str | None) -> str | None:
         """Validate Redis URL format."""
-        if v is not None and not (v.startswith("redis://") or v.startswith("rediss://")):
+        if v is not None and not (
+            v.startswith("redis://") or v.startswith("rediss://")
+        ):
             raise ValueError("Redis URL must start with redis:// or rediss://")
         return v
 

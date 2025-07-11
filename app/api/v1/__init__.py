@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    admin_messaging,
     auth,
     credentials,
     health,
@@ -9,7 +10,6 @@ from app.api.v1 import (
     runs,
     sessions,
     streams,
-    admin_messaging,
 )
 from app.api.v1.endpoints import admin, provider_keys
 
@@ -30,4 +30,6 @@ api_router.include_router(
     provider_keys.router, prefix="/provider-keys", tags=["Provider Keys"]
 )
 api_router.include_router(admin.router, prefix="/admin", tags=["Admin"])
-api_router.include_router(admin_messaging.router, prefix="/admin-messaging", tags=["Admin Messaging"])
+api_router.include_router(
+    admin_messaging.router, prefix="/admin-messaging", tags=["Admin Messaging"]
+)

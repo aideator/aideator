@@ -36,7 +36,7 @@ agents:
 # Use PostgreSQL for local development
 database:
   type: postgresql
-  url: "postgresql+asyncpg://aideator:aideator123@aideator-postgresql:5432/aideator"
+  url: "postgresql+asyncpg://aideator:aideator123@chart-aideator-postgresql:5432/aideator"
 
 # Enable persistence for application data
 persistence:
@@ -67,7 +67,7 @@ env:
   - name: LOG_LEVEL
     value: "DEBUG"
   - name: DATABASE_URL
-    value: "postgresql+asyncpg://aideator:aideator123@aideator-postgresql:5432/aideator"
+    value: "postgresql+asyncpg://aideator:aideator123@chart-aideator-postgresql:5432/aideator"
 
 # Enable PostgreSQL for local development
 postgresql:
@@ -75,4 +75,22 @@ postgresql:
 
 # Redis configuration override for student project
 redis:
-  enabled: false  # We use the simple Tiltfile Redis instead
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: false  # In-memory only for development
+
+# LiteLLM Gateway configuration for local development
+litellm:
+  enabled: true
+  database:
+    enabled: true
+    url: "postgresql://aideator:aideator123@chart-aideator-postgresql:5432/aideator"
+
+# Secrets configuration for local development
+secrets:
+  anthropic: true
+  gemini: true

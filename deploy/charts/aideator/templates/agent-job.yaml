@@ -1,75 +1,64 @@
-# Template for agent jobs - instantiated by FastAPI
-# In dev, this deploys with test defaults for easy testing
-apiVersion: batch/v1
-kind: Job
+# ConfigMap containing agent job template for dynamic spawning
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: "{{ .Values.agentJobName | default "agent-job-dev-test" }}"
+  name: {{ include "aideator.fullname" . }}-agent-job-template
+  namespace: {{ .Release.Namespace }}
   labels:
-    app: aideator-agent
-    run-id: "{{ .Values.runId | default "test-run" }}"
-    variation-id: "{{ .Values.variationId | default "0" }}"
-spec:
-  ttlSecondsAfterFinished: {{ .Values.agents.jobTTL }}
-  template:
+    {{- include "aideator.labels" . | nindent 4 }}
+data:
+  agent-job-template.yaml: |
+    apiVersion: batch/v1
+    kind: Job
     metadata:
+      name: "PLACEHOLDER_JOB_NAME"
       labels:
         app: aideator-agent
-        run-id: "{{ .Values.runId | default "unknown" }}"
-        variation-id: "{{ .Values.variationId | default "0" }}"
-    spec:
-      restartPolicy: Never
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        fsGroup: 1000
-      containers:
-        - name: agent
-          image: "{{ .Values.agentImage.repository }}:{{ .Values.agentImage.tag }}"
-          imagePullPolicy: {{ .Values.agentImage.pullPolicy }}
-          env:
-            # LiteLLM Gateway configuration
-            - name: LITELLM_GATEWAY_URL
-              value: "http://{{ include "aideator.fullname" . }}-litellm:{{ .Values.litellm.service.port | default 4000 }}"
-            - name: LITELLM_GATEWAY_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "aideator.fullname" . }}-litellm-secret
-                  key: master-key
-            - name: MODEL
-              value: "{{ .Values.model | default "gpt-4o-mini" }}"
-            # Direct API keys (for fallback if needed)
-            - name: OPENAI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secrets.openai.name }}
-                  key: {{ .Values.secrets.openai.key }}
-                  optional: {{ .Values.secrets.openai.optional | default false }}
-            - name: ANTHROPIC_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secrets.anthropic.name }}
-                  key: {{ .Values.secrets.anthropic.key }}
-                  optional: {{ .Values.secrets.anthropic.optional | default false }}
-            - name: GEMINI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secrets.gemini.name }}
-                  key: {{ .Values.secrets.gemini.key }}
-                  optional: {{ .Values.secrets.gemini.optional | default false }}
-            # Job configuration
-            - name: REPO_URL
-              value: "{{ .Values.repoUrl }}"
-            - name: PROMPT
-              value: "{{ .Values.prompt }}"
-            - name: VARIATION_ID
-              value: "{{ .Values.variationId | default "0" }}"
-            - name: RUN_ID
-              value: "{{ .Values.runId | default "test-run" }}"
-            - name: LOG_LEVEL
-              value: "INFO"
-            - name: PYTHONUNBUFFERED
-              value: "1"
-          command: ["python", "-u", "/app/agent/main.py"]
-          resources:
-            {{- toYaml .Values.agents.resources | nindent 12 }}
-  backoffLimit: 0
+        run-id: "PLACEHOLDER_RUN_ID"
+        variation-id: "PLACEHOLDER_VARIATION_ID"
+      ttlSecondsAfterFinished: {{ .Values.agents.jobTTL }}
+      template:
+        metadata:
+          labels:
+            app: aideator-agent
+            run-id: "PLACEHOLDER_RUN_ID"
+            variation-id: "PLACEHOLDER_VARIATION_ID"
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+          containers:
+            - name: agent
+              image: "{{ .Values.agentImage.repository }}:{{ .Values.agentImage.tag }}"
+              imagePullPolicy: {{ .Values.agentImage.pullPolicy }}
+              env:
+                # LiteLLM Gateway configuration
+                - name: LITELLM_GATEWAY_URL
+                  value: "http://{{ include "aideator.fullname" . }}-litellm:{{ .Values.litellm.service.port | default 4000 }}"
+                - name: LITELLM_GATEWAY_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "aideator.fullname" . }}-litellm-secret
+                      key: master-key
+                - name: MODEL
+                  value: "PLACEHOLDER_MODEL"
+                # API keys will be injected dynamically by FastAPI
+                # Job configuration - will be replaced with actual values
+                - name: REPO_URL
+                  value: "PLACEHOLDER_REPO_URL"
+                - name: PROMPT
+                  value: "PLACEHOLDER_PROMPT"
+                - name: VARIATION_ID
+                  value: "PLACEHOLDER_VARIATION_ID"
+                - name: RUN_ID
+                  value: "PLACEHOLDER_RUN_ID"
+                - name: LOG_LEVEL
+                  value: "INFO"
+                - name: PYTHONUNBUFFERED
+                  value: "1"
+              command: ["python", "-u", "/app/agent/main.py"]
+              resources:
+                {{- toYaml .Values.agents.resources | nindent 16 }}
+      backoffLimit: 0

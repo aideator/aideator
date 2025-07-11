@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "aideator.fullname" . }}
+  name: aideator-fastapi
   labels:
     {{- include "aideator.labels" . | nindent 4 }}
 spec:
@@ -103,32 +103,14 @@ spec:
             # SECURITY TRADEOFF: Using hardcoded Redis URL for development simplicity
             # In production, use ConfigMap or Secret for Redis credentials
             - name: REDIS_URL
-              value: "redis://aideator-redis:6379/0"
+              value: "redis://chart-redis-master:6379/0"
             - name: KUBERNETES_NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
             - name: AGENT_IMAGE
               value: "{{ .Values.agentImage.repository }}:{{ .Values.agentImage.tag }}"
-            # OpenRouter removed - using LiteLLM with direct OpenAI SDK
-            - name: OPENAI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secrets.openai.name }}
-                  key: {{ .Values.secrets.openai.key }}
-                  optional: {{ .Values.secrets.openai.optional | default true }}
-            - name: ANTHROPIC_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secrets.anthropic.name }}
-                  key: {{ .Values.secrets.anthropic.key }}
-                  optional: {{ .Values.secrets.anthropic.optional | default true }}
-            - name: GEMINI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secrets.gemini.name }}
-                  key: {{ .Values.secrets.gemini.key }}
-                  optional: {{ .Values.secrets.gemini.optional | default true }}
+            # API keys stored in database, not environment variables
             - name: SECRET_KEY
               valueFrom:
                 secretKeyRef:

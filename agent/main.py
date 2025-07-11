@@ -17,13 +17,13 @@ import sys
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import aiofiles
 import git
 from litellm import acompletion
 from tenacity import retry, stop_after_attempt, wait_exponential
-import aiofiles
-import redis.asyncio as redis
+
 from agent.services.database_service import DatabaseService
 
 # Constants
@@ -78,7 +78,6 @@ class AIdeatorAgent:
         # Check available API keys for graceful error handling
         self.available_api_keys = self._check_available_api_keys()
 
-        
         # Redis setup (optional - currently using database for messaging)
         self.redis_url = os.getenv("REDIS_URL")
         # if not self.redis_url:
@@ -90,10 +89,10 @@ class AIdeatorAgent:
         #         "message": "REDIS_URL environment variable not set"
         #     }), flush=True)
         #     raise RuntimeError("REDIS_URL is required for agent operation")
-        
+
         self.redis_client = None  # Will be initialized in async context
         self.db_service = DatabaseService(self.run_id, int(self.variation_id))
-    
+
     async def _init_redis(self):
         """Initialize Redis connection in async context."""
         # Currently unused - using database for messaging
@@ -111,8 +110,7 @@ class AIdeatorAgent:
         # except Exception as e:
         #     self.log(f"[REDIS-CONNECT] Redis connection failed: {e}", "ERROR")
         #     raise RuntimeError(f"Failed to connect to Redis: {e}")
-        pass
-    
+
     def _setup_file_logging(self):
         """Setup file-only logging to avoid stdout pollution."""
         # Create a logger that only writes to file
@@ -309,11 +307,11 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             "message": message,
             **kwargs,
         }
-        
+
         # For now, just print to stdout for debugging
         if os.getenv("DEBUG") == "true":
             print(json.dumps(log_entry), flush=True)
-        
+
         # Also log to file
         self.file_logger.log(
             getattr(logging, level, logging.INFO),
@@ -323,7 +321,7 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
     def log_progress(self, message: str, detail: str = ""):
         """Log progress updates for user visibility."""
         self.log(f"⚡ {message}", "INFO", detail=detail)
-    
+
     async def publish_output(self, content: str):
         """Publish agent output to database (was Redis)."""
         # Currently unused - using database for messaging
@@ -331,7 +329,7 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
         #     if not self.redis_client:
         #         self.log("[REDIS-PUB] Redis client not initialized", "ERROR")
         #         return
-        #         
+        #
         #     channel = f"run:{self.run_id}:output:{self.variation_id}"
         #     message = json.dumps({
         #         "content": content,
@@ -346,24 +344,24 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
         #     # Don't fail if Redis publish fails
         #     self.log(f"[REDIS-PUB] Failed to publish output to Redis: {e}", "ERROR")
         #     self.file_logger.warning(f"Failed to publish output to Redis: {e}")
-        
+
         # Use database service instead
         try:
             success = await self.db_service.publish_output(content)
             if success:
-                self.log(f"[DB-PUB] Published output to database", "DEBUG")
+                self.log("[DB-PUB] Published output to database", "DEBUG")
             else:
-                self.log(f"[DB-PUB] Failed to publish output to database", "WARNING")
+                self.log("[DB-PUB] Failed to publish output to database", "WARNING")
         except Exception as e:
             self.log(f"[DB-PUB] Error publishing to database: {e}", "ERROR")
-    
-    async def publish_status(self, status: str, metadata: Optional[Dict[str, Any]] = None):
+
+    async def publish_status(self, status: str, metadata: dict[str, Any] | None = None):
         """Publish status update to database (was Redis)."""
         # Currently unused - using database for messaging
         # try:
         #     if not self.redis_client:
         #         return
-        #         
+        #
         #     channel = f"run:{self.run_id}:status"
         #     message = json.dumps({
         #         "status": status,
@@ -374,18 +372,18 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
         #     await self.redis_client.publish(channel, message)
         # except Exception as e:
         #     self.file_logger.warning(f"Failed to publish status to Redis: {e}")
-        
+
         # Use database service instead
         try:
             success = await self.db_service.publish_status(status, metadata)
             if success:
                 self.log(f"[DB-PUB] Published status '{status}' to database", "DEBUG")
             else:
-                self.log(f"[DB-PUB] Failed to publish status to database", "WARNING")
+                self.log("[DB-PUB] Failed to publish status to database", "WARNING")
         except Exception as e:
             self.log(f"[DB-PUB] Error publishing status to database: {e}", "ERROR")
-    
-    def log_error(self, error: str, exception: Optional[Exception] = None):
+
+    def log_error(self, error: str, exception: Exception | None = None):
         """Log errors with details."""
         error_data = {"error": error}
         if exception:
@@ -1122,17 +1120,16 @@ async def main():
     try:
         # Run the agent
         await agent.run()
-        
+
         # Publish completion status
-        await agent.publish_status("variation_completed", {
-            "variation_id": agent.variation_id,
-            "success": True
-        })
-        
+        await agent.publish_status(
+            "variation_completed", {"variation_id": agent.variation_id, "success": True}
+        )
+
         # Sleep for 600 seconds (10 minutes) before exit on success
         agent.log("⏱️ Sleeping for 600 seconds before exit", "INFO")
         await asyncio.sleep(600)
-        
+
         # Clean up connections
         if agent.redis_client:
             await agent.redis_client.close()

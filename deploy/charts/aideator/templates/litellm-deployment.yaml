@@ -39,20 +39,6 @@ spec:
                 secretKeyRef:
                   name: {{ include "aideator.fullname" . }}-litellm-secret
                   key: master-key
-            - name: OPENAI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secrets.openai.name }}
-                  key: {{ .Values.secrets.openai.key }}
-                  optional: {{ .Values.secrets.openai.optional }}
-            {{- if .Values.secrets.anthropic }}
-            - name: ANTHROPIC_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secrets.anthropic.name }}
-                  key: {{ .Values.secrets.anthropic.key }}
-                  optional: {{ .Values.secrets.anthropic.optional }}
-            {{- end }}
             {{- if .Values.litellm.database.enabled }}
             - name: DATABASE_URL
               value: {{ .Values.litellm.database.url | quote }}

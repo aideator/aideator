@@ -14,9 +14,9 @@ from app.core.database import create_db_and_tables
 from app.core.logging import setup_logging
 from app.middleware.logging import LoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
+from app.services.redis_service import redis_service
 from app.tasks.model_sync_task import model_sync_task
 
-from app.services.redis_service import redis_service
 # Using Kubernetes service for container orchestration
 from app.utils.openapi import custom_openapi
 
@@ -47,14 +47,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("Redis connected successfully")
     except Exception as e:
         logger.error(f"Redis connection failed: {e}")
-        raise RuntimeError("Redis connection is required for streaming. Please ensure Redis is available.")
-    
+        raise RuntimeError(
+            "Redis connection is required for streaming. Please ensure Redis is available."
+        )
+
     yield
 
     # Shutdown
     await redis_service.disconnect()
     logger.info("Redis disconnected")
-    
+
     logger.info("Shutting down application")
 
     # Stop model sync task
@@ -148,7 +150,7 @@ def create_application() -> FastAPI:
     async def health_check() -> dict[str, Any]:
         """Health check endpoint."""
         redis_healthy = await redis_service.health_check()
-        
+
         return {
             "status": "healthy" if redis_healthy else "degraded",
             "version": settings.version,

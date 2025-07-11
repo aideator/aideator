@@ -60,8 +60,8 @@ RUN apk --no-cache --update upgrade && apk --no-cache add \
     ca-certificates \
     openssl
 
-# Create nonroot user and directories
-RUN adduser -D -u 1000 nonroot
+# Create nonroot user and directories (if it doesn't exist)
+RUN adduser -D -u 1000 nonroot || true
 WORKDIR /app
 RUN chown nonroot:nonroot /app
 
@@ -75,7 +75,7 @@ COPY --from=kubectl-builder /kubectl /usr/local/bin/kubectl
 
 # Copy Node.js tools
 COPY --from=python-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
-COPY --from=python-builder /usr/local/bin/claude-code /usr/local/bin/claude-code
+COPY --from=python-builder /usr/local/bin/claude /usr/local/bin/claude
 
 # Copy application code
 COPY --chown=nonroot:nonroot app/ ./app/
@@ -93,48 +93,4 @@ EXPOSE 8000
 # Run FastAPI
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
-# Agent stage using Wolfi base
-FROM cgr.dev/chainguard/wolfi-base:latest AS agent
-
-USER root
-
-# Install runtime dependencies
-RUN apk --no-cache --update upgrade && apk --no-cache add \
-    python-3.12 \
-    bash \
-    git \
-    ca-certificates \
-    openssl
-
-# Create nonroot user and directories
-RUN adduser -D -u 1000 agentuser
-WORKDIR /app
-RUN chown agentuser:agentuser /app
-
-# Copy Python virtual environment
-COPY --from=python-builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Copy kubectl
-COPY --from=kubectl-builder /kubectl /usr/local/bin/kubectl
-
-# Copy Node.js tools
-COPY --from=python-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
-COPY --from=python-builder /usr/local/bin/claude-code /usr/local/bin/claude-code
-
-# Copy agent code
-COPY --chown=agentuser:agentuser agent/ ./agent/
-COPY --chown=agentuser:agentuser app/models/ ./app/models/
-COPY --chown=agentuser:agentuser app/core/config.py ./app/core/config.py
-
-# Switch to nonroot user
-USER agentuser
-
-# Set working directory to workspace
-WORKDIR /workspace
-
-# Add /app to Python path so agent imports work
-ENV PYTHONPATH="/app:$PYTHONPATH"
-
-# Run agent
-CMD ["python", "-m", "agent.main"]
+# API-only Dockerfile - agent uses separate agent/Dockerfile

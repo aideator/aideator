@@ -77,8 +77,10 @@ class AgentOutput(SQLModel, table=True):
     variation_id: int = Field(index=True)
     content: str
     timestamp: datetime = Field(default_factory=datetime.utcnow, index=True)
-    output_type: str = Field(default="stdout")  # stdout, stderr, system, status, summary, diffs, logging, addinfo
-    
+    output_type: str = Field(
+        default="stdout"
+    )  # stdout, stderr, system, status, summary, diffs, logging, addinfo
+
     class Config:
         """Pydantic config."""
 
