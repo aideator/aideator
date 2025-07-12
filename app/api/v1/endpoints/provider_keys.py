@@ -13,7 +13,7 @@ from app.core.dependencies import CurrentUser
 from app.models.provider_key import ProviderAPIKeyDB
 from app.services.provider_key_service import ProviderKeyService
 
-router = APIRouter(prefix="/provider-keys", tags=["provider-keys"])
+router = APIRouter(tags=["provider-keys"])
 provider_key_service = ProviderKeyService()
 
 

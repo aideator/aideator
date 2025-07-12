@@ -52,7 +52,7 @@ describe('Textarea', () => {
     const textarea = screen.getByTestId('textarea')
     
     expect(textarea).toBeDisabled()
-    expect(textarea).toHaveClass('disabled:cursor-not-allowed', 'disabled:opacity-50')
+    expect(textarea).toHaveClass('disabled:cursor-not-allowed disabled:opacity-50')
   })
 
   it('should apply custom className', () => {

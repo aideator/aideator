@@ -12,19 +12,19 @@ describe('Separator', () => {
   it('should apply base styling classes', () => {
     render(<Separator data-testid="separator" />)
     const separator = screen.getByTestId('separator')
-    expect(separator).toHaveClass('shrink-0', 'bg-border')
+    expect(separator).toHaveClass('shrink-0 bg-border')
   })
 
   it('should apply horizontal orientation styling by default', () => {
     render(<Separator data-testid="separator" />)
     const separator = screen.getByTestId('separator')
-    expect(separator).toHaveClass('h-[1px]', 'w-full')
+    expect(separator).toHaveClass('h-[1px] w-full')
   })
 
   it('should apply vertical orientation styling', () => {
     render(<Separator orientation="vertical" data-testid="separator" />)
     const separator = screen.getByTestId('separator')
-    expect(separator).toHaveClass('h-full', 'w-[1px]')
+    expect(separator).toHaveClass('h-full w-[1px]')
   })
 
   it('should apply custom className', () => {
@@ -70,7 +70,7 @@ describe('Separator', () => {
     )
     
     const separator = screen.getByTestId('separator')
-    expect(separator).toHaveClass('h-full', 'w-[1px]')
+    expect(separator).toHaveClass('h-full w-[1px]')
   })
 
   it('should work as divider between content', () => {
@@ -83,7 +83,7 @@ describe('Separator', () => {
     )
     
     const separator = screen.getByTestId('separator')
-    expect(separator).toHaveClass('h-[1px]', 'w-full')
+    expect(separator).toHaveClass('h-[1px] w-full')
     expect(screen.getByText('Section 1')).toBeInTheDocument()
     expect(screen.getByText('Section 2')).toBeInTheDocument()
   })

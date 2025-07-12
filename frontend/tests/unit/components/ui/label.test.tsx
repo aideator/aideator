@@ -11,17 +11,13 @@ describe('Label', () => {
   it('should apply base styling classes', () => {
     render(<Label data-testid="label">Label Text</Label>)
     const label = screen.getByTestId('label')
-    expect(label).toHaveClass(
-      'text-sm',
-      'font-medium',
-      'leading-none'
-    )
+    expect(label).toHaveClass('text-sm font-medium leading-none')
   })
 
   it('should apply disabled styling when disabled', () => {
     render(<Label data-testid="label" className="disabled:cursor-not-allowed disabled:opacity-70">Disabled Label</Label>)
     const label = screen.getByTestId('label')
-    expect(label).toHaveClass('disabled:cursor-not-allowed', 'disabled:opacity-70')
+    expect(label).toHaveClass('disabled:cursor-not-allowed disabled:opacity-70')
   })
 
   it('should apply custom className', () => {

@@ -12,7 +12,7 @@ describe('Skeleton', () => {
   it('should apply base styling classes', () => {
     render(<Skeleton data-testid="skeleton" />)
     const skeleton = screen.getByTestId('skeleton')
-    expect(skeleton).toHaveClass('animate-pulse', 'rounded-md', 'bg-muted')
+    expect(skeleton).toHaveClass('animate-pulse rounded-md bg-muted')
   })
 
   it('should apply custom className', () => {
@@ -24,7 +24,7 @@ describe('Skeleton', () => {
   it('should render with custom dimensions', () => {
     render(<Skeleton className="h-4 w-full" data-testid="skeleton" />)
     const skeleton = screen.getByTestId('skeleton')
-    expect(skeleton).toHaveClass('h-4', 'w-full')
+    expect(skeleton).toHaveClass('h-4 w-full')
   })
 
   it('should forward ref correctly', () => {

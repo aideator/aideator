@@ -55,19 +55,19 @@ describe('Button', () => {
   it('should apply small size styling', () => {
     render(<Button size="sm">Small Button</Button>)
     const button = screen.getByRole('button')
-    expect(button).toHaveClass('h-9', 'px-3')
+    expect(button).toHaveClass('h-9 px-3')
   })
 
   it('should apply large size styling', () => {
     render(<Button size="lg">Large Button</Button>)
     const button = screen.getByRole('button')
-    expect(button).toHaveClass('h-11', 'px-8')
+    expect(button).toHaveClass('h-11 px-8')
   })
 
   it('should apply icon size styling', () => {
     render(<Button size="icon">Icon</Button>)
     const button = screen.getByRole('button')
-    expect(button).toHaveClass('h-10', 'w-10')
+    expect(button).toHaveClass('h-10 w-10')
   })
 
   it('should be disabled when disabled prop is true', () => {

@@ -155,7 +155,7 @@ describe('Tabs Components', () => {
     )
     
     const disabledTrigger = screen.getByTestId('disabled-trigger')
-    expect(disabledTrigger).toHaveClass('disabled:pointer-events-none', 'disabled:opacity-50')
+    expect(disabledTrigger).toHaveClass('disabled:pointer-events-none disabled:opacity-50')
   })
 
   it('should forward refs correctly', () => {

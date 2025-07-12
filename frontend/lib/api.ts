@@ -15,6 +15,10 @@ import {
   APIError,
   GitHubRepository,
   GitHubBranch,
+  ProviderAPIKey,
+  ProviderAPIKeyCreate,
+  ProviderAPIKeyUpdate,
+  Provider,
 } from './types'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -292,6 +296,45 @@ class APIClient {
 
   async getSessionPreferences(sessionId: string): Promise<Preference[]> {
     return this.request<Preference[]>(`/api/v1/sessions/${sessionId}/preferences`)
+  }
+
+  // Provider API Key management
+  async getProviders(): Promise<Provider[]> {
+    const response = await this.request<{ providers: Provider[] }>('/api/v1/provider-keys/providers/list')
+    return response.providers
+  }
+
+  async getProviderKeys(): Promise<ProviderAPIKey[]> {
+    return this.request<ProviderAPIKey[]>('/api/v1/provider-keys/')
+  }
+
+  async createProviderKey(key: ProviderAPIKeyCreate): Promise<ProviderAPIKey> {
+    return this.request<ProviderAPIKey>('/api/v1/provider-keys/', {
+      method: 'POST',
+      body: JSON.stringify(key),
+    })
+  }
+
+  async updateProviderKey(keyId: string, updates: ProviderAPIKeyUpdate): Promise<ProviderAPIKey> {
+    return this.request<ProviderAPIKey>(`/api/v1/provider-keys/${keyId}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    })
+  }
+
+  async deleteProviderKey(keyId: string): Promise<void> {
+    await this.request(`/api/v1/provider-keys/${keyId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async validateProviderKey(keyId: string): Promise<{ valid: boolean; error?: string }> {
+    return this.request<{ valid: boolean; error?: string }>(
+      `/api/v1/provider-keys/${keyId}/validate`,
+      {
+        method: 'POST',
+      }
+    )
   }
 
   // GitHub API (for repository/branch fetching)

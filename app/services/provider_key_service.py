@@ -77,8 +77,14 @@ class ProviderKeyService:
         )
 
         session.add(provider_key)
+        
+        # Flush to ensure provider_key is inserted first
+        if isinstance(session, AsyncSession):
+            await session.flush()
+        else:
+            session.flush()
 
-        # Create audit log entry
+        # Create audit log entry after provider key is flushed
         audit_log = ProviderAPIKeyAuditLog(
             id=f"audit_{secrets.token_urlsafe(12)}",
             user_id=user.id,
@@ -92,12 +98,8 @@ class ProviderKeyService:
         )
         session.add(audit_log)
 
-        if isinstance(session, AsyncSession):
-            await session.commit()
-            await session.refresh(provider_key)
-        else:
-            session.commit()
-            session.refresh(provider_key)
+        # Don't commit here - let the session manager handle it
+        # The key is already populated with all necessary fields
 
         logger.info(f"Created provider API key {key_id} for user {user.id}")
         return provider_key
@@ -167,10 +169,7 @@ class ProviderKeyService:
             model_key.last_used_at = datetime.utcnow()
             model_key.total_requests += 1
             session.add(model_key)
-            if isinstance(session, AsyncSession):
-                await session.commit()
-            else:
-                session.commit()
+            # Let session manager handle commit
 
             # Audit log
             await self._create_audit_log(
@@ -186,10 +185,7 @@ class ProviderKeyService:
             provider_key.last_used_at = datetime.utcnow()
             provider_key.total_requests += 1
             session.add(provider_key)
-            if isinstance(session, AsyncSession):
-                await session.commit()
-            else:
-                session.commit()
+            # Let session manager handle commit
 
             # Audit log
             await self._create_audit_log(
@@ -266,11 +262,11 @@ class ProviderKeyService:
             session, user.id, key_id, "updated", update_details
         )
 
+        # Let session manager handle commit
+        # Just refresh to get updated values
         if isinstance(session, AsyncSession):
-            await session.commit()
             await session.refresh(key)
         else:
-            session.commit()
             session.refresh(key)
 
         return key
@@ -312,10 +308,7 @@ class ProviderKeyService:
             {"provider": key.provider, "model_name": key.model_name},
         )
 
-        if isinstance(session, AsyncSession):
-            await session.commit()
-        else:
-            session.commit()
+        # Let session manager handle commit
 
         logger.info(f"Deleted provider key {key_id} for user {user.id}")
         return True
@@ -361,10 +354,7 @@ class ProviderKeyService:
                 session, user.id, key_id, "validated", {"is_valid": is_valid}
             )
 
-            if isinstance(session, AsyncSession):
-                await session.commit()
-            else:
-                session.commit()
+            # Let session manager handle commit
 
             return is_valid
 
@@ -373,10 +363,7 @@ class ProviderKeyService:
             key.last_validated_at = datetime.utcnow()
             key.last_error = str(e)
             session.add(key)
-            if isinstance(session, AsyncSession):
-                await session.commit()
-            else:
-                session.commit()
+            # Let session manager handle commit
 
             logger.error(f"Failed to validate key {key_id}: {e}")
             return False
@@ -597,10 +584,7 @@ class ProviderKeyService:
         key.last_used_at = datetime.utcnow()
 
         session.add(key)
-        if isinstance(session, AsyncSession):
-            await session.commit()
-        else:
-            session.commit()
+        # Let session manager handle commit
 
     async def decrypt_api_key(
         self,

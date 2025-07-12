@@ -18,6 +18,57 @@ spec:
       securityContext:
         {{- toYaml .Values.securityContext | nindent 8 }}
       initContainers:
+        - name: wait-for-postgres
+          image: postgres:15
+          command:
+            - /bin/bash
+            - -c
+            - |
+              echo "Waiting for PostgreSQL to be ready..."
+              export PGPASSWORD="aideator123"
+              
+              until pg_isready -h chart-aideator-postgresql -p 5432 -U aideator; do
+                echo "PostgreSQL not ready yet, waiting..."
+                sleep 5
+              done
+              
+              echo "Checking if database exists and is accessible..."
+              until psql -h chart-aideator-postgresql -p 5432 -U aideator -d aideator -c "SELECT 1;" > /dev/null 2>&1; do
+                echo "Database not accessible yet, waiting..."
+                sleep 5
+              done
+              
+              echo "PostgreSQL is ready and accessible!"
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+        - name: wait-for-litellm-tables
+          image: postgres:15
+          command:
+            - /bin/bash
+            - -c
+            - |
+              echo "Waiting for LiteLLM to create its database tables..."
+              export PGPASSWORD="aideator123"
+              
+              # Check if LiteLLM-specific tables exist
+              until psql -h chart-aideator-postgresql -p 5432 -U aideator -d aideator -c "\dt" | grep -E "(LiteLLM_|litellm_)"; do
+                echo "LiteLLM database tables not found, waiting..."
+                sleep 10
+              done
+              
+              echo "LiteLLM database tables found!"
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
         - name: migration
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
@@ -26,33 +77,7 @@ spec:
             - -c
             - |
               echo "Running database migrations..."
-              # Check if alembic_version table exists
-              if python -c "
-              import asyncio
-              import sys
-              sys.path.insert(0, '/app')
-              from app.core.database import AsyncSessionFactory
-              from sqlalchemy import text
-              
-              async def check_alembic_version():
-                  async with AsyncSessionFactory() as session:
-                      try:
-                          result = await session.execute(text('SELECT version_num FROM alembic_version LIMIT 1'))
-                          version = result.scalar()
-                          print(f'Database is at version: {version}')
-                          return True
-                      except Exception as e:
-                          print(f'alembic_version table not found: {e}')
-                          return False
-              
-              asyncio.run(check_alembic_version())
-              "; then
-                echo "Database migration state found, running upgrade..."
-                python -m alembic upgrade head
-              else
-                echo "Database migration state not found, stamping existing database..."
-                python -m alembic stamp head
-              fi
+              python -m alembic upgrade head
               echo "Migrations completed successfully!"
           env:
             - name: DEBUG
@@ -139,36 +164,14 @@ spec:
                 secretKeyRef:
                   name: aideator-secret
                   key: encryption-key
-            # GitHub OAuth configuration (required)
-            - name: GITHUB_CLIENT_ID
+            # LiteLLM configuration for model sync
+            - name: LITELLM_PROXY_URL
+              value: "http://{{ include "aideator.fullname" . }}-litellm:4000"
+            - name: LITELLM_MASTER_KEY
               valueFrom:
                 secretKeyRef:
-                  name: github-oauth-secret
-                  key: client-id
-            - name: GITHUB_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: github-oauth-secret
-                  key: client-secret
-            # Provide API keys from secrets if they exist
-            - name: OPENAI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: openai-secret
-                  key: api-key
-                  optional: true
-            - name: ANTHROPIC_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: anthropic-secret
-                  key: api-key
-                  optional: true
-            - name: GEMINI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: gemini-secret
-                  key: api-key
-                  optional: true
+                  name: {{ include "aideator.fullname" . }}-litellm-secret
+                  key: master-key
             {{- if .Values.env }}
             {{- range .Values.env }}
             - name: {{ .name }}

@@ -57,7 +57,7 @@ describe('Select Components', () => {
     )
     
     const trigger = screen.getByTestId('select-trigger')
-    expect(trigger).toHaveClass('disabled:cursor-not-allowed', 'disabled:opacity-50')
+    expect(trigger).toHaveClass('disabled:cursor-not-allowed disabled:opacity-50')
   })
 
   it('should handle controlled value', () => {

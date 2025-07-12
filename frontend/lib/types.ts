@@ -234,6 +234,50 @@ export interface APIError {
   }
 }
 
+// Provider API Key types
+export interface ProviderAPIKey {
+  id: string
+  user_id: string
+  provider: string
+  model_name?: string
+  key_hint: string
+  name?: string
+  description?: string
+  is_active: boolean
+  is_valid?: boolean
+  last_validated_at?: string
+  last_used_at?: string
+  last_error?: string
+  total_requests: number
+  total_tokens: number
+  total_cost_usd: number
+  created_at: string
+  updated_at: string
+  expires_at?: string
+}
+
+export interface ProviderAPIKeyCreate {
+  provider: string
+  api_key: string
+  model_name?: string
+  name?: string
+  description?: string
+}
+
+export interface ProviderAPIKeyUpdate {
+  api_key?: string
+  name?: string
+  description?: string
+  is_active?: boolean
+}
+
+export interface Provider {
+  name: string
+  display_name: string
+  requires_api_key: boolean
+  supports_models?: string[]
+}
+
 // Legacy types for migration (to be phased out)
 export type DiffLine = {
   type: "add" | "del" | "normal"
