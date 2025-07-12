@@ -75,11 +75,39 @@ Before any suggestion that changes dependencies, environment, or tools:
 
 ## 📱 Project Overview
 
-**AIdeator** - A Kubernetes-native multi-agent AI orchestration platform
+**AIdeator** - A Kubernetes-native multi-agent AI orchestration platform with **decoupled background processing architecture**
+- **Background Processing**: Submit tasks → agents run independently → monitor progress separately
+- **Architecture Pattern**: Mirrors OpenAI Codex background agents and Cursor.com autonomous workflows
 - Runs multiple AI agents in parallel in isolated containers
-- Streams agent thought processes in real-time via WebSocket + Redis Streams
+- Streams agent outputs to PostgreSQL for reliable task monitoring
 - Enables side-by-side comparison of different AI approaches
 - Cloud-native scalability with standard Kubernetes tooling
+
+### 🔄 Decoupled Workflow Architecture
+
+**Similar to OpenAI Codex & Cursor.com Background Processing:**
+
+1. **Task Submission** (Main Page):
+   ```
+   User Input → POST /api/v1/runs → Database → Kubernetes Jobs → Background Processing
+   ```
+
+2. **Background Processing**:
+   ```
+   K8s Jobs → Write to SQL (agent_outputs) → Continue independently
+   ```
+
+3. **Task Monitoring** (Task Detail Page):
+   ```
+   User Navigation → GET /api/v1/tasks/{id} → Read SQL → Display Progress
+   ```
+
+**Key Benefits:**
+- Submit work and get immediate acknowledgment
+- Jobs run completely independently in background
+- Monitor progress later via separate interface
+- All communication flows through PostgreSQL for reliability
+- No frontend blocking or WebSocket dependencies
 
 ---
 
@@ -180,10 +208,26 @@ tilt down                     # Stop environment
 cd frontend && npm run dev    # Frontend only
 tilt trigger database-migrate  # Run database migrations manually
 
+# Environment Validation (NEW - Decoupled Architecture)
+uv run python scripts/check_everything.py    # Comprehensive environment validation
+uv run python scripts/validate_dev_environment.py  # Core validation only
+uv run python scripts/test_api_endpoints.py         # Test decoupled API architecture
+
 # Database Management
 uv run alembic upgrade head   # Apply latest migrations
 uv run alembic revision --autogenerate -m "description"  # Create migration
 python -m scripts.add_test_data  # Seed test data
+
+# Testing Background Processing Workflow (NEW)
+# Submit task (like OpenAI Codex "Run" button)
+curl -X POST http://localhost:8000/api/v1/runs \
+  -H "Content-Type: application/json" \
+  -d '{"github_url":"https://github.com/fastapi/fastapi","prompt":"Test task","model_variants":[{"model_definition_id":"gpt-4o-mini"}],"agent_mode":"litellm"}'
+
+# Monitor tasks (like Cursor.com background status)
+curl http://localhost:8000/api/v1/tasks
+curl http://localhost:8000/api/v1/tasks/{task_id}
+curl http://localhost:8000/api/v1/tasks/{task_id}/outputs
 
 # Testing (CNS Convention)
 uv run test-unit             # Backend unit tests
@@ -203,6 +247,60 @@ uv run test-typecheck        # Type checking with mypy
 # Required: OPENAI_API_KEY, ANTHROPIC_API_KEY (optional)
 # Manages k3d cluster, secrets, and dependencies
 ```
+
+## 🎓 Student-Friendly Tilt Setup (NEW)
+
+**IMPORTANT**: We've replaced complex Helm charts with simple Kubernetes YAML files for easier student development.
+
+### New Tilt Architecture
+- **No Helm complexity** - Uses simple `k8s/*.yaml` files instead
+- **Automatic port forwarding** - All services available on localhost
+- **Manual migration control** - Run migrations when you need them
+- **Student development mode** - Authentication bypass enabled by default
+
+### Port Forwarding (Automatic)
+```bash
+# All services are automatically port-forwarded by Tilt:
+Frontend:  http://localhost:3000  # (runs locally, not in k8s)
+API:       http://localhost:8000  # (k8s service forwarded)
+Database:  localhost:5432         # (k8s service forwarded)
+Redis:     localhost:6379         # (k8s service forwarded)
+LiteLLM:   http://localhost:4000  # (k8s service forwarded)
+API Docs:  http://localhost:8000/docs
+Tilt UI:   http://localhost:10350
+```
+
+### Database Setup
+```bash
+# Database migration is MANUAL now (no auto-init)
+tilt trigger database-migrate     # Run this ONCE after `tilt up`
+
+# The migration connects to port-forwarded database:
+# postgresql+asyncpg://aideator:aideator123@localhost:5432/aideator
+```
+
+### Student Mode Features (Auto-Enabled)
+- `SIMPLE_DEV_MODE=true` - Bypass complex authentication
+- `AUTO_CREATE_TEST_USER=true` - Test user created automatically
+- `REQUIRE_API_KEYS_FOR_AGENTS=false` - No API key required for endpoints
+- Global API keys used from `.env.local` file
+
+### Tilt File Locations
+```
+Tiltfile                    # Main Tilt configuration (student-friendly)
+k8s/database.yaml          # PostgreSQL deployment (simple YAML)
+k8s/redis.yaml             # Redis deployment (simple YAML) 
+k8s/litellm.yaml           # LiteLLM gateway (simple YAML)
+k8s/api.yaml               # API deployment with student mode env vars
+k8s/rbac.yaml              # Kubernetes permissions for agent jobs
+```
+
+### Key Differences from Helm Version
+- ✅ **Simple YAML** instead of Helm templates
+- ✅ **Predictable port forwarding** (localhost:5432, :8000, etc.)
+- ✅ **Manual migration trigger** instead of auto-init jobs
+- ✅ **Student mode enabled** by default in all deployments
+- ✅ **No complex values.yaml** - everything in simple k8s YAML
 
 ---
 
@@ -281,6 +379,7 @@ docs/                 # Implementation notes
 - **Database Persistence**: All agent outputs persisted to PostgreSQL for replay/analysis
 - **Multi-Agent Comparison**: Frontend displays up to 6 agents in tabbed interface
 - **Local Development**: Tilt orchestrates k3d cluster with hot-reload and local registry
+- **Persistent Database**: PostgreSQL data stored in `/tmp/aideator-postgres-data` - survives `tilt down`
 
 ---
 
@@ -327,19 +426,35 @@ timeout 20 wscat -c ws://localhost:8000/ws/runs/${RUN_ID}
 
 ## 📚 Key Resources
 
+### 🔗 Service URLs
+- **Frontend**: http://localhost:3000
+- **API**: http://localhost:8000
+- **API Docs**: http://localhost:8000/docs (comprehensive endpoint documentation)
+- **LiteLLM Gateway**: http://localhost:4000
+- **Redis**: localhost:6379
+- **PostgreSQL**: localhost:5432
+- **Tilt UI**: http://localhost:10350
+
+### 📋 Validation Scripts (NEW)
+- **`scripts/check_everything.py`**: Comprehensive environment validation with background workflow simulation
+- **`scripts/validate_dev_environment.py`**: Core environment validation (database, API, Kubernetes)
+- **`scripts/test_api_endpoints.py`**: Test decoupled API architecture (runs vs tasks)
+
+### 📖 Architecture Documentation
+- **`TASK-RUN-ARCHITECTURE.md`**: Decoupled background processing architecture
+- **`CLAUDE.md`**: This development guide
+- **`frontend/DESIGN-SYSTEM.md`**: UI component guidelines
+- **`frontend/CLAUDE.md`**: Frontend-specific development notes
+
+### 🏗️ Infrastructure
 - **Kubernetes Namespace**: `aideator` (all resources)
 - **Local Registry**: `localhost:5005` (for container images)
-- **Project Documentation**: 
-  - Architecture details (`architecture.md`)
-  - Frontend specifics (`frontend/CLAUDE.md`)
-- **Service URLs**:
-  - Frontend: http://localhost:3000
-  - API: http://localhost:8000
-  - API Docs: http://localhost:8000/docs
-  - LiteLLM Gateway: http://localhost:4000
-  - Redis: localhost:6379
-  - PostgreSQL: localhost:5432
-  - Tilt UI: http://localhost:10350
+- **Student Mode**: Simple dev setup without Helm complexity
+
+### 🔍 Background Processing References
+- **OpenAI Codex**: Background coding agents in ChatGPT interface
+- **Cursor.com**: Autonomous background code generation workflows  
+- **Pattern**: Submit → Background Process → Monitor Progress independently
 
 ---
 
@@ -474,41 +589,48 @@ kubectl create secret generic openai-secret \
   -n aideator
 ```
 
-### Streaming Pipeline Architecture (Database-based)
+### Decoupled Background Processing Architecture
 
-**Current Architecture**: Hybrid PostgreSQL + WebSocket streaming for reliability and real-time capabilities.
+**Architecture**: PostgreSQL-first with decoupled task submission and monitoring (like OpenAI Codex/Cursor.com).
 
-**Current Flow**:
-1. **Agent Side**:
-   - Writes outputs to `agent_outputs` table via `DatabaseService`
-   - Logs all agent activity (stdout, stderr, logging, status, summary, diffs, addinfo)
-   - Falls back to stdout if database unavailable
-   - Uses Redis for real-time message queuing
+**Decoupled Flow**:
+1. **Task Submission** (Main Page):
+   - Frontend calls `POST /api/v1/runs` with task details
+   - Creates entry in `runs` table
+   - Spawns Kubernetes Jobs for background processing
+   - Returns immediately with task ID
 
-2. **Backend Side**:
-   - **WebSocket Handler**: Manages real-time connections at `/ws/runs/{run_id}`
-   - **Database Polling**: Fallback mechanism for message delivery
-   - **Message Routing**: Routes by `variation_id` to appropriate WebSocket clients
-   - **Auto-reconnect**: Handles client disconnections gracefully
+2. **Background Processing** (Independent):
+   - **Agent Containers**: Write outputs to `agent_outputs` table via `DatabaseService`
+   - **Output Types**: stdout, stderr, logging, status, summary, diffs, addinfo, metrics
+   - **Isolation**: Each variation runs in separate container
+   - **Persistence**: All communication flows through PostgreSQL
 
-3. **Frontend Side**:
-   - **WebSocket Client**: Connects to `/ws/runs/{run_id}` for real-time streaming
-   - **Tabbed Interface**: Multiple agent variations displayed in tabs with agent color coding
-   - **Message Handling**: Routes messages by `variation_id` to appropriate tab
-   - **Reconnection Logic**: Automatic reconnect with message ID tracking for resume
-   - **Responsive Design**: Adapts from 1-6 agent tabs based on screen size
+3. **Task Monitoring** (Task Detail Page):
+   - Frontend calls `GET /api/v1/tasks` for task list
+   - Calls `GET /api/v1/tasks/{id}` for specific task details  
+   - Calls `GET /api/v1/tasks/{id}/outputs` for agent progress
+   - **Polling**: Frontend polls outputs endpoint for real-time updates
+   - **Variation Comparison**: Tabbed interface shows multiple agent approaches
+
+**API Separation**:
+- **`/api/v1/runs`**: Task creation and Kubernetes job management
+- **`/api/v1/tasks`**: Task monitoring and progress tracking
+- **Task ID = Run ID**: Simplified identifier mapping
 
 **Database Tables**:
-- **`runs`**: Run metadata, status, configuration, user info, timestamps
-- **`agent_outputs`**: Persistent storage of all agent messages with output_type classification
-- **Redis**: Temporary real-time message passing and pub/sub for WebSocket delivery
+- **`runs`**: Task metadata, configuration, Kubernetes job status
+- **`agent_outputs`**: All agent communication and results (central hub)
+- **Redis**: Optional for real-time WebSocket streaming (not required for core functionality)
 
-### Common Pitfalls
-- Always use timeout when testing WebSocket endpoints
-- Don't use kubectl port-forward when Tilt is running
-- Wait 10+ seconds for Tilt rebuilds
-- Use complete Tailwind class names (no interpolation)
-- Create openai-secret before first deployment
-- PostgreSQL is REQUIRED - agents will fail without database connection
-- Monitor `agent_outputs` table when debugging streaming issues
-- Verify both kubectl logs AND database outputs show same data
+### Common Pitfalls (Decoupled Architecture)
+- **API Confusion**: Use `/api/v1/runs` for task creation, `/api/v1/tasks` for monitoring
+- **Task ID = Run ID**: They're the same identifier, simplifies data model
+- **Database First**: All agent communication flows through PostgreSQL, not Redis/WebSocket
+- **Polling vs Streaming**: Task detail page polls `/tasks/{id}/outputs` for updates
+- **Authentication**: Simple dev mode bypasses auth - check `SIMPLE_DEV_MODE=true`
+- **Background Jobs**: Kubernetes jobs run independently, may take time to start
+- **Status Tracking**: We don't monitor job completion yet - infer from agent outputs
+- **Frontend Separation**: Main page (task submission) ≠ Task detail page (monitoring)
+- **PostgreSQL Required**: Agents fail without database connection - verify with validation scripts
+- **Complete Tailwind Classes**: No dynamic class interpolation allowed

@@ -148,24 +148,39 @@ class Settings(BaseSettings):
 
     @field_validator("openai_api_key")
     @classmethod
-    def validate_openai_key(cls, v: str | None) -> str | None:
+    def validate_openai_key(cls, v: str | None, info) -> str | None:
         """Validate OpenAI API key format."""
+        # Skip validation in simple dev mode or if placeholder
+        if hasattr(info.data, 'simple_dev_mode') and info.data.get('simple_dev_mode'):
+            return v
+        if v is not None and v == "placeholder-set-via-dotenv":
+            return v
         if v is not None and not v.startswith("sk-"):
             raise ValueError("Invalid OpenAI API key format")
         return v
 
     @field_validator("anthropic_api_key")
     @classmethod
-    def validate_anthropic_key(cls, v: str | None) -> str | None:
+    def validate_anthropic_key(cls, v: str | None, info) -> str | None:
         """Validate Anthropic API key format."""
+        # Skip validation in simple dev mode or if placeholder
+        if hasattr(info.data, 'simple_dev_mode') and info.data.get('simple_dev_mode'):
+            return v
+        if v is not None and v == "placeholder-set-via-dotenv":
+            return v
         if v is not None and not v.startswith("sk-ant-"):
             raise ValueError("Invalid Anthropic API key format")
         return v
 
     @field_validator("gemini_api_key")
     @classmethod
-    def validate_gemini_key(cls, v: str | None) -> str | None:
+    def validate_gemini_key(cls, v: str | None, info) -> str | None:
         """Validate Gemini API key format."""
+        # Skip validation in simple dev mode or if placeholder
+        if hasattr(info.data, 'simple_dev_mode') and info.data.get('simple_dev_mode'):
+            return v
+        if v is not None and v == "placeholder-set-via-dotenv":
+            return v
         if v is not None and not v.startswith("AIza"):
             raise ValueError("Invalid Gemini API key format")
         return v

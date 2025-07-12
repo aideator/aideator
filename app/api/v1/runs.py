@@ -268,6 +268,8 @@ async def list_runs(
     )
 
 
+
+
 @router.get(
     "/{run_id}",
     response_model=RunDetails,
@@ -461,76 +463,3 @@ async def get_agent_outputs(
         }
         for output in outputs
     ]
-
-
-@router.get("/tasks", response_model=TaskListResponse)
-async def get_tasks(
-    current_user: CurrentUserAPIKey,
-    limit: int = Query(default=10, le=50),
-    offset: int = Query(default=0, ge=0),
-    db: AsyncSession = Depends(get_session),
-) -> TaskListResponse:
-    """Get list of tasks for the main page (replaces frontend mock sessions data)."""
-    
-    # Query runs for the current user, ordered by creation date (newest first)
-    runs_query = (
-        select(Run)
-        .where(Run.user_id == current_user.id)
-        .order_by(desc(Run.created_at))
-        .offset(offset)
-        .limit(limit)
-    )
-    
-    result = await db.execute(runs_query)
-    runs = result.scalars().all()
-    
-    # Get total count for pagination
-    count_query = select(func.count(Run.id)).where(Run.user_id == current_user.id)
-    count_result = await db.execute(count_query)
-    total = count_result.scalar() or 0
-    
-    # Convert runs to task list items
-    tasks = []
-    for run in runs:
-        # Generate title from prompt (truncate if needed)
-        title = run.prompt or "Untitled Task"
-        if len(title) > 50:
-            title = title[:47] + "..."
-        
-        # Map task_status to frontend status format
-        status_mapping = {
-            "open": "Open",
-            "completed": "Completed", 
-            "failed": "Failed"
-        }
-        frontend_status = status_mapping.get(run.task_status, "Open")
-        
-        # Generate details string with timestamp and repository info
-        details = f"{run.created_at.strftime('%I:%M %p')} · "
-        if run.repository_url:
-            # Extract repo name from URL for display
-            repo_name = run.repository_url.split("/")[-1] if "/" in run.repository_url else run.repository_url
-            details += f"aideator/{repo_name}"
-        else:
-            details += "Chat Mode"
-        
-        # TODO: Get actual metrics from agent_outputs table
-        # For now, use placeholder values until we aggregate metrics data
-        versions = len(run.model_variants) if run.model_variants else 1
-        
-        task_item = TaskListItem(
-            id=run.id,
-            title=title,
-            details=details,
-            status=frontend_status,
-            versions=versions,
-            additions=None,  # TODO: Aggregate from agent_outputs
-            deletions=None   # TODO: Aggregate from agent_outputs
-        )
-        tasks.append(task_item)
-    
-    return TaskListResponse(
-        tasks=tasks,
-        total=total,
-        has_more=(offset + len(tasks)) < total
-    )

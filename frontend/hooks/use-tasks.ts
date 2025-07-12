@@ -43,9 +43,10 @@ export function useTasks(limit: number = 20): UseTasksReturn {
       setLoading(true)
       setError(null)
       
-      // TODO: Replace with actual API endpoint when authentication is set up
-      // For now, we'll use a placeholder that would work once the backend is running
-      const response = await fetch(`/api/v1/runs/tasks?limit=${limit}`, {
+      // Call the tasks API endpoint (separated from runs)
+      const url = `/api/v1/tasks?limit=${limit}`
+      console.log('Fetching tasks from:', url)
+      const response = await fetch(url, {
         headers: {
           'Content-Type': 'application/json',
           // TODO: Add authentication headers when available
@@ -53,7 +54,8 @@ export function useTasks(limit: number = 20): UseTasksReturn {
       })
 
       if (!response.ok) {
-        throw new Error(`Failed to fetch tasks: ${response.statusText}`)
+        const errorText = await response.text()
+        throw new Error(`Failed to fetch tasks: ${response.status} ${response.statusText} - ${errorText}`)
       }
 
       const data: TasksResponse = await response.json()
@@ -65,40 +67,9 @@ export function useTasks(limit: number = 20): UseTasksReturn {
       console.error('Error fetching tasks:', err)
       setError(err instanceof Error ? err.message : 'Failed to fetch tasks')
       
-      // Fallback to mock data for development
-      setTasks([
-        {
-          id: "1",
-          title: "Make hello world label ominous",
-          details: "8:15 PM · aideator/helloworld",
-          status: "Completed",
-          versions: 3,
-          additions: 1,
-          deletions: 1,
-        },
-        {
-          id: "2", 
-          title: "Make hello world message cheerier",
-          details: "7:29 PM · aideator/helloworld",
-          status: "Completed",
-          versions: 3,
-          additions: 8,
-          deletions: 8,
-        },
-        {
-          id: "3",
-          title: "Update hello world message",
-          details: "Jul 9 · aideator/helloworld",
-          status: "Open",
-        },
-        {
-          id: "4",
-          title: "Update hello world message", 
-          details: "Jul 8 · aideator/helloworld",
-          status: "Failed",
-        },
-      ])
-      setTotal(4)
+      // No fallback to mock data - use real API data only
+      setTasks([])
+      setTotal(0)
       setHasMore(false)
     } finally {
       setLoading(false)

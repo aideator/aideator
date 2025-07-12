@@ -108,15 +108,15 @@ export default function TestDatabaseIntegrationPage() {
                   <li>Start an agent run through the API or main interface</li>
                   <li>Copy the run ID from the response</li>
                   <li>Paste it into the Run ID field above</li>
-                  <li>Click "Start Monitoring" to see real-time outputs</li>
+                  <li>Click &quot;Start Monitoring&quot; to see real-time outputs</li>
                   <li>Outputs will appear as agents write to the database</li>
                 </ol>
               </div>
               
               <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-                <h4 className="font-medium mb-2">🎯 What you'll see:</h4>
+                <h4 className="font-medium mb-2">🎯 What you&apos;ll see:</h4>
                 <ul className="list-disc list-inside space-y-1 text-sm">
-                  <li>Real-time agent outputs as they're written to PostgreSQL</li>
+                  <li>Real-time agent outputs as they&apos;re written to PostgreSQL</li>
                   <li>Different output types (stdout, status, summary, etc.)</li>
                   <li>Multiple agent variations in separate tabs</li>
                   <li>Connection status and auto-reconnection</li>

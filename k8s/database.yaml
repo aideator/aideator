@@ -30,7 +30,9 @@ spec:
           mountPath: /var/lib/postgresql/data
       volumes:
       - name: data
-        emptyDir: {}
+        hostPath:
+          path: /tmp/aideator-postgres-data
+          type: DirectoryOrCreate
 ---
 apiVersion: v1
 kind: Service

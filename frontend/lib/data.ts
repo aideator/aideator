@@ -18,11 +18,11 @@ type VersionDetail = {
   files: FileDetail[]
 }
 
-type SessionDetail = {
+type TaskDetail = {
   versions: VersionDetail[]
 }
 
-type Session = {
+type Task = {
   id: string
   title: string
   details: string
@@ -30,10 +30,10 @@ type Session = {
   versions?: number
   additions?: number
   deletions?: number
-  sessionDetails?: SessionDetail
+  taskDetails?: TaskDetail
 }
 
-export const sessions: Session[] = [
+export const tasks: Task[] = [
   {
     id: "1",
     title: "Make hello world label ominous",
@@ -42,7 +42,7 @@ export const sessions: Session[] = [
     versions: 3,
     additions: 1,
     deletions: 1,
-    sessionDetails: {
+    taskDetails: {
       versions: [
         {
           id: 1,
@@ -109,12 +109,62 @@ export const sessions: Session[] = [
     versions: 3,
     additions: 8,
     deletions: 8,
-    sessionDetails: {
+    taskDetails: {
       versions: [
         {
           id: 1,
-          summary: "Added a cheerful greeting.",
-          files: [{ name: "README.md", additions: 8, deletions: 8, diff: [] }],
+          summary: "Added a cheerful greeting with exclamation marks and emojis.",
+          files: [
+            {
+              name: "README.md",
+              additions: 3,
+              deletions: 3,
+              diff: [
+                { type: "normal", oldLine: 1, newLine: 1, content: "# helloworld" },
+                { type: "del", oldLine: 2, newLine: undefined, content: "- Hello World for Python" },
+                { type: "add", oldLine: undefined, newLine: 2, content: "+ Hello World for Python! 🎉✨" },
+                { type: "normal", oldLine: 3, newLine: 3, content: "" },
+                { type: "add", oldLine: undefined, newLine: 4, content: "+ Welcome to the most cheerful Python project!" },
+              ],
+            },
+          ],
+        },
+        {
+          id: 2,
+          summary: "Made it even more cheerful with rainbow colors and celebration.",
+          files: [
+            {
+              name: "README.md",
+              additions: 4,
+              deletions: 2,
+              diff: [
+                { type: "normal", oldLine: 1, newLine: 1, content: "# helloworld" },
+                { type: "del", oldLine: 2, newLine: undefined, content: "- Hello World for Python" },
+                { type: "add", oldLine: undefined, newLine: 2, content: "+ 🌈 SUPER HAPPY Hello World for Python! 🌈" },
+                { type: "normal", oldLine: 3, newLine: 3, content: "" },
+                { type: "add", oldLine: undefined, newLine: 4, content: "+ 🎊 The most joyful Python experience ever! 🎊" },
+                { type: "add", oldLine: undefined, newLine: 5, content: "+ Let's code with happiness! 😊💖" },
+              ],
+            },
+          ],
+        },
+        {
+          id: 3,
+          summary: "Toned it down to a warm, friendly welcome message.",
+          files: [
+            {
+              name: "README.md",
+              additions: 2,
+              deletions: 3,
+              diff: [
+                { type: "normal", oldLine: 1, newLine: 1, content: "# helloworld" },
+                { type: "del", oldLine: 2, newLine: undefined, content: "- Hello World for Python" },
+                { type: "add", oldLine: undefined, newLine: 2, content: "+ A warm Hello World for Python 😊" },
+                { type: "normal", oldLine: 3, newLine: 3, content: "" },
+                { type: "add", oldLine: undefined, newLine: 4, content: "+ Hope you enjoy your Python journey!" },
+              ],
+            },
+          ],
         },
       ],
     },
@@ -139,7 +189,7 @@ export const sessions: Session[] = [
     versions: 3,
     additions: 187,
     deletions: 7,
-    sessionDetails: {
+    taskDetails: {
       versions: [
         {
           id: 1,
@@ -157,7 +207,7 @@ export const sessions: Session[] = [
     versions: 3,
     additions: 0,
     deletions: 0,
-    sessionDetails: {
+    taskDetails: {
       versions: [
         {
           id: 1,

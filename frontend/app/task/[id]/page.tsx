@@ -1,19 +1,41 @@
 "use client"
 
 import { useState, use } from "react"
-import { FileCode, Terminal } from "lucide-react"
+import { FileCode, Terminal, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Input } from "@/components/ui/input"
-import { tasks } from "@/lib/data"
+import { useTaskDetail } from "@/hooks/use-task-detail"
 import { notFound } from "next/navigation"
 
-export default function SessionPage({ params }: { params: Promise<{ id: string }> }) {
+export default function TaskPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [activeVersion, setActiveVersion] = useState(1)
+  const { task, loading, error } = useTaskDetail(id)
 
-  const task = tasks.find((t) => t.id === id)
+  if (loading) {
+    return (
+      <div className="flex flex-1 items-center justify-center bg-gray-950 text-gray-200">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-4"></div>
+          <p>Loading task details...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-1 items-center justify-center bg-gray-950 text-gray-200">
+        <div className="text-center">
+          <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-4" />
+          <p className="text-red-300 mb-2">Failed to load task</p>
+          <p className="text-gray-400 text-sm">{error}</p>
+        </div>
+      </div>
+    )
+  }
 
   if (!task || !task.taskDetails) {
     return notFound()
@@ -102,6 +124,13 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                 <Terminal className="w-4 h-4 mr-2" />
                 Logs
               </TabsTrigger>
+              <TabsTrigger
+                value="errors"
+                className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 border-white rounded-none"
+              >
+                <AlertTriangle className="w-4 h-4 mr-2" />
+                Errors
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="diff" className="flex-1 overflow-y-auto p-4">
               <Accordion type="single" collapsible className="w-full" defaultValue="item-0">
@@ -142,7 +171,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
             </TabsContent>
             <TabsContent value="logs" className="flex-1 overflow-y-auto p-4 font-mono text-sm">
               <pre>
-                {`[INFO] Starting session execution...
+                {`[INFO] Starting task execution...
 [INFO] Cloning repository aideator/helloworld...
 [INFO] Repository cloned successfully.
 [INFO] Checking out branch 'main'...
@@ -162,8 +191,75 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 [TEST] ============================= test session starts ==============================
 [TEST] collected 0 items
 [TEST] ============================ 0 tests ran in 0.01s ==============================
-[INFO] Session completed successfully in 2m 1s.`}
+[INFO] Task completed successfully in 2m 1s.`}
               </pre>
+            </TabsContent>
+            <TabsContent value="errors" className="flex-1 overflow-y-auto p-4">
+              <div className="space-y-4">
+                <div className="bg-red-950/50 border border-red-800 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <h4 className="font-medium text-red-300 mb-2">Type Error in main.py</h4>
+                      <p className="text-sm text-red-200 mb-3">
+                        Line 42: Argument of type &apos;str&apos; cannot be assigned to parameter of type &apos;int&apos;
+                      </p>
+                      <pre className="text-xs bg-black/50 p-3 rounded border border-red-700/50 overflow-x-auto">
+                        <code className="text-red-300">
+{`def process_data(count: int) -> None:
+    pass
+
+process_data("hello")  # Error: expected int, got str`}
+                        </code>
+                      </pre>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-amber-950/50 border border-amber-800 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <h4 className="font-medium text-amber-300 mb-2">Linting Warning</h4>
+                      <p className="text-sm text-amber-200 mb-3">
+                        Line 15: Unused import &apos;os&apos; detected
+                      </p>
+                      <pre className="text-xs bg-black/50 p-3 rounded border border-amber-700/50 overflow-x-auto">
+                        <code className="text-amber-300">
+{`import os  # This import is never used
+import sys
+
+print(sys.version)`}
+                        </code>
+                      </pre>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-red-950/50 border border-red-800 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <h4 className="font-medium text-red-300 mb-2">Test Failure</h4>
+                      <p className="text-sm text-red-200 mb-3">
+                        test_hello_world.py::test_greeting - AssertionError
+                      </p>
+                      <pre className="text-xs bg-black/50 p-3 rounded border border-red-700/50 overflow-x-auto">
+                        <code className="text-red-300">
+{`def test_greeting():
+    result = get_greeting()
+    assert result == "Hello, World!"
+    # AssertionError: assert 'An ominous Hello World for Python' == 'Hello, World!'`}
+                        </code>
+                      </pre>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="text-center py-8 text-gray-500">
+                  <p className="text-sm">No additional errors found in this task execution.</p>
+                </div>
+              </div>
             </TabsContent>
         </Tabs>
       </main>

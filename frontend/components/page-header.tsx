@@ -4,27 +4,27 @@ import { BrainCircuit, ArrowLeft, Archive, Share, GitPullRequest, FileText } fro
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { sessions } from "@/lib/data"
+import { tasks } from "@/lib/data"
 import { useState, useEffect } from "react"
 
 export function PageHeader() {
   const pathname = usePathname()
   const [isPrCreated, setIsPrCreated] = useState(false)
   
-  // Check if we're on a session page
-  const sessionMatch = pathname.match(/^\/session\/([^/]+)$/)
-  const sessionId = sessionMatch?.[1]
-  const session = sessionId ? sessions.find((s) => s.id === sessionId) : null
+  // Check if we're on a task page
+  const taskMatch = pathname.match(/^\/task\/([^/]+)$/)
+  const taskId = taskMatch?.[1]
+  const task = taskId ? tasks.find((t) => t.id === taskId) : null
   
-  // Reset PR state when navigating away from session
+  // Reset PR state when navigating away from task
   useEffect(() => {
-    if (!sessionId) {
+    if (!taskId) {
       setIsPrCreated(false)
     }
-  }, [sessionId])
+  }, [taskId])
   
-  if (session) {
-    // Session page header
+  if (task) {
+    // Task page header
     return (
       <header className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-gray-950">
         <div className="flex items-center gap-4">
@@ -33,7 +33,7 @@ export function PageHeader() {
               <ArrowLeft className="w-5 h-5" />
             </Button>
           </Link>
-          <h1 className="text-lg font-medium text-gray-50">{session.title}</h1>
+          <h1 className="text-lg font-medium text-gray-50">{task.title}</h1>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" asChild className="text-gray-300 hover:text-gray-50">
