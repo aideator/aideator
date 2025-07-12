@@ -2,20 +2,21 @@
 
 ## System Overview
 
-AIdeator is a Kubernetes-native LLM orchestration platform that runs multiple AI agents in isolated containers, streaming their thought processes in real-time.
+AIdeator is a Kubernetes-native LLM orchestration platform that runs multiple AI agents in isolated containers, streaming their thought processes in real-time via WebSocket + Redis Streams with dual-write persistence.
 
 ```
-┌─────────────────┐    HTTP/SSE     ┌─────────────────┐    Redis Pub/Sub   ┌─────────────────┐
-│   Next.js       │ ───────────────▶│   FastAPI       │ ◀─────────────────▶│  Kubernetes     │
+┌─────────────────┐    WebSocket    ┌─────────────────┐   Redis Streams    ┌─────────────────┐
+│   Next.js       │ ◀─────────────▶ │   FastAPI       │ ◀─────────────────▶│  Kubernetes     │
 │   Frontend      │                 │   Backend       │                    │  Agent Jobs     │
-│   (Port 3000)   │                 │   (Port 8000)   │                    │                 │
+│   (Port 3000)   │                 │   (Port 8000)   │                    │  (Dual Write)   │
 └─────────────────┘                 └─────────────────┘                    └─────────────────┘
-                                            │
-                                            ▼
-                                    ┌─────────────────┐
-                                    │     Redis       │
-                                    │   (Port 6379)   │
-                                    └─────────────────┘
+                                            │                                       │
+                                            ▼                                       ▼
+                                    ┌─────────────────┐                    ┌─────────────────┐
+                                    │     Redis       │                    │   PostgreSQL    │
+                                    │   Streams       │                    │   Database      │
+                                    │   (Port 6379)   │                    │   (Persistence) │
+                                    └─────────────────┘                    └─────────────────┘
 ```
 
 ## Tech Stack
@@ -25,14 +26,15 @@ AIdeator is a Kubernetes-native LLM orchestration platform that runs multiple AI
 - **React 19.0.0** - Latest React with improved performance
 - **TypeScript 5** - Type-safe JavaScript with latest features
 - **Tailwind CSS v4.1.11** - Utility-first CSS with PostCSS v4
-- **Server-Sent Events** - Real-time streaming with native browser API
+- **WebSocket** - Real-time bidirectional streaming with native browser API
 
 ### Backend
 - **FastAPI** - Modern async web framework with automatic OpenAPI
 - **SQLite + SQLModel** - Lightweight database with async ORM
 - **Pydantic** - Data validation and serialization
 - **Kubernetes Jobs** - Isolated agent execution with automatic cleanup
-- **Redis** - Pub/sub messaging for real-time streaming
+- **Redis Streams** - Persistent message streams for real-time data
+- **PostgreSQL** - Persistent database for agent outputs and run history
 
 ### Infrastructure
 - **Kubernetes** - Container orchestration and job management
@@ -201,11 +203,105 @@ Benefits:
 - Single Template: No duplication between dev and prod
 - Always Testable: Agent changes can be tested without the full API
 
+## Streaming Architecture: Dual-Write Pattern
+
+### Overview
+
+AIdeator uses a **dual-write pattern** where agents simultaneously write to both Redis Streams (for real-time) and PostgreSQL (for persistence), ensuring both immediate responsiveness and long-term data integrity.
+
+### Flow Diagram
+
+```
+┌──────────────────┐     ┌─────────────────┐     ┌────────────────┐
+│   Agent (K8s)    │────▶│  Dual Write     │────▶│   Real-time    │
+│                  │     │                 │     │                │
+│ • LLM Output     │     │ 1. Redis XADD   │     │ • WebSocket    │
+│ • Debug Logs     │     │ 2. PostgreSQL   │     │ • Frontend     │
+│ • Status Updates │     │    INSERT       │     │ • Live Updates │
+└──────────────────┘     └─────────────────┘     └────────────────┘
+                                 │
+                                 ▼
+                         ┌────────────────┐
+                         │  Persistence   │
+                         │                │
+                         │ • agent_outputs│
+                         │ • Query API    │
+                         │ • Historical   │
+                         └────────────────┘
+```
+
+### Data Flow Details
+
+**1. Agent Output Generation**
+```python
+# Agent writes to both systems atomically
+async def log_output(self, content: str, output_type: str = "llm"):
+    timestamp = datetime.utcnow()
+    
+    # Real-time: Redis Streams
+    await self.redis_client.xadd(
+        f"run:{self.run_id}:llm", 
+        {
+            "variation_id": str(self.variation_id),
+            "content": content,
+            "timestamp": timestamp.isoformat(),
+            "output_type": output_type
+        }
+    )
+    
+    # Persistence: PostgreSQL
+    output = AgentOutput(
+        run_id=self.run_id,
+        variation_id=self.variation_id,
+        content=content,
+        output_type=output_type,
+        timestamp=timestamp
+    )
+    await self.db_session.merge(output)
+```
+
+**2. Backend WebSocket Streaming**
+```python
+# WebSocket endpoint streams from Redis
+async for message in redis_service.read_run_streams(run_id, last_ids):
+    await websocket.send_json({
+        "type": message["type"],
+        "message_id": message["message_id"], 
+        "data": message["data"]
+    })
+```
+
+**3. Frontend Tabbed Interface**
+```typescript
+// Frontend handles messages by variation_id
+ws.onmessage = (event) => {
+  const message = JSON.parse(event.data)
+  if (message.type === 'llm') {
+    updateAgentTab(message.data.variation_id, message.data.content)
+  }
+}
+```
+
+### Benefits of Dual-Write
+
+1. **Guaranteed Consistency**: Both writes happen in agent transaction
+2. **Zero Data Loss**: Agent failure affects both systems equally  
+3. **Real-time Performance**: Redis provides sub-100ms latency
+4. **Historical Access**: PostgreSQL enables complex queries and analysis
+5. **Simple Architecture**: No background jobs or eventual consistency issues
+
+### Stream Patterns
+
+- **Real-time Streams**: `run:{run_id}:llm`, `run:{run_id}:stdout`, `run:{run_id}:status`
+- **Message Format**: `{variation_id, content, timestamp, output_type, metadata}`
+- **WebSocket Types**: `connected`, `llm`, `stdout`, `status`, `control_ack`, `error`, `pong`
+
 ## Key Advantages
 
 1. **Native Integration**: Uses standard Kubernetes APIs and tooling
-2. **Observability**: Full visibility through kubectl and Kubernetes events
+2. **Observability**: Full visibility through kubectl and Kubernetes events  
 3. **Scalability**: Leverages Kubernetes scheduling and resource management
 4. **Portability**: Runs on any Kubernetes cluster (local, cloud, on-prem)
 5. **Security**: Built-in RBAC, network policies, and secrets management
 6. **Developer Experience**: Tilt provides excellent local development workflow
+7. **Real-time + Persistence**: Dual-write pattern ensures both speed and durability

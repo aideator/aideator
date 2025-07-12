@@ -1,6 +1,6 @@
 "use client"
 
-import { BrainCircuit, ArrowLeft, Archive, Share, GitPullRequest } from "lucide-react"
+import { BrainCircuit, ArrowLeft, Archive, Share, GitPullRequest, FileText } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -36,6 +36,17 @@ export function PageHeader() {
           <h1 className="text-lg font-medium text-gray-50">{session.title}</h1>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" asChild className="text-gray-300 hover:text-gray-50">
+            <a 
+              href="http://localhost:8000/docs" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center gap-2"
+            >
+              <FileText className="w-4 h-4" />
+              API Docs
+            </a>
+          </Button>
           <Button variant="outline" className="bg-gray-800 border-gray-700">
             <Archive className="w-4 h-4 mr-2" />
             Archive
@@ -57,10 +68,25 @@ export function PageHeader() {
   return (
     <header className="border-b border-gray-800 bg-gray-950">
       <div className="container mx-auto px-4 py-4">
-        <Link href="/" className="flex items-center gap-3 w-fit">
-          <BrainCircuit className="w-8 h-8 text-gray-300" />
-          <span className="text-xl font-semibold text-gray-50">AIdeator</span>
-        </Link>
+        <div className="flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-3 w-fit">
+            <BrainCircuit className="w-8 h-8 text-gray-300" />
+            <span className="text-xl font-semibold text-gray-50">AIdeator</span>
+          </Link>
+          <nav className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" asChild>
+              <a 
+                href="http://localhost:8000/docs" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-gray-300 hover:text-gray-50"
+              >
+                <FileText className="w-4 h-4" />
+                API Docs
+              </a>
+            </Button>
+          </nav>
+        </div>
       </div>
     </header>
   )

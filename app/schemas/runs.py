@@ -158,7 +158,8 @@ class CreateRunResponse(BaseModel):
     """Response after creating a run."""
 
     run_id: str = Field(..., description="Unique identifier for the run")
-    stream_url: str = Field(..., description="URL to stream agent outputs via SSE")
+    websocket_url: str = Field(..., description="WebSocket URL for real-time streaming")
+    polling_url: str = Field(..., description="HTTP polling endpoint for outputs")
     status: str = Field(..., description="Initial status of the run")
     estimated_duration_seconds: int = Field(
         ..., description="Estimated time to complete"
@@ -171,9 +172,12 @@ class CreateRunResponse(BaseModel):
         "json_schema_extra": {
             "example": {
                 "run_id": "run_1234567890abcdef",
-                "stream_url": "/api/v1/runs/run_1234567890abcdef/stream",
+                "websocket_url": "ws://localhost:8000/ws/runs/run_1234567890abcdef",
+                "polling_url": "/api/v1/runs/run_1234567890abcdef/outputs",
                 "status": "accepted",
                 "estimated_duration_seconds": 120,
+                "session_id": "session_abc123",
+                "turn_id": "turn_def456",
             }
         },
     }
