@@ -1,3 +1,6 @@
+"use client"
+
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { AutoResizeTextarea } from "@/components/auto-resize-textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -7,6 +10,25 @@ import Link from "next/link"
 import { sessions } from "@/lib/data"
 
 export default function Home() {
+  const [taskText, setTaskText] = useState("")
+
+  const handleAsk = () => {
+    alert("Ask button clicked!")
+  }
+
+  const handleCode = () => {
+    alert("Code button clicked!")
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.metaKey && e.key === "Enter") {
+      e.preventDefault()
+      if (taskText.trim()) {
+        handleCode()
+      }
+    }
+  }
+
   return (
     <div className="bg-gray-950 text-gray-50 min-h-screen">
       <div className="container mx-auto max-w-3xl py-16">
@@ -17,6 +39,9 @@ export default function Home() {
             placeholder="Describe a task"
             minRows={5}
             maxRows={20}
+            value={taskText}
+            onChange={(e) => setTaskText(e.target.value)}
+            onKeyDown={handleKeyDown}
           />
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -56,9 +81,30 @@ export default function Home() {
                 </SelectContent>
               </Select>
             </div>
-            <Button variant="ghost" size="icon">
-              <Mic className="w-5 h-5" />
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon">
+                <Mic className="w-5 h-5" />
+              </Button>
+              {taskText.trim() && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAsk}
+                    className="rounded-full px-4 py-1 h-auto bg-gray-800/60 border-gray-700 hover:bg-gray-700/60"
+                  >
+                    Ask
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleCode}
+                    className="rounded-full px-4 py-1 h-auto bg-white text-black hover:bg-gray-200"
+                  >
+                    Code
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
