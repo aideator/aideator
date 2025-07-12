@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aideator-api
+  namespace: aideator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aideator-api
+  template:
+    metadata:
+      labels:
+        app: aideator-api
+    spec:
+      containers:
+      - name: api
+        image: aideator-api
+        ports:
+        - containerPort: 8000
+        env:
+        # Student Development Mode - Ease of Development
+        - name: SIMPLE_DEV_MODE
+          value: "true"
+        - name: REQUIRE_API_KEYS_FOR_AGENTS
+          value: "false"
+        - name: REQUIRE_PER_USER_KEYS
+          value: "false"
+        - name: ENABLE_KUBERNETES_SECRETS
+          value: "false"
+        - name: AUTO_CREATE_TEST_USER
+          value: "true"
+        
+        # Application Configuration
+        - name: DEBUG
+          value: "true"
+        - name: LOG_LEVEL
+          value: "DEBUG"
+        - name: API_V1_PREFIX
+          value: "/api/v1"
+        - name: MAX_VARIATIONS
+          value: "3"
+        
+        # Service URLs
+        - name: DATABASE_URL
+          value: "postgresql+asyncpg://aideator:aideator123@aideator-database:5432/aideator"
+        - name: REDIS_URL
+          value: "redis://aideator-redis:6379/0"
+        
+        # Student Mode: Load secrets from environment (.env file)
+        - name: SECRET_KEY
+          value: "dev-secret-key-32-chars-minimum-for-development"
+        - name: ENCRYPTION_KEY
+          value: "dev-encryption-key-32-chars-minimum-for-aes"
+        - name: OPENAI_API_KEY
+          value: "placeholder-set-via-dotenv"
+        - name: ANTHROPIC_API_KEY
+          value: "placeholder-set-via-dotenv"
+        
+        # Kubernetes Configuration
+        - name: KUBERNETES_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: AGENT_IMAGE
+          value: "aideator-agent:dev"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aideator-api
+  namespace: aideator
+spec:
+  selector:
+    app: aideator-api
+  ports:
+  - port: 8000
+    targetPort: 8000

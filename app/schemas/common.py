@@ -1,6 +1,8 @@
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, Field
+
+T = TypeVar('T')
 
 
 class ErrorResponse(BaseModel):
@@ -67,10 +69,10 @@ class SuccessResponse(BaseModel):
     }
 
 
-class PaginatedResponse(BaseModel):
+class PaginatedResponse(BaseModel, Generic[T]):
     """Paginated response wrapper."""
 
-    items: list[Any] = Field(..., description="List of items")
+    items: list[T] = Field(..., description="List of items")
     total: int = Field(..., description="Total number of items")
     page: int = Field(..., description="Current page")
     per_page: int = Field(..., description="Items per page")

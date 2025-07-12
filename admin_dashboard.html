@@ -141,6 +141,9 @@
         <label>
             <input type="checkbox" id="autoRefresh" checked> Auto-refresh (5s)
         </label>
+        <br>
+        <button onclick="showApiKeyPrompt()" style="margin-top: 0.5rem; font-size: 0.8rem;">Set API Key</button>
+        <button onclick="clearApiKey()" style="margin-top: 0.5rem; font-size: 0.8rem;">Clear Key</button>
     </div>
 
     <div class="container">
@@ -200,6 +203,7 @@
 
     <script>
         const API_BASE = 'http://localhost:8000';
+        const DEV_MODE = false; // Disable dev mode and use API key instead
         let autoRefreshInterval;
 
         // Auto-refresh functionality
@@ -228,15 +232,57 @@
         // API calls
         async function fetchData(endpoint) {
             try {
-                const response = await fetch(`${API_BASE}/api/v1/admin-messaging${endpoint}`);
+                const headers = {};
+                
+                // In dev mode, try different endpoints if auth fails
+                if (DEV_MODE) {
+                    // Try the working health endpoint pattern first
+                    try {
+                        const testResponse = await fetch(`${API_BASE}/api/v1/health`);
+                        if (!testResponse.ok) {
+                            throw new Error(`Health check failed: ${testResponse.status}`);
+                        }
+                    } catch (e) {
+                        console.error('Backend not responding:', e);
+                        return null;
+                    }
+                }
+                
+                const apiKey = localStorage.getItem('admin_api_key');
+                if (apiKey && !DEV_MODE) {
+                    headers['X-API-Key'] = apiKey;
+                }
+                
+                const response = await fetch(`${API_BASE}/api/v1/admin-messaging${endpoint}`, {
+                    headers: headers
+                });
+                
                 if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
+                    if (response.status === 401 && !DEV_MODE) {
+                        showApiKeyPrompt();
+                        return null;
+                    }
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
                 return await response.json();
             } catch (error) {
                 console.error(`Error fetching ${endpoint}:`, error);
                 return null;
             }
+        }
+
+        // API Key management
+        function showApiKeyPrompt() {
+            const apiKey = prompt('Please enter your API key to access admin data:');
+            if (apiKey) {
+                localStorage.setItem('admin_api_key', apiKey);
+                refreshAll();
+            }
+        }
+
+        function clearApiKey() {
+            localStorage.removeItem('admin_api_key');
+            alert('API key cleared. You will be prompted again.');
         }
 
         // Refresh functions

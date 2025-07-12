@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aideator-database
+  namespace: aideator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aideator-database
+  template:
+    metadata:
+      labels:
+        app: aideator-database
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        env:
+        - name: POSTGRES_DB
+          value: aideator
+        - name: POSTGRES_USER
+          value: aideator
+        - name: POSTGRES_PASSWORD
+          value: aideator123
+        ports:
+        - containerPort: 5432
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: data
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aideator-database
+  namespace: aideator
+spec:
+  selector:
+    app: aideator-database
+  ports:
+  - port: 5432
+    targetPort: 5432

@@ -24,6 +24,8 @@ import git
 from litellm import acompletion
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from agent.services.database_service import DatabaseService
+
 # Constants
 MIN_API_KEY_LENGTH = 10
 MIN_GENERIC_KEY_LENGTH = 5
@@ -94,6 +96,7 @@ class AIdeatorAgent:
             raise RuntimeError("REDIS_URL is required for agent operation")
 
         self.redis_client = None  # Will be initialized in async context
+        self.db_service = None  # Will be initialized in async context
 
     async def _init_redis(self):
         """Initialize Redis connection in async context."""
@@ -117,6 +120,71 @@ class AIdeatorAgent:
         except Exception as e:
             self.log(f"[REDIS-CONNECT] Redis connection failed: {e}", "ERROR")
             raise RuntimeError(f"Failed to connect to Redis: {e}")
+
+    async def _init_database(self):
+        """Initialize database connection in async context."""
+        try:
+            self.db_service = DatabaseService(self.run_id, int(self.variation_id))
+            db_connected = await self.db_service.connect()
+            if db_connected:
+                self.log(f"[DB-CONNECT] Connected to database for run {self.run_id}", "INFO")
+                # Test database write - updated integration
+                await self.db_service.publish_log("Database connection test - INTEGRATION WORKING", "INFO")
+                self.log(f"[DB-CONNECT] Test database write successful", "DEBUG")
+            else:
+                self.log("⚠️ Database unavailable, using stdout fallback", "WARNING")
+            return db_connected
+        except Exception as e:
+            self.log(f"[DB-CONNECT] Database connection failed: {e}", "ERROR")
+            self.log("⚠️ Database unavailable, using stdout fallback", "WARNING")
+            return False
+
+    async def _publish_completion_data(self, response: str, success: bool) -> None:
+        """Publish job completion summary and metrics to database."""
+        try:
+            # Generate job summary based on response and success status
+            if success:
+                summary = f"Agent completed successfully. Generated {len(response)} characters of output."
+                if "```" in response:
+                    # Count code blocks as a simple metric
+                    code_blocks = response.count("```") // 2
+                    summary += f" Output includes {code_blocks} code blocks."
+            else:
+                summary = f"Agent failed with error: {response}"
+            
+            # Publish job summary
+            await self.db_service.publish_job_summary(
+                summary=summary,
+                success=success,
+                response_length=len(response),
+                prompt=self.prompt,
+                model=self.config["model"]
+            )
+            
+            # Publish basic metrics (more detailed metrics would come from actual code analysis)
+            if success:
+                # Simple metrics based on response analysis
+                lines_count = response.count('\n')
+                code_blocks = response.count("```") // 2
+                
+                await self.db_service.publish_metrics(
+                    lines_generated=lines_count,
+                    code_blocks=code_blocks,
+                    model_used=self.config["model"],
+                    temperature=self.config["temperature"],
+                    success=success
+                )
+            else:
+                # Failure metrics
+                await self.db_service.publish_metrics(
+                    success=False,
+                    error_type=type(response).__name__ if hasattr(response, '__class__') else "RuntimeError"
+                )
+                
+            self.log("📊 Published completion data to database", "INFO")
+            
+        except Exception as e:
+            self.log(f"⚠️ Failed to publish completion data: {e}", "WARNING")
 
     def _setup_file_logging(self):
         """Setup file-only logging to avoid stdout pollution."""
@@ -480,6 +548,9 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
         # Initialize Redis connection
         await self._init_redis()
 
+        # Initialize database connection
+        await self._init_database()
+
         # Log available API keys for debugging
         await self.log_async(
             "🔑 API Key availability check",
@@ -554,9 +625,17 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                 response_length=len(response),
                 status="success",
             )
+            
+            # Publish job summary and metrics to database
+            if self.db_service and self.db_service._connected:
+                await self._publish_completion_data(response, success=True)
 
         except Exception as e:
             self.log_error("Agent execution failed", e)
+            
+            # Publish failure data to database
+            if self.db_service and self.db_service._connected:
+                await self._publish_completion_data(str(e), success=False)
             raise
 
     async def _clone_repository(self) -> None:
@@ -1218,7 +1297,8 @@ async def main():
         # Clean up connections
         if agent.redis_client:
             await agent.redis_client.close()
-        await agent.db_service.disconnect()
+        if agent.db_service:
+            await agent.db_service.disconnect()
         sys.exit(0)
     except Exception as e:
         # Ensure error is visible in logs
@@ -1238,3 +1318,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+# Updated Sat Jul 12 14:18:54 CDT 2025

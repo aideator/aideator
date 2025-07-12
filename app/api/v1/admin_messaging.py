@@ -3,12 +3,13 @@
 from datetime import datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, delete, desc, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.core.dependencies import get_current_user_from_api_key
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.models.run import AgentOutput, Run, RunStatus
 from app.models.user import User
@@ -17,10 +18,21 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
+async def get_current_user_dev_bypass() -> User | None:
+    """Development bypass for authentication."""
+    settings = get_settings()
+    logger.info(f"Dev bypass called: debug={settings.debug}")
+    if settings.debug:  # Development mode when debug=True
+        logger.info("Allowing anonymous access in development mode")
+        return None  # Allow anonymous access in dev
+    logger.info("Debug=False, requiring API key")
+    raise HTTPException(status_code=401, detail="API key required")
+
+
 @router.get("/overview", summary="Simple container messaging overview")
 async def get_overview(
     db: AsyncSession = Depends(get_session),
-    current_user: User | None = Depends(get_current_user_from_api_key),
+    current_user: User | None = Depends(get_current_user_dev_bypass),
 ) -> dict[str, Any]:
     """Get overall database statistics."""
     # Total runs
@@ -66,11 +78,20 @@ async def get_overview(
     # Average messages per run
     avg_messages = total_messages / max(total_runs, 1)
 
+    # Active runs count
+    active_runs = await db.scalar(
+        select(func.count(Run.id)).where(
+            or_(
+                Run.status == RunStatus.RUNNING,
+                Run.status == RunStatus.PENDING,
+            )
+        )
+    )
+
     return {
-        "active_runs": active_runs,
-        "total_messages": total_messages,
-        "recent_messages_1h": recent_messages,
-        "message_types": message_types,
+        "active_runs": active_runs or 0,
+        "total_messages": total_messages or 0,
+        "recent_messages_1h": recent_messages or 0,
         "timestamp": datetime.utcnow().isoformat(),
     }
 
@@ -79,19 +100,11 @@ async def get_overview(
 async def get_runs(
     limit: int = Query(10, le=50),
     db: AsyncSession = Depends(get_session),
-    current_user: User | None = Depends(get_current_user_from_api_key),
+    current_user: User | None = Depends(get_current_user_dev_bypass),
 ) -> list[dict[str, Any]]:
     """Get active runs with message metrics."""
     # Build query
-    query = select(Run)
-    if not include_completed:
-        query = query.where(
-            or_(
-                Run.status == RunStatus.PENDING,
-                Run.status == RunStatus.RUNNING,
-            )
-        )
-    query = query.order_by(desc(Run.created_at)).limit(limit)
+    query = select(Run).order_by(desc(Run.created_at)).limit(limit)
 
     # Get runs
     result = await db.execute(query)
@@ -131,28 +144,26 @@ async def get_runs(
         else:
             message_rate = 0
 
-        run_metrics.append(
+        run_list.append(
             {
                 "id": run.id,
                 "status": run.status.value,
-                "github_url": run.github_url,
-                "prompt": run.prompt[:100] + "..."
-                if len(run.prompt) > 100
-                else run.prompt,
-                "variations": run.variations,
+                "github_url": getattr(run, 'github_url', '') or '',
+                "prompt": (run.prompt[:100] + "..." if len(run.prompt) > 100 else run.prompt) if run.prompt else '',
+                "variations": getattr(run, 'variations', 1) or 1,
                 "created_at": run.created_at.isoformat(),
                 "started_at": run.started_at.isoformat() if run.started_at else None,
-                "total_messages": total_messages,
+                "message_count": total_messages,
                 "message_rate_per_second": round(message_rate, 2),
                 "variation_metrics": variation_data,
-                "winning_variation_id": run.winning_variation_id,
+                "winning_variation_id": getattr(run, 'winning_variation_id', None),
             }
         )
 
-    return run_metrics
+    return run_list
 
 
-@router.get("/messages/stream", summary="Get recent messages across all runs")
+@router.get("/messages", summary="Get recent messages across all runs")
 async def get_message_stream(
     limit: int = Query(100, le=500),
     offset: int = Query(0),
@@ -161,7 +172,7 @@ async def get_message_stream(
     output_type: str | None = Query(None),
     search: str | None = Query(None),
     db: AsyncSession = Depends(get_session),
-    current_user: User | None = Depends(get_current_user_from_api_key),
+    current_user: User | None = Depends(get_current_user_dev_bypass),
 ) -> dict[str, Any]:
     """Get recent messages with filtering."""
     # Build query
@@ -222,7 +233,7 @@ async def search_messages(
     run_id: str | None = Query(None),
     output_type: str | None = Query(None),
     db: AsyncSession = Depends(get_session),
-    current_user: User | None = Depends(get_current_user_from_api_key),
+    current_user: User | None = Depends(get_current_user_dev_bypass),
 ) -> list[dict[str, Any]]:
     """Search message content."""
     # Build search query
@@ -260,64 +271,43 @@ async def search_messages(
 @router.get("/live", summary="Live container activity")
 async def get_live_activity(
     db: AsyncSession = Depends(get_session),
-    current_user: User | None = Depends(get_current_user_from_api_key),
+    current_user: User | None = Depends(get_current_user_dev_bypass),
 ) -> dict[str, Any]:
-    """Delete old runs and their messages."""
-    cutoff_date = datetime.utcnow() - timedelta(days=older_than_days)
-
-    # Find old runs
-    old_runs_query = select(Run.id).where(
-        and_(
-            Run.created_at < cutoff_date,
-            or_(
-                Run.status == RunStatus.COMPLETED,
-                Run.status == RunStatus.FAILED,
-                Run.status == RunStatus.CANCELLED,
-            ),
-        )
-    )
-    result = await db.execute(old_runs_query)
-    old_run_ids = [row[0] for row in result]
-
-    if not old_run_ids:
-        return {
-            "message": "No old runs found to clean up",
-            "runs_affected": 0,
-            "messages_affected": 0,
-            "dry_run": dry_run,
-        }
-
-    # Count messages that would be deleted
-    messages_count = await db.scalar(
-        select(func.count(AgentOutput.id)).where(
-            AgentOutput.run_id.in_(list(old_run_ids))  # type: ignore[attr-defined]
-        )
-    )
-
-    if not dry_run:
-        # Delete messages first (foreign key constraint)
-        await db.execute(
-            delete(AgentOutput).where(AgentOutput.run_id.in_(list(old_run_ids)))  # type: ignore[attr-defined]
-        )
-
-        # Delete runs
-        await db.execute(delete(Run).where(Run.id.in_(list(old_run_ids))))  # type: ignore[attr-defined]
-
-        await db.commit()
-
-        logger.info(
-            "database_cleanup_completed",
-            runs_deleted=len(old_run_ids),
-            messages_deleted=messages_count,
-            older_than_days=older_than_days,
-        )
-
+    """Get live container activity in the last 5 minutes."""
+    # Get activity from last 5 minutes
+    since = datetime.utcnow() - timedelta(minutes=5)
+    
+    # Get active containers (runs with recent messages)
+    active_containers_query = select(
+        AgentOutput.run_id,
+        AgentOutput.variation_id,
+        func.count(AgentOutput.id).label("message_count"),
+        func.max(AgentOutput.timestamp).label("latest_timestamp"),
+        func.max(AgentOutput.content).label("latest_message")
+    ).where(
+        AgentOutput.timestamp > since
+    ).group_by(
+        AgentOutput.run_id, AgentOutput.variation_id
+    ).order_by(
+        desc("latest_timestamp")
+    ).limit(10)
+    
+    result = await db.execute(active_containers_query)
+    container_activity = []
+    
+    for row in result:
+        container_activity.append({
+            "run_id": row.run_id,
+            "variation_id": row.variation_id,
+            "message_count": row.message_count,
+            "latest_timestamp": row.latest_timestamp.isoformat(),
+            "latest_message": (row.latest_message[:100] + "..." if len(row.latest_message) > 100 else row.latest_message) if row.latest_message else ""
+        })
+    
     return {
-        "message": "Cleanup completed" if not dry_run else "Dry run - no data deleted",
-        "runs_affected": len(old_run_ids),
-        "messages_affected": messages_count,
-        "dry_run": dry_run,
-        "cutoff_date": cutoff_date.isoformat(),
+        "active_containers": len(container_activity),
+        "container_activity": container_activity,
+        "timestamp": datetime.utcnow().isoformat(),
     }
 
 

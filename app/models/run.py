@@ -31,6 +31,9 @@ class Run(SQLModel, table=True):
         sa_column=Column(SQLEnum(RunStatus), nullable=False, index=True),
     )
     winning_variation_id: int | None = Field(default=None)
+    
+    # Task status (separate from Kubernetes job status)
+    task_status: str = Field(default="open", index=True)  # "open", "completed", "failed"
 
     # Metadata
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)

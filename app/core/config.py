@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     project_name: str = "AIdeator"
     version: str = "1.0.0"
     debug: bool = False
+    environment: str = "production"
 
     # Server Configuration
     host: str = "0.0.0.0"
@@ -20,6 +21,25 @@ class Settings(BaseSettings):
     reload: bool = False
     log_level: str = "info"
 
+    # =============================================================================
+    # FEATURE FLAGS - Control what's enabled
+    # =============================================================================
+    
+    # Authentication Features
+    require_user_registration: bool = True  # Keep user system (needed for future features)
+    require_api_keys_for_agents: bool = True  # Set false for simple development
+    require_per_user_keys: bool = True  # Set false to use global keys
+    enable_kubernetes_secrets: bool = True  # Set false for local development
+    
+    # Security Features
+    enable_rate_limiting: bool = True  # Disable for development
+    enable_cors_strict: bool = True  # Allow all origins in dev
+    enable_jwt_expiration: bool = True  # Long-lived tokens in dev
+    
+    # Development Shortcuts
+    simple_dev_mode: bool = False  # Skip complex setup
+    auto_create_test_user: bool = False  # Auto-create test user on startup
+    
     # Security
     secret_key: str = Field(
         default="dev-secret-key-32-chars-minimum-length-for-development"
@@ -87,7 +107,7 @@ class Settings(BaseSettings):
     LITELLM_MASTER_KEY: str | None = None
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=[".env.local", ".env"],  # .env.local takes precedence
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
@@ -160,7 +180,29 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_settings(self) -> "Settings":
-        """Validate settings for production readiness."""
+        """Validate settings and apply development shortcuts."""
+        # Apply development shortcuts
+        if self.simple_dev_mode or self.environment == "development":
+            # Auto-configure for development ease
+            self.require_api_keys_for_agents = False
+            self.require_per_user_keys = False
+            self.enable_kubernetes_secrets = False
+            self.enable_rate_limiting = False
+            self.enable_cors_strict = False
+            self.enable_jwt_expiration = False
+            self.access_token_expire_minutes = 2880  # 48 hours
+            
+            # Auto-generate keys if empty in development
+            if not self.secret_key or self.secret_key == "dev-secret-key-32-chars-minimum-length-for-development":
+                import secrets
+                self.secret_key = f"dev-{secrets.token_urlsafe(32)}"
+                
+            if not self.encryption_key or self.encryption_key == "dev-encryption-key-32-chars-minimum-for-aes":
+                import secrets
+                self.encryption_key = f"dev-{secrets.token_urlsafe(32)}"
+            
+            return self
+        
         if self.debug:
             # In debug mode, allow weaker settings
             return self

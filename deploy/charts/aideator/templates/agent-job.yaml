@@ -58,6 +58,12 @@ data:
                   value: "INFO"
                 - name: PYTHONUNBUFFERED
                   value: "1"
+                # Database URL for agent output persistence
+                - name: DATABASE_URL
+                  value: "{{ .Values.database.url }}"
+                # Redis URL for real-time streaming
+                - name: REDIS_URL
+                  value: "redis://{{ include "aideator.fullname" . }}-redis:6379/0"
               command: ["python", "-u", "/app/agent/main.py"]
               resources:
                 {{- toYaml .Values.agents.resources | nindent 16 }}

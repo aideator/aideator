@@ -5,12 +5,13 @@ import { Button } from "@/components/ui/button"
 import { AutoResizeTextarea } from "@/components/auto-resize-textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { GitBranch, Layers, Mic, Github } from "lucide-react"
+import { GitBranch, Layers, Mic, Github, RefreshCw, AlertCircle } from "lucide-react"
 import Link from "next/link"
-import { sessions } from "@/lib/data"
+import { useTasks } from "@/hooks/use-tasks"
 
 export default function Home() {
   const [taskText, setTaskText] = useState("")
+  const { tasks, loading, error, refetch } = useTasks()
 
   const handleAsk = () => {
     alert("Ask button clicked!")
@@ -124,34 +125,62 @@ export default function Home() {
             </TabsTrigger>
           </TabsList>
           <TabsContent value="sessions" className="mt-6 space-y-1">
-            {sessions.map((session) => (
-              <Link href={`/session/${session.id}`} key={session.id}>
-                <div className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-900 transition-colors cursor-pointer">
-                  <div className="flex flex-col">
-                    <span className="font-medium">{session.title}</span>
-                    <span className="text-sm text-gray-400">{session.details}</span>
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
+                <span className="ml-2 text-gray-400">Loading tasks...</span>
+              </div>
+            ) : error ? (
+              <div className="flex items-center justify-center py-8">
+                <AlertCircle className="w-6 h-6 text-red-400" />
+                <span className="ml-2 text-red-400">{error}</span>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={refetch}
+                  className="ml-4"
+                >
+                  Retry
+                </Button>
+              </div>
+            ) : tasks.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                No tasks yet. Create your first coding task above!
+              </div>
+            ) : (
+              tasks.map((task) => (
+                <Link href={`/session/${task.id}`} key={task.id}>
+                  <div className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-900 transition-colors cursor-pointer">
+                    <div className="flex flex-col">
+                      <span className="font-medium">{task.title}</span>
+                      <span className="text-sm text-gray-400">{task.details}</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      {task.status === "Completed" && (
+                        <>
+                          {task.versions && (
+                            <div className="flex items-center gap-1 text-sm text-gray-400">
+                              <Layers className="w-4 h-4" />
+                              <span>{task.versions}</span>
+                            </div>
+                          )}
+                          {(task.additions !== undefined || task.deletions !== undefined) && (
+                            <div className="font-mono text-sm">
+                              <span className="text-green-400">+{task.additions || 0}</span>{" "}
+                              <span className="text-red-400">-{task.deletions || 0}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      {task.status === "Open" && (
+                        <span className="text-sm text-green-400 bg-green-900/50 px-2 py-1 rounded-md">Open</span>
+                      )}
+                      {task.status === "Failed" && <span className="text-sm text-red-400">Failed</span>}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    {session.status === "Completed" && (
-                      <>
-                        <div className="flex items-center gap-1 text-sm text-gray-400">
-                          <Layers className="w-4 h-4" />
-                          <span>{session.versions}</span>
-                        </div>
-                        <div className="font-mono text-sm">
-                          <span className="text-green-400">+{session.additions}</span>{" "}
-                          <span className="text-red-400">-{session.deletions}</span>
-                        </div>
-                      </>
-                    )}
-                    {session.status === "Open" && (
-                      <span className="text-sm text-green-400 bg-green-900/50 px-2 py-1 rounded-md">Open</span>
-                    )}
-                    {session.status === "Failed" && <span className="text-sm text-red-400">Failed</span>}
-                  </div>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              ))
+            )}
           </TabsContent>
           <TabsContent value="archive" className="mt-6">
             <p className="text-center text-gray-500">Archived sessions will appear here.</p>

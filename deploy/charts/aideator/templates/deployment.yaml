@@ -110,7 +110,36 @@ spec:
                   fieldPath: metadata.namespace
             - name: AGENT_IMAGE
               value: "{{ .Values.agentImage.repository }}:{{ .Values.agentImage.tag }}"
+            # Student Development Mode - Bypass Security for Ease of Development
+            {{- if .Values.config.simpleDevMode }}
+            - name: SIMPLE_DEV_MODE
+              value: "true"
+            {{- end }}
+            {{- if not .Values.config.requireApiKeysForAgents }}
+            - name: REQUIRE_API_KEYS_FOR_AGENTS
+              value: "false"
+            {{- end }}
+            {{- if not .Values.config.requirePerUserKeys }}
+            - name: REQUIRE_PER_USER_KEYS
+              value: "false"
+            {{- end }}
+            {{- if not .Values.config.enableKubernetesSecrets }}
+            - name: ENABLE_KUBERNETES_SECRETS
+              value: "false"
+            {{- end }}
+            {{- if .Values.config.autoCreateTestUser }}
+            - name: AUTO_CREATE_TEST_USER
+              value: "true"
+            {{- end }}
             # API keys stored in database, not environment variables
+            {{- if .Values.config.simpleDevMode }}
+            # Student Mode: Use hardcoded secrets for ease of development
+            - name: SECRET_KEY
+              value: "dev-secret-key-32-chars-minimum-for-development"
+            - name: ENCRYPTION_KEY
+              value: "dev-encryption-key-32-chars-minimum-for-aes"
+            {{- else }}
+            # Production Mode: Use Kubernetes secrets
             - name: SECRET_KEY
               valueFrom:
                 secretKeyRef:
@@ -121,6 +150,7 @@ spec:
                 secretKeyRef:
                   name: aideator-secret
                   key: encryption-key
+            {{- end }}
             {{- if .Values.env }}
             {{- range .Values.env }}
             - name: {{ .name }}

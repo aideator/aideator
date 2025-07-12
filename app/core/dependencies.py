@@ -1,21 +1,49 @@
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, Query, WebSocket, status
+from fastapi import Depends, Header, HTTPException, Query, Request, WebSocket, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import AuthError, authenticate_user
-from app.core.database import get_session
+from app.core.config import get_settings
+from app.core.database import get_session, async_session_maker
 from app.models.user import User
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
     db: AsyncSession = Depends(get_session),
 ) -> User:
     """Get current authenticated user from JWT token or API key."""
+    settings = get_settings()
+    
+    # In development modes, bypass authentication completely
+    if settings.simple_dev_mode or not settings.require_api_keys_for_agents:
+        from app.middleware.development import get_dev_user_from_request
+        
+        # Try to get dev user from request state first
+        dev_user = await get_dev_user_from_request(request)
+        if dev_user:
+            return dev_user
+        
+        # If no dev user in request state, create one directly
+        from app.middleware.development import DevelopmentAuthMiddleware
+        middleware = DevelopmentAuthMiddleware(app=None)
+        async with async_session_maker() as dev_db:
+            test_user = await middleware._get_or_create_test_user(dev_db)
+            return test_user
+    
+    # Production mode - require credentials
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
     return await authenticate_user(credentials, db)
 
 
@@ -32,11 +60,31 @@ async def get_current_active_user(
 
 
 async def get_current_user_from_api_key(
+    request: Request,
     x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
     api_key: Annotated[str | None, Query()] = None,
     db: AsyncSession = Depends(get_session),
 ) -> User:
     """Get current user from API key header or query parameter."""
+    settings = get_settings()
+    
+    # In development modes, bypass authentication completely
+    if settings.simple_dev_mode or not settings.require_api_keys_for_agents:
+        from app.middleware.development import get_dev_user_from_request
+        
+        # Try to get dev user from request state first
+        dev_user = await get_dev_user_from_request(request)
+        if dev_user:
+            return dev_user
+        
+        # If no dev user in request state, create one directly
+        # This handles cases where middleware hasn't run or dependency injection order issues
+        from app.middleware.development import DevelopmentAuthMiddleware
+        middleware = DevelopmentAuthMiddleware(app=None)  # app not needed for user creation
+        async with async_session_maker() as dev_db:
+            test_user = await middleware._get_or_create_test_user(dev_db)
+            return test_user
+    
     from app.core.auth import get_user_from_api_key
 
     # Try header first, then query parameter
@@ -80,6 +128,16 @@ async def get_current_user_from_websocket(
     db: AsyncSession,
 ) -> User | None:
     """Get current user from WebSocket query parameters (optional)."""
+    settings = get_settings()
+    
+    # In development modes, always return a test user
+    if settings.simple_dev_mode or not settings.require_api_keys_for_agents:
+        from app.middleware.development import DevelopmentAuthMiddleware
+        middleware = DevelopmentAuthMiddleware(app=None)
+        async with async_session_maker() as dev_db:
+            test_user = await middleware._get_or_create_test_user(dev_db)
+            return test_user
+    
     try:
         # Try to get API key from query parameters
         api_key = websocket.query_params.get("api_key")

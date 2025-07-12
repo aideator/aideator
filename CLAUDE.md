@@ -6,12 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### This is a student project.  Ease of development prioritized over all, particularly security.
 
+### if packages or tools are missing from the container.  install them in the container Dockerfile so they are in the container.  don't workaround.
+
 ### Code & Version Control Safety
 - **NEVER discard uncommitted implementation details (API calls, config, endpoints)**
 - **ALWAYS preserve original attempts in comments when simplifying broken code**
 - **NEVER git rm, git restore, or git commit without explicit permission**
 - **NEVER modify database schema directly - always use migrations**
-- **ALWAYS regenerate types after database changes: `python -m app.generate_types`**
+- **ALWAYS run migrations after database schema changes: `uv run alembic upgrade head`**
+
+## Tailwind
+We use Tailwind v3.4.17 for everything. The project strictly enforces complete class names (no dynamic interpolation). All components use shadcn/ui patterns with class-variance-authority (CVA) for variants.
+
 
 ### Permission Protocol
 - **GET CONFIRMATION** before any significant reorganization or sweeping changes
@@ -79,27 +85,53 @@ Before any suggestion that changes dependencies, environment, or tools:
 
 ## 💻 Tech Stack
 
-- **Frontend**: Next.js 15.2.4 with React 19, TypeScript 5
+### Frontend (Next.js 15.2.4)
+- **Framework**: Next.js 15.2.4 with React 19, TypeScript 5
 - **Navigation**: Next.js App Router
 - **Styling**: Tailwind CSS v3.4.17 (shadcn/ui compatible)
-- **Component Library**: shadcn/ui with Radix UI primitives
-- **Design System**: Custom AIdeator design system (see interface-codex/DESIGN-SYSTEM.md)
+- **Component Library**: shadcn/ui with Radix UI primitives (comprehensive set installed)
+- **Design System**: Custom AIdeator design system (see frontend/DESIGN-SYSTEM.md)
 - **Icons**: Lucide React for consistent iconography
 - **State**: React hooks and context
-- **Backend**: FastAPI with async/await patterns
-- **Database**: PostgreSQL with SQLModel ORM
-- **Container Orchestration**: Kubernetes Jobs with Helm
-- **Streaming**: Server-Sent Events (SSE) via database polling (PostgreSQL-based architecture)
-- **Testing**: Pytest (backend), Jest + Playwright (frontend)
-- **Package Management**: pip with requirements.txt and pyproject.toml
-- **Development**: Tilt for Kubernetes orchestration, k3d for local cluster
+- **Forms**: React Hook Form with Zod validation
+- **Charts**: Recharts for data visualization
+- **Theming**: next-themes for dark/light mode
+- **Testing**: Jest + Testing Library for unit tests, Playwright for E2E
+- **Code Quality**: ESLint, TypeScript strict mode, Knip for dead code detection
+
+### Backend (FastAPI + PostgreSQL)
+- **API Framework**: FastAPI with async/await patterns
+- **Database**: PostgreSQL 15-alpine with SQLModel ORM
+- **Migrations**: Alembic for database schema management (11 migrations in place)
+- **Authentication**: JWT with python-jose and bcrypt
+- **Caching/Streaming**: Redis (Bitnami chart) for message queuing and WebSocket support
+- **Container Images**: Multi-stage Docker builds for API and Agent containers
+- **Monitoring**: Structured logging with structlog, Prometheus metrics
+- **Package Management**: uv for fast Python dependency management
+- **Code Quality**: Ruff for linting/formatting, comprehensive pytest suite with coverage
+
+### Agent Runtime
+- **Orchestration**: Kubernetes Jobs managed via Kubernetes API
+- **LLM Providers**: LiteLLM for multi-provider support (OpenAI, Anthropic, etc.)
+- **Repository Analysis**: GitPython for code analysis
+- **Output Streaming**: Database persistence with real-time WebSocket streaming
+- **Isolation**: Each agent runs in isolated containers with resource limits
+
+### Development & Deployment
+- **Local Development**: Tilt (student-friendly, no Helm complexity) for k3d cluster orchestration
+- **Container Registry**: Local registry (localhost:5005, ctlptl-registry:5000 from cluster)
+- **Deployment**: Simple k8s YAML templates for development, Helm charts for production
+- **Package Management**: uv for Python dependencies, npm for frontend
+- **Testing**: Pytest with asyncio support (backend), Jest + Playwright (frontend)
+- **Code Quality**: Ruff with comprehensive rule set, TypeScript strict mode
+- **LLM Gateway**: LiteLLM for multi-provider support (OpenAI, Anthropic, etc.)
 
 ---
 
 ## 🎨 Design System & UI Guidelines
 
 ### Design System Implementation
-- **Design System Location**: `interface-codex/DESIGN-SYSTEM.md`
+- **Design System Location**: `frontend/DESIGN-SYSTEM.md`
 - **Component Pattern**: shadcn/ui components with CVA (class-variance-authority)
 - **Styling Approach**: Utility-first with Tailwind v3, component variants via CVA
 - **Theme Structure**: CSS variables for colors, spacing based on 4px grid
@@ -142,28 +174,34 @@ const agentColors = {
 ## 🔧 Essential Commands
 
 ```bash
-# Development
-tilt up                  # Start full dev environment
-tilt down               # Stop environment
-cd frontend && npm run dev  # Frontend only
+# Development Environment
+tilt up                        # Start full dev environment (k3d + services)
+tilt down                     # Stop environment
+cd frontend && npm run dev    # Frontend only
+tilt trigger database-migrate  # Run database migrations manually
 
-# Database
-# Tables are created automatically on startup via SQLModel
-# Alembic is installed but migration setup is in progress
+# Database Management
+uv run alembic upgrade head   # Apply latest migrations
+uv run alembic revision --autogenerate -m "description"  # Create migration
+python -m scripts.add_test_data  # Seed test data
 
-# Testing
-pytest                   # Backend tests
-cd frontend && npm test  # Frontend tests
-npm run test:e2e        # E2E tests
+# Testing (CNS Convention)
+uv run test-unit             # Backend unit tests
+uv run test-integration      # Backend integration tests
+uv run test-all              # All quality checks + tests
+cd frontend && npm run test  # Frontend unit tests
+cd frontend && npm run test:e2e  # E2E tests with Playwright
+cd frontend && npm run test:quality  # Type checking, linting, dead code
 
-# Linting & Formatting
-ruff check .
-ruff format .
-mypy app/
+# Code Quality
+uv run test-lint             # Ruff linting
+uv run test-format           # Ruff formatting
+uv run test-typecheck        # Type checking with mypy
 
 # Environment Setup
-./bootstrap.sh          # Complete setup
+./setup-development.sh       # Interactive setup script (student-friendly)
 # Required: OPENAI_API_KEY, ANTHROPIC_API_KEY (optional)
+# Manages k3d cluster, secrets, and dependencies
 ```
 
 ---
@@ -172,37 +210,50 @@ mypy app/
 
 ```
 app/                    # FastAPI backend
-  api/v1/              # API routes
-  services/            # Business logic (KubernetesService, RedisService)
-  models/              # SQLModel database models
+  api/v1/              # API routes (auth, runs, sessions, admin_messaging, agent_outputs)
+  core/                # Core services (config, database, dependencies, logging)
+  middleware/          # Custom middleware (development auth bypass, rate limiting)
+  models/              # SQLModel database models (run, session, user, provider_key)
+  schemas/             # Pydantic schemas (auth, common, runs, session, tasks)
+  services/            # Business logic services
+  tasks/               # Background tasks (model sync)
+  utils/               # Utilities (github, openapi)
   
-frontend/              # Next.js 15 frontend
-  app/                 # App Router pages
-  components/          # React components
-  hooks/               # Custom React hooks
+frontend/              # Next.js 15 frontend (new simplified structure)
+  app/                 # App Router pages (main page, session pages, test pages)
+  components/          # React components (ui/, agent-output-viewer, theme-provider)
+  hooks/               # Custom React hooks (use-agent-outputs, use-tasks, use-toast)
+  lib/                 # Utilities (data, utils)
   
-agent/                 # AI agent container code (modular structure in progress)
-  main.py              # Agent entrypoint (monolithic implementation)
+frontend-old/          # Legacy frontend (complex multi-agent UI)
+  
+agent/                 # AI agent container code
+  main.py              # Agent entrypoint with AIdeatorAgent class
+  main_wrapper.py      # Async wrapper for container execution
   analyzers/           # Codebase analysis modules
   config.py           # Configuration management
-  providers/          # LLM provider implementations (Claude CLI, LiteLLM)
-  services/           # Core services (logging, Redis, repository)
+  providers/          # LLM provider implementations
+  services/           # Core services (database, logging, redis, repository)
   utils/              # Utility functions
   
 deploy/               # Kubernetes deployment
-  charts/aideator/    # Helm chart
-  values/             # Environment configs
+  charts/aideator/    # Helm chart with comprehensive values
+  k3d/                # k3d cluster configuration
+  secrets/            # Secret templates
+  values/             # Environment-specific configs
   
-k8s/                  # Kubernetes templates
-  jobs/               # Job YAML templates
-  configmaps/         # ConfigMap templates
-
-_docs/                # Project documentation
-docs/                 # Implementation notes
-prompts/              # AI prompt templates
+k8s/                  # Simple Kubernetes templates (student-friendly)
+  api.yaml            # API deployment
+  database.yaml       # PostgreSQL StatefulSet
+  redis.yaml          # Redis deployment
+  litellm.yaml        # LiteLLM gateway
+  rbac.yaml           # RBAC for agent jobs
+  
+alembic/              # Database migrations (11 migrations implemented)
 scripts/              # Database and testing scripts
-tests/                # Backend tests
-alembic/              # Database migrations (setup in progress)
+tests/                # Comprehensive backend test suite
+_docs/                # Architecture documentation
+docs/                 # Implementation notes
 ```
 
 ---
@@ -210,10 +261,13 @@ alembic/              # Database migrations (setup in progress)
 ## 🗄️ Data Architecture
 
 ### Database Tables
-1. **runs** - Agent execution runs (status, config, timestamps)
+1. **runs** - Agent execution runs (status, config, timestamps, user info, task_status)
 2. **agent_outputs** - Streamed agent outputs per variation (PRIMARY LOGGING TABLE)
-3. **users** - User accounts (optional, for API keys)
-4. **api_keys** - API authentication tokens
+3. **sessions** - User conversation sessions with persistent state
+4. **users** - User accounts with authentication
+5. **provider_keys** - Encrypted API keys for LLM providers (with encryption service)
+6. **model_definitions** - Available LLM models and their configurations
+7. **model_variants** - Model variant configurations linked to definitions
 
 ### Agent Logging Architecture
 - **Primary Table**: `agent_outputs` - All agent outputs are logged here
@@ -222,10 +276,11 @@ alembic/              # Database migrations (setup in progress)
 - **Agent Service**: `DatabaseService` class handles all database operations
 
 ### Key Features
-- **Kubernetes Jobs**: Each agent runs as an isolated Job with TTL
-- **Database Streaming**: Real-time output via database polling → SSE
-- **Multi-Agent Grid**: Frontend displays 1-5 agents simultaneously
-- **Local Development**: Tilt orchestrates k3d cluster + local registry
+- **Kubernetes Jobs**: Each agent runs as an isolated Job with resource limits and TTL
+- **WebSocket Streaming**: Real-time output via WebSocket connections with auto-reconnect
+- **Database Persistence**: All agent outputs persisted to PostgreSQL for replay/analysis
+- **Multi-Agent Comparison**: Frontend displays up to 6 agents in tabbed interface
+- **Local Development**: Tilt orchestrates k3d cluster with hot-reload and local registry
 
 ---
 
@@ -281,6 +336,9 @@ timeout 20 wscat -c ws://localhost:8000/ws/runs/${RUN_ID}
   - Frontend: http://localhost:3000
   - API: http://localhost:8000
   - API Docs: http://localhost:8000/docs
+  - LiteLLM Gateway: http://localhost:4000
+  - Redis: localhost:6379
+  - PostgreSQL: localhost:5432
   - Tilt UI: http://localhost:10350
 
 ---
@@ -319,13 +377,39 @@ When making changes, check if these need updates:
 - [ ] Run E2E tests with multi-agent scenarios
 
 ### Design System Changes
-- [ ] Update DESIGN-SYSTEM.md documentation
+- [ ] Update frontend/DESIGN-SYSTEM.md documentation
 - [ ] Ensure Tailwind classes are complete (no interpolation)
 - [ ] Verify component follows CVA pattern
 - [ ] Test in both light and dark modes
 - [ ] Check responsive breakpoints
 - [ ] Update component examples if needed
 - [ ] Verify accessibility compliance
+
+---
+
+## 📚 Development Setup Documentation
+
+### New Developer Onboarding
+- **Quick Start**: See `DEVELOPMENT-SETUP.md` for student-friendly setup
+- **Feature Flags**: See `FEATURE-FLAGS.md` for understanding the flag system
+- **Environment Files**: Use `.env.local` (takes precedence over `.env`)
+- **Setup Script**: Run `./setup-development.sh` for interactive configuration
+
+### Development vs Production
+- **Development**: Uses feature flags for simplified setup (global API keys, bypassed auth complexity)
+- **Production**: Full security with per-user encrypted keys and complete authentication
+- **Migration**: Change flags in environment to switch between modes
+
+### Key Files for Development Setup
+- `.env.example` - Template with all configuration options
+- `.env.local` - Your development configuration (gitignored)
+- `setup-development.sh` - Interactive setup script
+- `app/middleware/development.py` - Development authentication bypass
+- `app/services/global_key_service.py` - Global API key management
+- `DEVELOPMENT-SETUP.md` - Complete setup documentation
+- `FEATURE-FLAGS.md` - Feature flag system documentation
+- `QUICK-START-GUIDE.md` - Zero to running in 10 minutes
+- `VERIFICATION-CHECKLIST.md` - How to verify everything works
 
 ---
 
@@ -378,7 +462,7 @@ className={`card ${streaming ? 'streaming' : ''} ${selected ? 'selected' : ''}`}
 ```
 
 ### Design System Compliance
-- Read `interface-codex/DESIGN-SYSTEM.md` before creating new components
+- Read `frontend/DESIGN-SYSTEM.md` before creating new components
 - Use defined color palette and spacing scale
 - Follow component composition patterns
 - Maintain consistency with existing UI components
@@ -392,28 +476,32 @@ kubectl create secret generic openai-secret \
 
 ### Streaming Pipeline Architecture (Database-based)
 
-**Recent Evolution**: The project has moved from Redis pub/sub to a PostgreSQL-based streaming architecture.
+**Current Architecture**: Hybrid PostgreSQL + WebSocket streaming for reliability and real-time capabilities.
 
 **Current Flow**:
 1. **Agent Side**:
    - Writes outputs to `agent_outputs` table via `DatabaseService`
-   - Logs all agent activity (stdout, stderr, logging, status)
+   - Logs all agent activity (stdout, stderr, logging, status, summary, diffs, addinfo)
    - Falls back to stdout if database unavailable
+   - Uses Redis for real-time message queuing
 
 2. **Backend Side**:
-
-   - No kubectl log streaming (removed for simplification)
+   - **WebSocket Handler**: Manages real-time connections at `/ws/runs/{run_id}`
+   - **Database Polling**: Fallback mechanism for message delivery
+   - **Message Routing**: Routes by `variation_id` to appropriate WebSocket clients
+   - **Auto-reconnect**: Handles client disconnections gracefully
 
 3. **Frontend Side**:
    - **WebSocket Client**: Connects to `/ws/runs/{run_id}` for real-time streaming
-   - **Tabbed Interface**: Multiple agent variations displayed in tabs (not side-by-side)
+   - **Tabbed Interface**: Multiple agent variations displayed in tabs with agent color coding
    - **Message Handling**: Routes messages by `variation_id` to appropriate tab
    - **Reconnection Logic**: Automatic reconnect with message ID tracking for resume
+   - **Responsive Design**: Adapts from 1-6 agent tabs based on screen size
 
 **Database Tables**:
-- **`runs`**: Run metadata, status, configuration, user info
-- **`agent_outputs`**: Persistent storage of all agent messages with timestamps
-- **Redis Streams**: Temporary real-time message passing (TTL-based cleanup)
+- **`runs`**: Run metadata, status, configuration, user info, timestamps
+- **`agent_outputs`**: Persistent storage of all agent messages with output_type classification
+- **Redis**: Temporary real-time message passing and pub/sub for WebSocket delivery
 
 ### Common Pitfalls
 - Always use timeout when testing WebSocket endpoints

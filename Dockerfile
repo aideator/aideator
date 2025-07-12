@@ -55,6 +55,7 @@ USER root
 # Install runtime dependencies
 RUN apk --no-cache --update upgrade && apk --no-cache add \
     python-3.12 \
+    py3.12-pip \
     bash \
     git \
     ca-certificates \
@@ -69,6 +70,9 @@ RUN chown nonroot:nonroot /app
 COPY --from=python-builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 ENV PYTHONPATH="/app:$PYTHONPATH"
+
+# Install uv in the final container for student-friendly development
+RUN /opt/venv/bin/pip install -Iv "uv==0.7.10"
 
 # Copy kubectl
 COPY --from=kubectl-builder /kubectl /usr/local/bin/kubectl

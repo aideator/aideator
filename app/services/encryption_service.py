@@ -22,6 +22,16 @@ class EncryptionService:
         Args:
             master_key: Base64-encoded master key. If not provided, uses ENCRYPTION_KEY env var.
         """
+        from app.core.config import get_settings
+        settings = get_settings()
+        
+        # In development mode, create a dummy cipher if encryption is disabled
+        if not settings.require_per_user_keys or settings.simple_dev_mode:
+            # Create a simple cipher for development (not actually secure)
+            self._cipher_suite = self._create_dev_cipher()
+            self._dev_mode = True
+            return
+            
         if master_key is None:
             master_key = os.getenv("ENCRYPTION_KEY")
             if not master_key:
@@ -29,6 +39,7 @@ class EncryptionService:
 
         # Derive encryption key from master key using PBKDF2
         self._cipher_suite = self._create_cipher(master_key)
+        self._dev_mode = False
 
     def _create_cipher(self, master_key: str) -> Fernet:
         """Create Fernet cipher from master key.
@@ -49,6 +60,12 @@ class EncryptionService:
         # Derive key from master key
         key = base64.urlsafe_b64encode(kdf.derive(master_key.encode()))
         return Fernet(key)
+    
+    def _create_dev_cipher(self) -> Fernet:
+        """Create a simple cipher for development mode."""
+        # Use a fixed key for development (not secure, but consistent)
+        dev_key = base64.urlsafe_b64encode(b"dev-key-for-aideator-development")
+        return Fernet(dev_key)
 
     def encrypt_api_key(self, api_key: str) -> tuple[str, str]:
         """Encrypt an API key and return encrypted value and hint.

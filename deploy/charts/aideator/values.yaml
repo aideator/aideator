@@ -32,10 +32,17 @@ ingress:
 
 # FastAPI configuration
 config:
-  debug: false
+  debug: true
   logLevel: INFO
   maxVariations: 5
   apiV1Prefix: /api/v1
+  
+  # Student Development Mode - Ease of Development over Security
+  simpleDevMode: true
+  requireApiKeysForAgents: false
+  requirePerUserKeys: false
+  enableKubernetesSecrets: false
+  autoCreateTestUser: true
 
 # Agent configuration
 agents:

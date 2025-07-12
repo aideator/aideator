@@ -1,6 +1,5 @@
-# Tiltfile for AIdeator development
-load('ext://namespace', 'namespace_create', 'namespace_inject')
-load('ext://helm_resource', 'helm_resource', 'helm_repo')
+# Tiltfile for AIdeator development - Student-Friendly Version
+load('ext://namespace', 'namespace_create')
 load('ext://dotenv', 'dotenv')
 
 # Load environment variables
@@ -38,37 +37,21 @@ docker_build(
     ],
 )
 
-# Agent image removed from Tilt - will be built separately for dynamic job spawning
-
-# Ensure cluster is ready before creating secrets
+# Ensure cluster is ready
 local_resource(
     'cluster-ready',
     cmd='kubectl cluster-info',
     labels=['infrastructure'],
 )
 
-# Secrets management
-local_resource(
-    'create-secrets',
-    cmd='./scripts/manage-secrets.sh create',
-    deps=['.env', 'scripts/manage-secrets.sh'],
-    resource_deps=['cluster-ready'],
-    labels=['infrastructure'],
-)
+# Deploy simple Kubernetes resources - No Helm!
+k8s_yaml(['k8s/database.yaml', 'k8s/redis.yaml', 'k8s/litellm.yaml', 'k8s/api.yaml', 'k8s/rbac.yaml'])
 
-# Generate and apply Helm chart YAML  
-yaml = helm(
-    'deploy/charts/aideator',
-    namespace='aideator',
-    values=['deploy/values/local.yaml']
-)
-k8s_yaml(yaml)
-
-# Configure individual resources with images and port forwards
-k8s_resource('aideator-fastapi', port_forwards='8000:8000', labels=['backend'], new_name='api')
-k8s_resource('chart-aideator-postgresql', port_forwards='5432:5432', labels=['database'], new_name='database')
-k8s_resource('chart-redis-master', port_forwards='6379:6379', labels=['cache'], new_name='redis')
-k8s_resource('chart-aideator-litellm', port_forwards='4000:4000', labels=['ai-gateway'], new_name='litellm')
+# Configure port forwards - Simple and Predictable
+k8s_resource('aideator-api', port_forwards='8000:8000', labels=['backend'])
+k8s_resource('aideator-database', port_forwards='5432:5432', labels=['database'])
+k8s_resource('aideator-redis', port_forwards='6379:6379', labels=['cache'])
+k8s_resource('aideator-litellm', port_forwards='4000:4000', labels=['ai-gateway'])
 
 # Frontend development (runs locally)
 local_resource(
@@ -87,71 +70,33 @@ local_resource(
     labels=['frontend'],
 )
 
-# Development job template for testing agents
-# k8s_yaml('''
-# apiVersion: batch/v1
-# kind: Job
-# metadata:
-#   name: agent-job-dev-test
-#   namespace: aideator
-#   labels:
-#     app: aideator-agent
-#     type: dev-test
-# spec:
-#   ttlSecondsAfterFinished: 300
-#   backoffLimit: 0
-#   template:
-#     metadata:
-#       labels:
-#         app: aideator-agent
-#         type: dev-test
-#     spec:
-#       serviceAccountName: aideator-agent
-#       restartPolicy: Never
-#       containers:
-#       - name: agent
-#         image: aideator-agent:dev
-#         imagePullPolicy: IfNotPresent
-#         env:
-#         - name: RUN_ID
-#           value: "dev-test-run"
-#         - name: VARIATION_ID
-#           value: "dev-test-variation"
-#         - name: REDIS_HOST
-#           value: "aideator-redis"
-#         - name: REDIS_PORT
-#           value: "6379"
-#         - name: OPENAI_API_KEY
-#           valueFrom:
-#             secretKeyRef:
-#               name: openai-secret
-#               key: api-key
-#         resources:
-#           requests:
-#             memory: "512Mi"
-#             cpu: "500m"
-#           limits:
-#             memory: "2Gi"
-#             cpu: "2000m"
-# ''')
-
-# k8s_resource(
-#     'agent-job-dev-test',
-#     labels=['dev-tools'],
-#     auto_init=False,
-#     trigger_mode=TRIGGER_MODE_MANUAL,
-# )
+# Database migration (run once after database is ready)
+local_resource(
+    'database-migrate',
+    cmd='DATABASE_URL="postgresql+asyncpg://aideator:aideator123@localhost:5432/aideator" uv run alembic upgrade head',
+    deps=['alembic/'],
+    resource_deps=['aideator-database'],
+    labels=['database'],
+    auto_init=False,
+    trigger_mode=TRIGGER_MODE_MANUAL,
+)
 
 # Print helpful information
 print("""
 ✨ AIdeator Development Environment ✨
 
-Frontend: http://localhost:{}
-API: http://localhost:8000
-API Docs: http://localhost:8000/docs
+🎯 Student-Friendly Setup - No Helm Complexity!
 
-To create a test agent run:
-  tilt trigger agent-job-dev-test
+🌐 Services:
+  Frontend:  http://localhost:3000
+  API:       http://localhost:8000
+  API Docs:  http://localhost:8000/docs
+  Redis:     localhost:6379
+  LiteLLM:   http://localhost:4000
+  Database:  localhost:5432
 
-Wise the Force be with you. 🧘
+🔧 Commands:
+  Run migration: tilt trigger database-migrate
+  
+🧘 Wise the Force be with you - Simple development, this is!
 """)

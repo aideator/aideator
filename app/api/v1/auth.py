@@ -377,7 +377,7 @@ async def delete_api_key(
 @router.get("/dev/test-login", include_in_schema=False)
 async def dev_test_login(
     db: AsyncSession = Depends(get_session),
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """
     Development endpoint for automatic test user login.
     WARNING: This endpoint is only available in development mode.
