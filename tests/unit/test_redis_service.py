@@ -8,7 +8,10 @@ import pytest
 import redis.asyncio as redis
 from redis.exceptions import ConnectionError, ResponseError
 
+from app.core.config import get_settings
 from app.services.redis_service import RedisService
+
+settings = get_settings()
 
 
 class TestRedisService:
@@ -34,7 +37,10 @@ class TestRedisService:
 
     def test_init(self, service):
         """Test service initialization."""
-        assert service.redis_url == "redis://localhost:6379/0"
+        # In test environment, conftest.py sets REDIS_URL to redis://localhost:6379/1
+        # But if settings.redis_url is None, it defaults to redis://localhost:6379/0
+        expected_url = settings.redis_url or "redis://localhost:6379/0"
+        assert service.redis_url == expected_url
         assert service._client is None
 
     @pytest.mark.asyncio
