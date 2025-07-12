@@ -243,6 +243,20 @@ class RunListItem(BaseModel):
     created_at: datetime
     completed_at: datetime | None = None
 
+    @classmethod
+    def model_validate(cls, obj):
+        """Custom validation to map variations to model_count."""
+        if hasattr(obj, "variations") and not hasattr(obj, "model_count"):
+            # Convert Run model to dict and map variations to model_count
+            if hasattr(obj, "__dict__"):
+                data = {**obj.__dict__}
+                data["model_count"] = data.get("variations", 0)
+            else:
+                data = dict(obj)
+                data["model_count"] = data.get("variations", 0)
+            return super().model_validate(data)
+        return super().model_validate(obj)
+
     model_config = {
         "from_attributes": True,
         "protected_namespaces": (),  # Allow model_ prefixed fields

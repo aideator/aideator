@@ -225,11 +225,35 @@ class ModelDiscoveryService:
         ]:
             name = name.replace(prefix, "")
 
+        # Special handling for known patterns
+        if name.startswith("gpt-"):
+            # Keep GPT models hyphenated (e.g., GPT-4, GPT-3.5)
+            if "turbo" in name:
+                return name.upper().replace("GPT-", "GPT-").replace("-TURBO", " Turbo")
+            return name.upper().replace("GPT-", "GPT-")
+
+        # Handle other special cases
+        special_cases = {
+            "claude-3-opus-20240229": "Claude 3 Opus",
+            "claude-3-opus": "Claude 3 Opus",
+            "claude-3-sonnet": "Claude 3 Sonnet",
+            "claude-3-haiku": "Claude 3 Haiku",
+            "llama-2-70b-chat": "Llama 2 70B Chat",
+            "text-embedding-ada-002": "Text Embedding Ada 002",
+        }
+
+        if name in special_cases:
+            return special_cases[name]
+
         # Capitalize and format
         parts = name.replace("-", " ").replace("_", " ").split()
         formatted_parts = []
         for part in parts:
             if part.lower() in ["gpt", "ai", "api", "llm"]:
+                formatted_parts.append(part.upper())
+            elif part.lower() in ["ada", "turbo", "opus", "sonnet", "haiku"]:
+                formatted_parts.append(part.capitalize())
+            elif part.endswith("b") and part[:-1].isdigit():  # e.g., "70b"
                 formatted_parts.append(part.upper())
             else:
                 formatted_parts.append(part.capitalize())

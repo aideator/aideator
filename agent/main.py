@@ -24,8 +24,6 @@ import git
 from litellm import acompletion
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from agent.services.database_service import DatabaseService
-
 # Constants
 MIN_API_KEY_LENGTH = 10
 MIN_GENERIC_KEY_LENGTH = 5
@@ -78,38 +76,47 @@ class AIdeatorAgent:
         # Check available API keys for graceful error handling
         self.available_api_keys = self._check_available_api_keys()
 
-        # Redis setup (optional - currently using database for messaging)
+        # Redis setup (required for streaming)
         self.redis_url = os.getenv("REDIS_URL")
-        # if not self.redis_url:
-        #     print(json.dumps({
-        #         "timestamp": datetime.utcnow().isoformat(),
-        #         "run_id": self.run_id,
-        #         "variation_id": self.variation_id,
-        #         "level": "ERROR",
-        #         "message": "REDIS_URL environment variable not set"
-        #     }), flush=True)
-        #     raise RuntimeError("REDIS_URL is required for agent operation")
+        if not self.redis_url:
+            print(
+                json.dumps(
+                    {
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "run_id": self.run_id,
+                        "variation_id": self.variation_id,
+                        "level": "ERROR",
+                        "message": "REDIS_URL environment variable not set",
+                    }
+                ),
+                flush=True,
+            )
+            raise RuntimeError("REDIS_URL is required for agent operation")
 
         self.redis_client = None  # Will be initialized in async context
-        self.db_service = DatabaseService(self.run_id, int(self.variation_id))
 
     async def _init_redis(self):
         """Initialize Redis connection in async context."""
-        # Currently unused - using database for messaging
-        # try:
-        #     self.log(f"[REDIS-CONNECT] Connecting to Redis at: {self.redis_url}", "INFO")
-        #     self.redis_client = redis.from_url(self.redis_url, decode_responses=True)
-        #     self.log("[REDIS-CONNECT] Redis client created, testing connection...", "DEBUG")
-        #     await self.redis_client.ping()
-        #     self.log("[REDIS-CONNECT] Redis ping successful", "DEBUG")
-        #     # Test publish to verify permissions
-        #     test_channel = f"run:{self.run_id}:test"
-        #     test_result = await self.redis_client.publish(test_channel, "test")
-        #     self.log(f"[REDIS-CONNECT] Test publish successful, {test_result} subscribers", "DEBUG")
-        #     self.log("Redis connected successfully", "INFO", redis_url=self.redis_url)
-        # except Exception as e:
-        #     self.log(f"[REDIS-CONNECT] Redis connection failed: {e}", "ERROR")
-        #     raise RuntimeError(f"Failed to connect to Redis: {e}")
+        try:
+            import redis.asyncio as redis
+
+            self.redis_client = redis.from_url(self.redis_url, decode_responses=True)
+            await self.redis_client.ping()
+            self.log(f"[REDIS-CONNECT] Connected to Redis at: {self.redis_url}", "INFO")
+
+            # Test stream access
+            test_stream = f"run:{self.run_id}:test"
+            test_id = await self.redis_client.xadd(test_stream, {"test": "connection"})
+            self.log(
+                f"[REDIS-CONNECT] Test stream write successful: {test_id}", "DEBUG"
+            )
+
+            # Clean up test stream
+            await self.redis_client.delete(test_stream)
+
+        except Exception as e:
+            self.log(f"[REDIS-CONNECT] Redis connection failed: {e}", "ERROR")
+            raise RuntimeError(f"Failed to connect to Redis: {e}")
 
     def _setup_file_logging(self):
         """Setup file-only logging to avoid stdout pollution."""
@@ -191,7 +198,7 @@ class AIdeatorAgent:
             return "gemini"
         if model_lower.startswith(("mistral", "mixtral")):
             return "mistral"
-        if model_lower.startswith("cohere"):
+        if model_lower.startswith(("cohere", "command")):
             return "cohere"
         if model_lower.startswith("groq"):
             return "groq"
@@ -322,6 +329,41 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
         """Log progress updates for user visibility."""
         self.log(f"⚡ {message}", "INFO", detail=detail)
 
+    async def log_async(self, message: str, level: str = "INFO", **kwargs):
+        """Async structured logging with Redis Streams publish."""
+        log_entry = {
+            "timestamp": datetime.now(UTC).isoformat(),
+            "run_id": self.run_id,
+            "variation_id": self.variation_id,
+            "level": level,
+            "message": message,
+            **kwargs,
+        }
+
+        # Log to file first
+        self.file_logger.log(
+            getattr(logging, level, logging.INFO),
+            f"{message} | {json.dumps(kwargs) if kwargs else ''}",
+        )
+
+        # Publish to Redis Streams
+        try:
+            if self.redis_client:
+                stream_name = f"run:{self.run_id}:stdout"
+                fields = {
+                    "variation_id": self.variation_id,
+                    "content": json.dumps(log_entry),
+                    "level": level,
+                    "timestamp": log_entry["timestamp"],
+                }
+                await self.redis_client.xadd(stream_name, fields)
+        except Exception as e:
+            self.file_logger.error(f"Failed to publish log to Redis Streams: {e}")
+
+        # Also print to stdout in debug mode
+        if os.getenv("DEBUG") == "true":
+            print(json.dumps(log_entry), flush=True)
+
     async def publish_output(self, content: str):
         """Publish agent output to database (was Redis)."""
         # Currently unused - using database for messaging
@@ -345,15 +387,31 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
         #     self.log(f"[REDIS-PUB] Failed to publish output to Redis: {e}", "ERROR")
         #     self.file_logger.warning(f"Failed to publish output to Redis: {e}")
 
-        # Use database service instead
+        # Use Redis Streams as primary
         try:
-            success = await self.db_service.publish_output(content)
-            if success:
-                self.log("[DB-PUB] Published output to database", "DEBUG")
-            else:
-                self.log("[DB-PUB] Failed to publish output to database", "WARNING")
+            if not self.redis_client:
+                self.log("[REDIS-STREAMS] Redis client not initialized", "ERROR")
+                return
+
+            stream_name = f"run:{self.run_id}:llm"
+            fields = {
+                "variation_id": self.variation_id,
+                "content": content,
+                "timestamp": datetime.now(UTC).isoformat(),
+                "metadata": json.dumps({"content_length": len(content)}),
+            }
+
+            message_id = await self.redis_client.xadd(stream_name, fields)
+            self.log(
+                f"[REDIS-STREAMS] Published LLM output to stream: {stream_name}, ID: {message_id}",
+                "DEBUG",
+            )
+
         except Exception as e:
-            self.log(f"[DB-PUB] Error publishing to database: {e}", "ERROR")
+            self.log(
+                f"[REDIS-STREAMS] Failed to publish output to Redis Streams: {e}",
+                "ERROR",
+            )
 
     async def publish_status(self, status: str, metadata: dict[str, Any] | None = None):
         """Publish status update to database (was Redis)."""
@@ -373,15 +431,25 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
         # except Exception as e:
         #     self.file_logger.warning(f"Failed to publish status to Redis: {e}")
 
-        # Use database service instead
+        # Use Redis Streams as primary
         try:
-            success = await self.db_service.publish_status(status, metadata)
-            if success:
-                self.log(f"[DB-PUB] Published status '{status}' to database", "DEBUG")
-            else:
-                self.log("[DB-PUB] Failed to publish status to database", "WARNING")
+            if self.redis_client:
+                stream_name = f"run:{self.run_id}:status"
+                fields = {
+                    "status": status,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "metadata": json.dumps(metadata or {}),
+                }
+                message_id = await self.redis_client.xadd(stream_name, fields)
+                self.log(
+                    f"[REDIS-STREAMS] Published status '{status}' to stream: {message_id}",
+                    "DEBUG",
+                )
         except Exception as e:
-            self.log(f"[DB-PUB] Error publishing status to database: {e}", "ERROR")
+            self.log(
+                f"[REDIS-STREAMS] Failed to publish status to Redis Streams: {e}",
+                "ERROR",
+            )
 
     def log_error(self, error: str, exception: Exception | None = None):
         """Log errors with details."""
@@ -395,8 +463,11 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
         """Main agent execution flow."""
         self.log("🚀 Starting AIdeator Agent", "INFO", config=self.config)
 
+        # Initialize Redis connection
+        await self._init_redis()
+
         # Log available API keys for debugging
-        self.log(
+        await self.log_async(
             "🔑 API Key availability check",
             "INFO",
             available_keys=self.available_api_keys,

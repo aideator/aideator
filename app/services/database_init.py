@@ -14,7 +14,6 @@ from app.models.provider import ModelDefinition
 from app.models.provider_key import ProviderAPIKeyDB
 from app.models.user import APIKey, User
 from app.services.model_catalog import model_catalog
-from app.services.provider_key_service import ProviderKeyService
 
 logger = logging.getLogger(__name__)
 
@@ -254,9 +253,6 @@ class DatabaseInitService:
             return
 
         try:
-            provider_service = ProviderKeyService()
-            provider_service.db = self.db  # Use same DB session
-
             # Check if OpenAI provider key already exists
             existing_provider_key = self.db.exec(
                 select(ProviderAPIKeyDB).where(
@@ -267,16 +263,34 @@ class DatabaseInitService:
             ).first()
 
             if not existing_provider_key:
-                created_key = provider_service.create_provider_key(
-                    user_id=user_id,
-                    provider_type="openai",
-                    name="Development OpenAI Key",
-                    api_key=settings.openai_api_key,
-                    metadata={"description": "Auto-created from .env for development"},
+                # Create the provider key manually since we can't use async here
+                from app.services.encryption_service import get_encryption_service
+
+                encryption_service = get_encryption_service()
+                encrypted_key, key_hint = encryption_service.encrypt_api_key(
+                    settings.openai_api_key
                 )
 
+                key_id = f"provkey_{secrets.token_urlsafe(12)}"
+
+                provider_key = ProviderAPIKeyDB(
+                    id=key_id,
+                    user_id=user_id,
+                    provider="openai",
+                    model_name=None,
+                    encrypted_key=encrypted_key,
+                    key_hint=key_hint,
+                    name="Development OpenAI Key",
+                    extra_metadata={
+                        "description": "Auto-created from .env for development"
+                    },
+                )
+
+                self.db.add(provider_key)
+                # Note: commit will be called by the parent method
+
                 logger.info(
-                    f"Created OpenAI provider key for user {user_id}: {created_key.key_hint}"
+                    f"Created OpenAI provider key for user {user_id}: {key_hint}"
                 )
             else:
                 logger.info(f"OpenAI provider key already exists for user {user_id}")

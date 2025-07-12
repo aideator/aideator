@@ -22,12 +22,20 @@ if env_file.exists():
 if not os.getenv("ENCRYPTION_KEY"):
     os.environ["ENCRYPTION_KEY"] = "test-encryption-key-32-chars-min"
 
+
+# Global fixture to set REDIS_URL for all agent tests
+@pytest.fixture(scope="session", autouse=True)
+def redis_url_env():
+    """Set Redis URL environment variable for all tests."""
+    if not os.getenv("REDIS_URL"):
+        os.environ["REDIS_URL"] = "redis://localhost:6379/1"
+
+
 from app.core.config import Settings, get_settings
 from app.core.database import get_session
 from app.main import app
 from app.models.run import Run
 from app.models.user import APIKey, User
-from app.services.sse_manager import SSEManager
 
 
 # Override settings for testing
@@ -35,7 +43,7 @@ from app.services.sse_manager import SSEManager
 def test_settings() -> Settings:
     """Test-specific settings."""
     return Settings(
-        database_url="postgresql+asyncpg://test:test@localhost:5432/test_aideator",
+        database_url="sqlite:///test_aideator.db",
         secret_key="test-secret-key-for-testing-only-32chars",
         openai_api_key="sk-test-openai-key",
         anthropic_api_key="sk-ant-test-key",
@@ -116,12 +124,6 @@ async def client(
 def mock_kubernetes_service():
     """Mock Kubernetes service for testing."""
     return MockKubernetesService()
-
-
-@pytest.fixture
-def sse_manager():
-    """SSE manager instance for testing."""
-    return SSEManager()
 
 
 # Mock implementations
@@ -258,6 +260,6 @@ def api_key_headers():
     return _api_key_headers
 
 
-# Import embedded PostgreSQL fixtures
-# This imports all the fixtures from conftest_embedded_postgres.py
-pytest_plugins = ["tests.conftest_embedded_postgres"]
+# Import SQLite fixtures for testing
+# This imports all the fixtures from conftest_sqlite.py
+pytest_plugins = ["tests.conftest_sqlite"]

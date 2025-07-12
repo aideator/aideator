@@ -435,11 +435,9 @@ class TestServiceImports:
         from app.services.agent_orchestrator import AgentOrchestrator
         from app.services.kubernetes_service import KubernetesService
         from app.services.model_catalog import model_catalog
-        from app.services.sse_manager import SSEManager
 
         assert AgentOrchestrator is not None
         assert KubernetesService is not None
-        assert SSEManager is not None
         assert model_catalog is not None
 
     def test_api_router_imports(self):
@@ -451,7 +449,6 @@ class TestServiceImports:
         from app.api.v1.preferences import router as preferences_router
         from app.api.v1.runs import router as runs_router
         from app.api.v1.sessions import router as sessions_router
-        from app.api.v1.streams import router as streams_router
 
         assert auth_router is not None
         assert runs_router is not None
@@ -460,7 +457,6 @@ class TestServiceImports:
         assert sessions_router is not None
         assert preferences_router is not None
         assert credentials_router is not None
-        assert streams_router is not None
 
 
 if __name__ == "__main__":

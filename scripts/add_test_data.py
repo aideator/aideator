@@ -215,7 +215,7 @@ async def add_test_data():
                 "📊 Documenting data models and relationships",
             ]
 
-            for i, msg in enumerate(ongoing_messages[: random.randint(4, 7)]):
+            for i, msg in enumerate(ongoing_messages[: random.randint(4, 7)]):  # noqa: S311
                 outputs.append(
                     AgentOutput(
                         run_id="test-run-002",

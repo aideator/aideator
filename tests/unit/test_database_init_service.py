@@ -140,17 +140,25 @@ class TestDatabaseInitService:
             mock_settings.return_value.openai_api_key = "sk-test-key"
 
             with patch(
-                "app.services.database_init.ProviderKeyService"
-            ) as mock_service_class:
-                mock_service = Mock()
-                mock_service_class.return_value = mock_service
-                mock_service.create_provider_key = Mock()
+                "app.services.encryption_service.get_encryption_service"
+            ) as mock_get_enc:
+                mock_encryption = Mock()
+                mock_encryption.encrypt_api_key.return_value = (
+                    "encrypted_key",
+                    "sk-...test",
+                )
+                mock_get_enc.return_value = mock_encryption
 
                 # Call the method
                 db_init_service._create_provider_key_for_user("user_123")
 
-                # Verify service was called
-                mock_service.create_provider_key.assert_called_once()
+                # Verify encryption service was called
+                mock_encryption.encrypt_api_key.assert_called_once_with("sk-test-key")
+
+                # Verify provider key was added to database
+                mock_session.add.assert_called_once()
+                added_obj = mock_session.add.call_args[0][0]
+                assert isinstance(added_obj, ProviderAPIKeyDB)
 
     def test_create_provider_key_for_user_existing_key(
         self, db_init_service, mock_session
@@ -169,18 +177,14 @@ class TestDatabaseInitService:
         mock_result.first.return_value = existing_key
         mock_session.exec.return_value = mock_result
 
-        with patch(
-            "app.services.database_init.ProviderKeyService"
-        ) as mock_service_class:
-            mock_service = Mock()
-            mock_service_class.return_value = mock_service
-            mock_service.create_provider_key = Mock()
+        with patch("app.services.database_init.get_settings") as mock_settings:
+            mock_settings.return_value.openai_api_key = "sk-test-key"
 
             # Call the method
             db_init_service._create_provider_key_for_user("user_123")
 
-            # Verify service was NOT called since key exists
-            mock_service.create_provider_key.assert_not_called()
+            # Verify no new key was added since one already exists
+            mock_session.add.assert_not_called()
 
     def test_initialize_model_catalog(self, db_init_service, mock_session):
         """Test initializing model catalog."""

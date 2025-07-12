@@ -22,8 +22,8 @@ async def drop_all_tables():
         # Get all table names
         result = await conn.execute(
             text("""
-            SELECT tablename 
-            FROM pg_tables 
+            SELECT tablename
+            FROM pg_tables
             WHERE schemaname = 'public'
         """)
         )

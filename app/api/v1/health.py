@@ -108,7 +108,7 @@ async def test_redis() -> dict[str, Any]:
         # Test 2: Publish test
         test_run_id = "test-run-123"
         test_content = "This is a test message"
-        subscribers = await redis_service.publish_agent_output(
+        subscribers = await redis_service.publish_agent_output(  # type: ignore[possibly-unbound-attribute]
             test_run_id, "0", test_content
         )
         result["publish_test"] = True
@@ -118,7 +118,7 @@ async def test_redis() -> dict[str, Any]:
         messages_received = []
 
         async def subscribe_test():
-            async for message in redis_service.subscribe_to_run(test_run_id):
+            async for message in redis_service.subscribe_to_run(test_run_id):  # type: ignore[possibly-unbound-attribute]
                 messages_received.append(message)
                 if len(messages_received) >= 1:
                     break
@@ -126,7 +126,7 @@ async def test_redis() -> dict[str, Any]:
         # Publish after subscribing
         async def publish_after_delay():
             await asyncio.sleep(0.5)
-            await redis_service.publish_agent_output(
+            await redis_service.publish_agent_output(  # type: ignore[possibly-unbound-attribute]
                 test_run_id, "1", "Test message for subscriber"
             )
 

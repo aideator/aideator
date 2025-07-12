@@ -8,8 +8,6 @@ import json
 import os
 import subprocess
 import tempfile
-from collections.abc import AsyncGenerator
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -95,28 +93,6 @@ class KubernetesService:
             # Clean up temporary file
             os.unlink(job_file)
 
-    async def stream_job_logs(
-        self,
-        job_name: str,
-        run_id: str,
-        variation_id: int | None = None,
-    ) -> AsyncGenerator[str, None]:
-        """Stream logs from a Kubernetes job."""
-        # First, wait for pods to be created
-        await self._wait_for_job_pods(job_name)
-
-        # Get pods for this job
-        pods = await self._get_job_pods(job_name)
-
-        if not pods:
-            logger.warning(f"No pods found for job {job_name}")
-            return
-
-        # Stream logs from all pods
-        for pod in pods:
-            async for log_line in self._stream_pod_logs(pod, run_id, variation_id):
-                yield log_line
-
     async def delete_job(self, job_name: str) -> bool:
         """Delete a Kubernetes job."""
         cmd = [
@@ -140,6 +116,53 @@ class KubernetesService:
         )
         logger.error(f"Failed to delete job {job_name}: {stderr_str}")
         return False
+
+    async def cancel_run(self, run_id: str) -> bool:
+        """Cancel all agent jobs for a run."""
+        logger.info(f"Cancelling run {run_id}")
+
+        # Get all jobs for this run
+        cmd = [
+            "kubectl",
+            "get",
+            "jobs",
+            "--namespace",
+            self.namespace,
+            "-l",
+            f"run-id={run_id}",
+            "-o",
+            "json",
+        ]
+        result = await self._run_kubectl_command(cmd)
+
+        if result.returncode != 0:
+            logger.error(f"Failed to get jobs for run {run_id}")
+            return False
+
+        try:
+            jobs_data = json.loads(result.stdout)
+            job_names = [job["metadata"]["name"] for job in jobs_data["items"]]
+
+            if not job_names:
+                logger.info(f"No jobs found for run {run_id}")
+                return True
+
+            # Delete all jobs for this run
+            success = True
+            for job_name in job_names:
+                if not await self.delete_job(job_name):
+                    success = False
+
+            if success:
+                logger.info(f"Successfully cancelled run {run_id}")
+            else:
+                logger.error(f"Failed to cancel some jobs for run {run_id}")
+
+            return success
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse kubectl output for run {run_id}: {e}")
+            return False
 
     async def get_job_status(self, job_name: str) -> dict[str, Any]:
         """Get the status of a Kubernetes job."""
@@ -249,156 +272,6 @@ class KubernetesService:
         )
         pods = stdout_str.strip().split()
         return [pod for pod in pods if pod]
-
-    async def _stream_pod_logs(
-        self,
-        pod_name: str,
-        run_id: str,
-        variation_id: int | None = None,
-    ) -> AsyncGenerator[str, None]:
-        """Stream logs from a specific pod."""
-        cmd = [
-            "kubectl",
-            "logs",
-            "-f",
-            pod_name,
-            "--namespace",
-            self.namespace,
-            # Removed --tail 0 to get all logs from the beginning
-        ]
-
-        try:
-            process = await asyncio.create_subprocess_exec(
-                cmd[0],
-                *cmd[1:],
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-
-            while True:
-                if process.stdout is None:
-                    break
-                line = await process.stdout.readline()
-                if not line:
-                    break
-
-                log_line = line.decode().rstrip("\n")
-                if log_line:
-                    # Just yield the raw log line - the agent_orchestrator will handle parsing
-                    # Add newline back to preserve original formatting
-                    yield log_line + "\n"
-
-            # Wait for process to complete
-            await process.wait()
-
-        except Exception as e:
-            logger.error(f"Error streaming logs from pod {pod_name}: {e}")
-            error_entry = {
-                "timestamp": datetime.utcnow().isoformat(),
-                "run_id": run_id,
-                "variation_id": variation_id,
-                "pod_name": pod_name,
-                "message": f"Error streaming logs: {e!s}",
-                "type": "error",
-            }
-            yield json.dumps(error_entry)
-
-    async def _stream_pod_logs_to_list(
-        self,
-        pod_name: str,
-        run_id: str,
-        variation_id: int | None = None,
-    ) -> list[dict[str, Any]]:
-        """Stream logs from a pod and return as a list."""
-        logs = []
-        async for log_line in self._stream_pod_logs(pod_name, run_id, variation_id):
-            try:
-                log_entry = json.loads(log_line)
-                logs.append(log_entry)
-            except json.JSONDecodeError:
-                # Handle malformed JSON
-                logs.append(
-                    {
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "run_id": run_id,
-                        "variation_id": variation_id,
-                        "pod_name": pod_name,
-                        "message": log_line,
-                        "type": "raw_output",
-                    }
-                )
-        return logs
-
-    async def stream_raw_debug_logs(
-        self,
-        job_name: str,
-    ) -> AsyncGenerator[str, None]:
-        """Stream raw debug logs from a job for debugging purposes."""
-        # Get the pod name for the job
-        pods = await self._get_job_pods(job_name)
-
-        if not pods:
-            # If no pods found, try to wait for them
-            try:
-                await self._wait_for_job_pods(job_name, timeout=30)
-                pods = await self._get_job_pods(job_name)
-            except RuntimeError:
-                pass
-
-        if not pods:
-            yield f"[DEBUG] No pods found for job {job_name}"
-            return
-
-        # Use the first pod (jobs typically have one pod)
-        pod_name = pods[0]
-        yield f"[DEBUG] Streaming from pod: {pod_name}"
-
-        cmd = [
-            "kubectl",
-            "logs",
-            "-f",
-            pod_name,
-            "--namespace",
-            self.namespace,
-            "--all-containers=true",  # Get logs from all containers
-            "--timestamps=true",  # Include timestamps
-        ]
-
-        try:
-            process = await asyncio.create_subprocess_exec(
-                cmd[0],
-                *cmd[1:],
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-
-            while True:
-                if process.stdout is None:
-                    break
-                line = await process.stdout.readline()
-                if not line:
-                    break
-
-                log_line = line.decode().rstrip("\n")
-                if log_line:
-                    # Yield raw log line with all debug info
-                    yield log_line
-
-            # Wait for process to complete
-            await process.wait()
-
-            if process.returncode != 0:
-                if process.stderr is not None:
-                    stderr = await process.stderr.read()
-                    error_msg = stderr.decode() if stderr else "Unknown error"
-                    yield f"[DEBUG] kubectl logs failed: {error_msg}"
-                else:
-                    yield "[DEBUG] kubectl logs failed: Unknown error"
-            else:
-                yield f"[DEBUG] Streaming completed for job {job_name}"
-
-        except Exception as e:
-            yield f"[DEBUG] Error streaming logs: {e!s}"
 
     def _extract_variation_id(self, pod_name: str) -> int | None:
         """Extract variation ID from pod name."""

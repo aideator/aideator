@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import and_, delete, desc, func, select, text
+from sqlalchemy import and_, delete, desc, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
@@ -89,8 +89,13 @@ async def get_active_runs(
     # Build query
     query = select(Run)
     if not include_completed:
-        query = query.where(Run.status.in_([RunStatus.PENDING, RunStatus.RUNNING]))
-    query = query.order_by(Run.created_at.desc()).limit(limit)
+        query = query.where(
+            or_(
+                Run.status == RunStatus.PENDING,
+                Run.status == RunStatus.RUNNING,
+            )
+        )
+    query = query.order_by(desc(Run.created_at)).limit(limit)
 
     # Get runs
     result = await db.execute(query)
@@ -175,13 +180,15 @@ async def get_message_stream(
     if output_type:
         conditions.append(AgentOutput.output_type == output_type)
     if search:
-        conditions.append(AgentOutput.content.ilike(f"%{search}%"))
+        conditions.append(
+            func.lower(AgentOutput.content).like(func.lower(f"%{search}%"))
+        )
 
     if conditions:
         if len(conditions) == 1:
             query = query.where(conditions[0])
-        else:
-            query = query.where(and_(*conditions))
+        elif len(conditions) > 1:
+            query = query.where(and_(*conditions))  # type: ignore[missing-argument]
 
     # Get total count
     count_query = select(func.count()).select_from(query.subquery())
@@ -223,7 +230,9 @@ async def search_messages(
 ) -> list[dict[str, Any]]:
     """Search message content."""
     # Build search query
-    search_query = select(AgentOutput).where(AgentOutput.content.ilike(f"%{query}%"))
+    search_query = select(AgentOutput).where(
+        func.lower(AgentOutput.content).like(func.lower(f"%{query}%"))
+    )
 
     if run_id:
         search_query = search_query.where(AgentOutput.run_id == run_id)
@@ -266,8 +275,10 @@ async def cleanup_database(
     old_runs_query = select(Run.id).where(
         and_(
             Run.created_at < cutoff_date,
-            Run.status.in_(
-                [RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED]
+            or_(
+                Run.status == RunStatus.COMPLETED,
+                Run.status == RunStatus.FAILED,
+                Run.status == RunStatus.CANCELLED,
             ),
         )
     )
@@ -284,15 +295,19 @@ async def cleanup_database(
 
     # Count messages that would be deleted
     messages_count = await db.scalar(
-        select(func.count(AgentOutput.id)).where(AgentOutput.run_id.in_(old_run_ids))
+        select(func.count(AgentOutput.id)).where(
+            AgentOutput.run_id.in_(list(old_run_ids))  # type: ignore[attr-defined]
+        )
     )
 
     if not dry_run:
         # Delete messages first (foreign key constraint)
-        await db.execute(delete(AgentOutput).where(AgentOutput.run_id.in_(old_run_ids)))
+        await db.execute(
+            delete(AgentOutput).where(AgentOutput.run_id.in_(list(old_run_ids)))  # type: ignore[attr-defined]
+        )
 
         # Delete runs
-        await db.execute(delete(Run).where(Run.id.in_(old_run_ids)))
+        await db.execute(delete(Run).where(Run.id.in_(list(old_run_ids))))  # type: ignore[attr-defined]
 
         await db.commit()
 

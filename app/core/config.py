@@ -154,9 +154,7 @@ class Settings(BaseSettings):
     @classmethod
     def validate_redis_url(cls, v: str | None) -> str | None:
         """Validate Redis URL format."""
-        if v is not None and not (
-            v.startswith("redis://") or v.startswith("rediss://")
-        ):
+        if v is not None and not v.startswith(("redis://", "rediss://")):
             raise ValueError("Redis URL must start with redis:// or rediss://")
         return v
 

@@ -270,7 +270,7 @@ def add_test_data():
             "✍️ Writing API documentation for core modules",
         ]
 
-        for i, msg in enumerate(messages[: random.randint(3, 5)]):
+        for i, msg in enumerate(messages[: random.randint(3, 5)]):  # noqa: S311
             cursor.execute(
                 """
                 INSERT INTO agent_outputs (run_id, variation_id, content, timestamp, output_type)

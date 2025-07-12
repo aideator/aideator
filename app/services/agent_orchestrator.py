@@ -1,9 +1,8 @@
 """
-Agent orchestrator using Kubernetes jobs with SSE-based streaming.
+Agent orchestrator using Kubernetes jobs with Redis Streams.
 """
 
 import asyncio
-import json
 from datetime import datetime
 from typing import Any
 
@@ -14,7 +13,7 @@ from app.core.logging import get_logger
 from app.models.run import Run, RunStatus
 from app.schemas.runs import AgentConfig
 from app.services.kubernetes_service import KubernetesService
-from app.services.sse_manager import sse_manager
+from app.services.redis_service import redis_service
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -28,7 +27,7 @@ class AgentOrchestrator:
         kubernetes_service: KubernetesService,
     ):
         self.kubernetes = kubernetes_service
-        self.sse = sse_manager
+        self.redis = redis_service
         self.active_runs: dict[str, dict[str, Any]] = {}
         self._job_count_lock = asyncio.Lock()
         self._total_active_jobs = 0
@@ -104,8 +103,9 @@ class AgentOrchestrator:
             "jobs": [],
         }
 
-        # Wait for SSE connections to be established
-        await self._wait_for_sse_connections(run_id, max_wait_seconds=10)
+        # Initialize Redis connection if needed
+        if not await self.redis.health_check():
+            await self.redis.connect()
 
         # Update run status
         if db_session:
@@ -123,8 +123,8 @@ class AgentOrchestrator:
             logger.error(f"Error executing variations for run {run_id}: {e}")
             self.active_runs[run_id]["status"] = "failed"
 
-            # Send error event via SSE
-            await self.sse.send_run_complete(run_id, "failed")
+            # Send error event to Redis
+            await self.redis.add_status_update(run_id, "failed", {"error": str(e)})
 
             # Decrement job count on failure
             await self._decrement_job_count(variations)
@@ -162,87 +162,50 @@ class AgentOrchestrator:
         self.active_runs[run_id]["jobs"] = [job[0] for job in jobs]
         self.active_runs[run_id]["status"] = "running"
 
-        # Send start event via SSE
+        # Send start event to Redis
         logger.info(f"Starting {len(jobs)} agent jobs for run {run_id}")
+        await self.redis.add_status_update(run_id, "running", {"job_count": len(jobs)})
 
-        # Stream logs from all jobs concurrently
-        tasks = []
-        for job_name, variation_id in jobs:
-            task = asyncio.create_task(
-                self._stream_job_logs(run_id, job_name, variation_id)
-            )
-            tasks.append(task)
+        # Agents now handle their own streaming to Redis Streams
+        # Just wait for all jobs to complete
+        await self._wait_for_jobs_completion(run_id, [job_name for job_name, _ in jobs])
 
-        # Wait for all streaming tasks to complete
-        await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Send run completion event to frontend
-        await self.sse.send_run_complete(run_id, "completed")
+        # Send run completion status to Redis
+        await self.redis.add_status_update(run_id, "completed")
 
         # Update database status
         if db_session:
             await self._update_run_status(db_session, run_id, RunStatus.COMPLETED)
 
-    async def _stream_job_logs(
-        self, run_id: str, job_name: str, variation_id: int
+    async def _wait_for_jobs_completion(
+        self, run_id: str, job_names: list[str]
     ) -> None:
-        """Stream logs from an individual job."""
+        """Wait for all jobs to complete."""
         try:
-            async for log_line in self.kubernetes.stream_job_logs(
-                job_name, run_id, variation_id
-            ):
-                logger.debug(
-                    f"Raw log line: {log_line[:100]}..."
-                )  # Debug: Log first 100 chars
-
-                try:
-                    log_entry = json.loads(log_line)
-                    # Skip JSON log entries - only process non-log content
-                    # Check for structured log markers: timestamp + level OR step field
-                    if (
-                        "timestamp" in log_entry and "level" in log_entry
-                    ) or "step" in log_entry:
-                        # This is a structured log, skip it
-                        logger.debug(
-                            f"Agent log filtered: {log_entry.get('message', str(log_entry)[:50])}"
-                        )
-                        continue
-                    # If it's JSON but not a log, send it
-                    logger.info(
-                        f"Sending JSON content via SSE: {json.dumps(log_entry)[:50]}..."
-                    )
-                    await self.sse.send_agent_output(
-                        run_id, variation_id, json.dumps(log_entry)
-                    )
-                except json.JSONDecodeError:
-                    # This is plain text content (markdown), send it
-                    logger.info(f"Sending plain text via SSE: {log_line[:50]}...")
-                    await self.sse.send_agent_output(run_id, variation_id, log_line)
-
-            # Log streaming has ended, now check if job completed successfully
             logger.info(
-                f"Log streaming ended for job {job_name}, checking job status..."
+                f"Waiting for {len(job_names)} jobs to complete for run {run_id}"
             )
 
-            # Wait a moment for job status to be updated
-            await asyncio.sleep(2)
+            while True:
+                all_completed = True
+                for job_name in job_names:
+                    job_status = await self.kubernetes.get_job_status(job_name)
+                    status = job_status.get("status", "unknown")
 
-            # Check job status
-            job_status = await self.kubernetes.get_job_status(job_name)
-            logger.info(f"Job {job_name} final status: {job_status}")
+                    if status not in ["completed", "failed"]:
+                        all_completed = False
+                        break
 
-            # Log job completion
-            logger.info(
-                f"Job {job_name} (variation {variation_id}) completed with status: {job_status.get('status', 'unknown')}"
-            )
+                if all_completed:
+                    logger.info(f"All jobs completed for run {run_id}")
+                    break
 
-            # Send SSE completion event to frontend
-            await self.sse.send_agent_complete(run_id, variation_id)
+                # Wait before checking again
+                await asyncio.sleep(5)
 
         except Exception as e:
-            logger.error(f"Error streaming job logs for {job_name}: {e}")
-            # Send SSE error event to frontend
-            await self.sse.send_agent_error(run_id, variation_id, str(e))
+            logger.error(f"Error waiting for job completion: {e}")
+            await self.redis.add_status_update(run_id, "failed", {"error": str(e)})
 
     async def get_run_status(self, run_id: str) -> dict[str, Any]:
         """Get the status of a run."""
@@ -284,8 +247,8 @@ class AgentOrchestrator:
         # Update run status
         run_data["status"] = "cancelled"
 
-        # Send cancellation event via SSE
-        await self.sse.send_run_complete(run_id, "cancelled")
+        # Send cancellation event to Redis
+        await self.redis.add_status_update(run_id, "cancelled")
 
         return success
 
@@ -327,23 +290,3 @@ class AgentOrchestrator:
         except Exception as e:
             logger.error(f"Failed to update run status: {e}")
             await db_session.rollback()
-
-    async def _wait_for_sse_connections(
-        self, run_id: str, max_wait_seconds: int = 10
-    ) -> None:
-        """Wait for SSE connections to be established before starting orchestration."""
-        logger.info(f"Waiting for SSE connections for run {run_id}...")
-
-        # For simplicity, just add a short delay to allow connections to establish
-        await asyncio.sleep(1.0)
-
-        logger.info(f"SSE preparation complete for run {run_id}")
-
-        # Send connected message to all variations
-        variations = self.active_runs.get(run_id, {}).get("variations", 1)
-        for variation_id in range(variations):
-            await self.sse.send_agent_output(
-                run_id,
-                variation_id,
-                "🔗 Connected! Starting agent variations...",
-            )
