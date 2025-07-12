@@ -21,6 +21,13 @@ class User(SQLModel, table=True):
     full_name: str | None = Field(default=None)
     company: str | None = Field(default=None)
 
+    # GitHub OAuth fields
+    github_id: str | None = Field(default=None, unique=True, index=True)
+    github_username: str | None = Field(default=None, index=True)
+    github_avatar_url: str | None = Field(default=None)
+    github_access_token_encrypted: str | None = Field(default=None)
+    auth_provider: str = Field(default="local")  # "local" or "github"
+
     # Usage limits
     max_runs_per_day: int = Field(default=100)
     max_variations_per_run: int = Field(default=5)
