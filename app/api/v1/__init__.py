@@ -4,6 +4,7 @@ from app.api.v1 import (
     admin_messaging,
     auth,
     credentials,
+    github_auth,
     health,
     models,
     preferences,
@@ -18,6 +19,7 @@ api_router = APIRouter()
 # Include sub-routers
 api_router.include_router(health.router, tags=["System"])
 api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
+api_router.include_router(github_auth.router, prefix="/github", tags=["GitHub"])
 api_router.include_router(runs.router, prefix="/runs", tags=["Runs"])
 api_router.include_router(sessions.router, tags=["Sessions"])
 api_router.include_router(preferences.router, tags=["Preferences"])

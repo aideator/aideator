@@ -18,6 +18,26 @@ spec:
       securityContext:
         {{- toYaml .Values.securityContext | nindent 8 }}
       initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for PostgreSQL to be ready..."
+              until nc -z chart-aideator-postgresql 5432; do
+                echo "PostgreSQL is not ready - sleeping"
+                sleep 2
+              done
+              echo "PostgreSQL is ready!"
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "25m"
+            limits:
+              memory: "64Mi"
+              cpu: "50m"
         - name: migration
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
@@ -25,43 +45,53 @@ spec:
             - /bin/bash
             - -c
             - |
+              set -e
               echo "Running database migrations..."
-              # Check if alembic_version table exists
-              if python -c "
-              import asyncio
-              import sys
-              sys.path.insert(0, '/app')
-              from app.core.database import AsyncSessionFactory
-              from sqlalchemy import text
               
-              async def check_alembic_version():
-                  async with AsyncSessionFactory() as session:
-                      try:
-                          result = await session.execute(text('SELECT version_num FROM alembic_version LIMIT 1'))
-                          version = result.scalar()
-                          print(f'Database is at version: {version}')
-                          return True
-                      except Exception as e:
-                          print(f'alembic_version table not found: {e}')
-                          return False
+              # Wait for database to be truly ready (not just accepting connections)
+              for i in {1..30}; do
+                if python -c "import asyncio; from sqlalchemy import text; from sqlalchemy.ext.asyncio import create_async_engine; engine = create_async_engine('$DATABASE_URL'); asyncio.run(engine.dispose())"; then
+                  echo "Database connection successful"
+                  break
+                fi
+                echo "Database not ready, attempt $i/30..."
+                sleep 2
+              done
               
-              asyncio.run(check_alembic_version())
-              "; then
-                echo "Database migration state found, running upgrade..."
-                python -m alembic upgrade head
+              # Run migrations
+              echo "Running alembic upgrade head..."
+              python -m alembic upgrade head
+              
+              if [ $? -eq 0 ]; then
+                echo "Migrations completed successfully!"
               else
-                echo "Database migration state not found, stamping existing database..."
-                python -m alembic stamp head
+                echo "Migration failed!"
+                exit 1
               fi
-              echo "Migrations completed successfully!"
           env:
             - name: DATABASE_URL
               value: {{ .Values.database.url }}
+            - name: DEBUG
+              value: "{{ .Values.config.debug }}"
             - name: SECRET_KEY
               valueFrom:
                 secretKeyRef:
                   name: aideator-secret
                   key: secret-key
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aideator-secret
+                  key: encryption-key
+            - name: REDIS_URL
+              value: "redis://chart-redis-master:6379/0"
+            # Use placeholder API keys to satisfy validation during migration
+            - name: OPENAI_API_KEY
+              value: "sk-placeholder-for-migrations-only-00000000000000000000"
+            - name: ANTHROPIC_API_KEY
+              value: "sk-ant-placeholder-for-migrations-only-000000000000000"
+            - name: GEMINI_API_KEY
+              value: "AIzaPlaceholderForMigrationsOnly00000000000"
           resources:
             requests:
               memory: "128Mi"
@@ -121,6 +151,36 @@ spec:
                 secretKeyRef:
                   name: aideator-secret
                   key: encryption-key
+            # GitHub OAuth configuration (required)
+            - name: GITHUB_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: github-oauth-secret
+                  key: client-id
+            - name: GITHUB_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: github-oauth-secret
+                  key: client-secret
+            # Provide API keys from secrets if they exist
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openai-secret
+                  key: api-key
+                  optional: true
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: anthropic-secret
+                  key: api-key
+                  optional: true
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gemini-secret
+                  key: api-key
+                  optional: true
             {{- if .Values.env }}
             {{- range .Values.env }}
             - name: {{ .name }}
