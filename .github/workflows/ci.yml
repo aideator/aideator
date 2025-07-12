@@ -10,6 +10,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  SECRET_KEY: 'ci-secret-key-32-chars-minimum-length-for-testing'
+  ENCRYPTION_KEY: 'ci-encryption-key-32-bytes-long-test'
+
 jobs:
   test-all:
     runs-on: ubuntu-latest
