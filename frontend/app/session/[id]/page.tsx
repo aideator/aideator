@@ -1,8 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import Link from "next/link"
-import { ArrowLeft, Archive, Share, GitPullRequest, FileCode, Terminal } from "lucide-react"
+import { FileCode, Terminal } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
@@ -12,7 +11,6 @@ import { notFound } from "next/navigation"
 
 export default function SessionPage({ params }: { params: { id: string } }) {
   const [activeVersion, setActiveVersion] = useState(1)
-  const [isPrCreated, setIsPrCreated] = useState(false)
 
   const session = sessions.find((s) => s.id === params.id)
 
@@ -31,35 +29,9 @@ export default function SessionPage({ params }: { params: { id: string } }) {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-950 text-gray-200">
-      <header className="flex items-center justify-between px-4 py-2 border-b border-gray-800 flex-shrink-0">
-        <div className="flex items-center gap-4">
-          <Link href="/">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-          </Link>
-          <h1 className="text-lg font-medium">{session.title}</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" className="bg-gray-800 border-gray-700">
-            <Archive className="w-4 h-4 mr-2" />
-            Archive
-          </Button>
-          <Button variant="outline" className="bg-gray-800 border-gray-700">
-            <Share className="w-4 h-4 mr-2" />
-            Share
-          </Button>
-          <Button className="bg-white text-black hover:bg-gray-200" onClick={() => setIsPrCreated(true)}>
-            <GitPullRequest className="w-4 h-4 mr-2" />
-            {isPrCreated ? "View PR" : "Create PR"}
-          </Button>
-        </div>
-      </header>
-
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar */}
-        <aside className="w-80 bg-gray-900/70 border-r border-gray-800 p-4 flex flex-col overflow-y-auto">
+    <div className="flex flex-1 overflow-hidden bg-gray-950 text-gray-200">
+      {/* Left Sidebar */}
+      <aside className="w-80 bg-gray-900/70 border-r border-gray-800 p-4 flex flex-col overflow-y-auto">
           <div className="flex items-center gap-2 mb-4">
             {session.sessionDetails.versions.map((v) => (
               <Button
@@ -109,10 +81,10 @@ export default function SessionPage({ params }: { params: { id: string } }) {
           <div className="mt-auto pt-4">
             <Input placeholder="Request changes or ask a question" className="bg-gray-800 border-gray-700" />
           </div>
-        </aside>
+      </aside>
 
-        {/* Main Content */}
-        <main className="flex-1 flex flex-col bg-gray-950">
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col bg-gray-950">
           <Tabs defaultValue="diff" className="flex-1 flex flex-col">
             <TabsList className="px-4 border-b border-gray-800 bg-transparent justify-start rounded-none">
               <TabsTrigger
@@ -192,9 +164,8 @@ export default function SessionPage({ params }: { params: { id: string } }) {
 [INFO] Session completed successfully in 2m 1s.`}
               </pre>
             </TabsContent>
-          </Tabs>
-        </main>
-      </div>
+        </Tabs>
+      </main>
     </div>
   )
 }
