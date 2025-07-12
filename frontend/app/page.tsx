@@ -4,7 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { GitBranch, MessageSquare, Mic, Github } from "lucide-react"
 import Link from "next/link"
-import { jobs } from "@/lib/data"
+import { sessions } from "@/lib/data"
 
 export default function Home() {
   return (
@@ -61,13 +61,13 @@ export default function Home() {
           </div>
         </div>
 
-        <Tabs defaultValue="tasks" className="mt-10">
+        <Tabs defaultValue="sessions" className="mt-10">
           <TabsList className="border-b border-gray-800 rounded-none w-full justify-start bg-transparent p-0">
             <TabsTrigger
-              value="tasks"
+              value="sessions"
               className="rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 border-white"
             >
-              Tasks
+              Sessions
             </TabsTrigger>
             <TabsTrigger
               value="archive"
@@ -76,38 +76,38 @@ export default function Home() {
               Archive
             </TabsTrigger>
           </TabsList>
-          <TabsContent value="tasks" className="mt-6 space-y-1">
-            {jobs.map((job) => (
-              <Link href={`/job/${job.id}`} key={job.id}>
+          <TabsContent value="sessions" className="mt-6 space-y-1">
+            {sessions.map((session) => (
+              <Link href={`/session/${session.id}`} key={session.id}>
                 <div className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-900 transition-colors cursor-pointer">
                   <div className="flex flex-col">
-                    <span className="font-medium">{job.title}</span>
-                    <span className="text-sm text-gray-400">{job.details}</span>
+                    <span className="font-medium">{session.title}</span>
+                    <span className="text-sm text-gray-400">{session.details}</span>
                   </div>
                   <div className="flex items-center gap-4">
-                    {job.status === "Completed" && (
+                    {session.status === "Completed" && (
                       <>
                         <div className="flex items-center gap-1 text-sm text-gray-400">
                           <MessageSquare className="w-4 h-4" />
-                          <span>{job.versions}</span>
+                          <span>{session.versions}</span>
                         </div>
                         <div className="font-mono text-sm">
-                          <span className="text-green-400">+{job.additions}</span>{" "}
-                          <span className="text-red-400">-{job.deletions}</span>
+                          <span className="text-green-400">+{session.additions}</span>{" "}
+                          <span className="text-red-400">-{session.deletions}</span>
                         </div>
                       </>
                     )}
-                    {job.status === "Open" && (
+                    {session.status === "Open" && (
                       <span className="text-sm text-green-400 bg-green-900/50 px-2 py-1 rounded-md">Open</span>
                     )}
-                    {job.status === "Failed" && <span className="text-sm text-red-400">Failed</span>}
+                    {session.status === "Failed" && <span className="text-sm text-red-400">Failed</span>}
                   </div>
                 </div>
               </Link>
             ))}
           </TabsContent>
           <TabsContent value="archive" className="mt-6">
-            <p className="text-center text-gray-500">Archived tasks will appear here.</p>
+            <p className="text-center text-gray-500">Archived sessions will appear here.</p>
           </TabsContent>
         </Tabs>
       </div>

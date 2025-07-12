@@ -7,24 +7,24 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Input } from "@/components/ui/input"
-import { jobs } from "@/lib/data"
+import { sessions } from "@/lib/data"
 import { notFound } from "next/navigation"
 
-export default function JobPage({ params }: { params: { id: string } }) {
+export default function SessionPage({ params }: { params: { id: string } }) {
   const [activeVersion, setActiveVersion] = useState(1)
   const [isPrCreated, setIsPrCreated] = useState(false)
 
-  const job = jobs.find((j) => j.id === params.id)
+  const session = sessions.find((s) => s.id === params.id)
 
-  if (!job || !job.jobDetails) {
+  if (!session || !session.sessionDetails) {
     return notFound()
   }
 
-  const versionData = job.jobDetails.versions.find((v) => v.id === activeVersion)
+  const versionData = session.sessionDetails.versions.find((v) => v.id === activeVersion)
 
   if (!versionData) {
     // Fallback to first version if active version not found
-    const firstVersion = job.jobDetails.versions[0]
+    const firstVersion = session.sessionDetails.versions[0]
     if (!firstVersion) return notFound()
     setActiveVersion(firstVersion.id)
     return null // Re-render will handle it
@@ -39,7 +39,7 @@ export default function JobPage({ params }: { params: { id: string } }) {
               <ArrowLeft className="w-5 h-5" />
             </Button>
           </Link>
-          <h1 className="text-lg font-medium">{job.title}</h1>
+          <h1 className="text-lg font-medium">{session.title}</h1>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" className="bg-gray-800 border-gray-700">
@@ -61,7 +61,7 @@ export default function JobPage({ params }: { params: { id: string } }) {
         {/* Left Sidebar */}
         <aside className="w-80 bg-gray-900/70 border-r border-gray-800 p-4 flex flex-col overflow-y-auto">
           <div className="flex items-center gap-2 mb-4">
-            {job.jobDetails.versions.map((v) => (
+            {session.sessionDetails.versions.map((v) => (
               <Button
                 key={v.id}
                 variant={activeVersion === v.id ? "secondary" : "ghost"}
@@ -169,7 +169,7 @@ export default function JobPage({ params }: { params: { id: string } }) {
             </TabsContent>
             <TabsContent value="logs" className="flex-1 overflow-y-auto p-4 font-mono text-sm">
               <pre>
-                {`[INFO] Starting job execution...
+                {`[INFO] Starting session execution...
 [INFO] Cloning repository aideator/helloworld...
 [INFO] Repository cloned successfully.
 [INFO] Checking out branch 'main'...
@@ -189,7 +189,7 @@ export default function JobPage({ params }: { params: { id: string } }) {
 [TEST] ============================= test session starts ==============================
 [TEST] collected 0 items
 [TEST] ============================ 0 tests ran in 0.01s ==============================
-[INFO] Job completed successfully in 2m 1s.`}
+[INFO] Session completed successfully in 2m 1s.`}
               </pre>
             </TabsContent>
           </Tabs>

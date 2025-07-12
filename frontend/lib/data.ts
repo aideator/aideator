@@ -18,11 +18,11 @@ type VersionDetail = {
   files: FileDetail[]
 }
 
-type JobDetail = {
+type SessionDetail = {
   versions: VersionDetail[]
 }
 
-type Job = {
+type Session = {
   id: string
   title: string
   details: string
@@ -30,10 +30,10 @@ type Job = {
   versions?: number
   additions?: number
   deletions?: number
-  jobDetails?: JobDetail
+  sessionDetails?: SessionDetail
 }
 
-export const jobs: Job[] = [
+export const sessions: Session[] = [
   {
     id: "1",
     title: "Make hello world label ominous",
@@ -42,7 +42,7 @@ export const jobs: Job[] = [
     versions: 3,
     additions: 1,
     deletions: 1,
-    jobDetails: {
+    sessionDetails: {
       versions: [
         {
           id: 1,
@@ -109,7 +109,7 @@ export const jobs: Job[] = [
     versions: 3,
     additions: 8,
     deletions: 8,
-    jobDetails: {
+    sessionDetails: {
       versions: [
         {
           id: 1,
@@ -139,7 +139,7 @@ export const jobs: Job[] = [
     versions: 3,
     additions: 187,
     deletions: 7,
-    jobDetails: {
+    sessionDetails: {
       versions: [
         {
           id: 1,
@@ -157,7 +157,7 @@ export const jobs: Job[] = [
     versions: 3,
     additions: 0,
     deletions: 0,
-    jobDetails: {
+    sessionDetails: {
       versions: [
         {
           id: 1,
