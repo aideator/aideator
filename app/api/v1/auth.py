@@ -377,7 +377,7 @@ async def delete_api_key(
 @router.get("/dev/test-login", include_in_schema=False)
 async def dev_test_login(
     db: AsyncSession = Depends(get_session),
-) -> dict[str, str]:
+):
     """
     Development endpoint for automatic test user login.
     WARNING: This endpoint is only available in development mode.
@@ -453,6 +453,6 @@ async def dev_test_login(
         },
         "access_token": access_token,
         "token_type": "bearer",
-        "api_key": api_key,  # Always returns fresh API key in development
+        "api_key": api_key,
         "message": "Development test user login successful",
     }

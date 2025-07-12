@@ -95,6 +95,25 @@ class AIdeatorAgent:
 
         self.redis_client = None  # Will be initialized in async context
 
+        # Database setup (required for dual-write persistence)
+        self.database_url = os.getenv("DATABASE_URL_ASYNC")
+        if not self.database_url:
+            print(
+                json.dumps(
+                    {
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "run_id": self.run_id,
+                        "variation_id": self.variation_id,
+                        "level": "ERROR",
+                        "message": "DATABASE_URL_ASYNC environment variable not set",
+                    }
+                ),
+                flush=True,
+            )
+            raise RuntimeError("DATABASE_URL_ASYNC is required for agent operation")
+
+        self.db_service = None  # Will be initialized in async context
+
     async def _init_redis(self):
         """Initialize Redis connection in async context."""
         try:
@@ -117,6 +136,19 @@ class AIdeatorAgent:
         except Exception as e:
             self.log(f"[REDIS-CONNECT] Redis connection failed: {e}", "ERROR")
             raise RuntimeError(f"Failed to connect to Redis: {e}")
+
+    async def _init_database(self):
+        """Initialize database connection in async context."""
+        try:
+            from agent.services.database_service import AgentDatabaseService
+
+            self.db_service = AgentDatabaseService()
+            await self.db_service.connect()
+            self.log("[DB-CONNECT] Connected to database", "INFO")
+
+        except Exception as e:
+            self.log(f"[DB-CONNECT] Database connection failed: {e}", "ERROR")
+            raise RuntimeError(f"Failed to connect to database: {e}")
 
     def _setup_file_logging(self):
         """Setup file-only logging to avoid stdout pollution."""
@@ -346,6 +378,10 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
         """Log progress updates for user visibility."""
         self.log(f"⚡ {message}", "INFO", detail=detail)
 
+    async def log_progress_async(self, message: str, detail: str = ""):
+        """Async log progress updates that stream to Redis."""
+        await self.log_async(f"⚡ {message}", "INFO", detail=detail)
+
     async def log_async(self, message: str, level: str = "INFO", **kwargs):
         """Async structured logging with Redis Streams publish."""
         log_entry = {
@@ -382,47 +418,30 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             print(json.dumps(log_entry), flush=True)
 
     async def publish_output(self, content: str):
-        """Publish agent output to database (was Redis)."""
-        # Currently unused - using database for messaging
-        # try:
-        #     if not self.redis_client:
-        #         self.log("[REDIS-PUB] Redis client not initialized", "ERROR")
-        #         return
-        #
-        #     channel = f"run:{self.run_id}:output:{self.variation_id}"
-        #     message = json.dumps({
-        #         "content": content,
-        #         "timestamp": datetime.utcnow().isoformat(),
-        #         "variation_id": self.variation_id
-        #     })
-        #     self.log(f"[REDIS-PUB] Publishing to channel: {channel}", "DEBUG")
-        #     self.log(f"[REDIS-PUB] Message size: {len(message)} bytes", "DEBUG")
-        #     result = await self.redis_client.publish(channel, message)
-        #     self.log(f"[REDIS-PUB] Published successfully, {result} subscribers received message", "INFO")
-        # except Exception as e:
-        #     # Don't fail if Redis publish fails
-        #     self.log(f"[REDIS-PUB] Failed to publish output to Redis: {e}", "ERROR")
-        #     self.file_logger.warning(f"Failed to publish output to Redis: {e}")
+        """Publish agent output with dual write to Redis Streams and PostgreSQL."""
+        # Dual write: Write to both Redis and database
+        success_redis = False
+        success_db = False
 
-        # Use Redis Streams as primary
+        # Write to Redis Streams (for real-time streaming)
         try:
-            if not self.redis_client:
+            if self.redis_client:
+                stream_name = f"run:{self.run_id}:llm"
+                fields = {
+                    "variation_id": self.variation_id,
+                    "content": content,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "metadata": json.dumps({"content_length": len(content)}),
+                }
+
+                message_id = await self.redis_client.xadd(stream_name, fields)
+                self.log(
+                    f"[REDIS-STREAMS] Published LLM output to stream: {stream_name}, ID: {message_id}",
+                    "DEBUG",
+                )
+                success_redis = True
+            else:
                 self.log("[REDIS-STREAMS] Redis client not initialized", "ERROR")
-                return
-
-            stream_name = f"run:{self.run_id}:llm"
-            fields = {
-                "variation_id": self.variation_id,
-                "content": content,
-                "timestamp": datetime.now(UTC).isoformat(),
-                "metadata": json.dumps({"content_length": len(content)}),
-            }
-
-            message_id = await self.redis_client.xadd(stream_name, fields)
-            self.log(
-                f"[REDIS-STREAMS] Published LLM output to stream: {stream_name}, ID: {message_id}",
-                "DEBUG",
-            )
 
         except Exception as e:
             self.log(
@@ -430,25 +449,55 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                 "ERROR",
             )
 
-    async def publish_status(self, status: str, metadata: dict[str, Any] | None = None):
-        """Publish status update to database (was Redis)."""
-        # Currently unused - using database for messaging
-        # try:
-        #     if not self.redis_client:
-        #         return
-        #
-        #     channel = f"run:{self.run_id}:status"
-        #     message = json.dumps({
-        #         "status": status,
-        #         "timestamp": datetime.utcnow().isoformat(),
-        #         "variation_id": self.variation_id,
-        #         "metadata": metadata or {}
-        #     })
-        #     await self.redis_client.publish(channel, message)
-        # except Exception as e:
-        #     self.file_logger.warning(f"Failed to publish status to Redis: {e}")
+        # Write to database (for persistence)
+        try:
+            if self.db_service:
+                await self.db_service.write_agent_output(
+                    run_id=self.run_id,
+                    variation_id=int(self.variation_id),
+                    content=content,
+                    output_type="llm",
+                    metadata={"content_length": len(content)},
+                )
+                success_db = True
+            else:
+                self.log("[DB-WRITE] Database service not initialized", "ERROR")
 
-        # Use Redis Streams as primary
+        except Exception as e:
+            self.log(
+                f"[DB-WRITE] Failed to write output to database: {e}",
+                "ERROR",
+            )
+
+        # Log dual write status
+        if success_redis and success_db:
+            self.log(
+                "[DUAL-WRITE] Successfully wrote LLM output to both Redis and DB",
+                "DEBUG",
+            )
+        elif success_redis:
+            self.log(
+                "[DUAL-WRITE] LLM output written to Redis only (DB failed)",
+                "WARNING",
+            )
+        elif success_db:
+            self.log(
+                "[DUAL-WRITE] LLM output written to DB only (Redis failed)",
+                "WARNING",
+            )
+        else:
+            self.log(
+                "[DUAL-WRITE] Failed to write LLM output to both Redis and DB",
+                "ERROR",
+            )
+
+    async def publish_status(self, status: str, metadata: dict[str, Any] | None = None):
+        """Publish status update with dual write to Redis Streams and PostgreSQL."""
+        # Dual write: Write to both Redis and database
+        success_redis = False
+        success_db = False
+
+        # Write to Redis Streams (for real-time streaming)
         try:
             if self.redis_client:
                 stream_name = f"run:{self.run_id}:status"
@@ -462,9 +511,51 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                     f"[REDIS-STREAMS] Published status '{status}' to stream: {message_id}",
                     "DEBUG",
                 )
+                success_redis = True
+            else:
+                self.log("[REDIS-STREAMS] Redis client not initialized", "ERROR")
         except Exception as e:
             self.log(
                 f"[REDIS-STREAMS] Failed to publish status to Redis Streams: {e}",
+                "ERROR",
+            )
+
+        # Write to database (for persistence)
+        try:
+            if self.db_service:
+                await self.db_service.update_run_status(
+                    run_id=self.run_id,
+                    status=status,
+                    metadata=metadata,
+                )
+                success_db = True
+            else:
+                self.log("[DB-WRITE] Database service not initialized", "ERROR")
+        except Exception as e:
+            self.log(
+                f"[DB-WRITE] Failed to update status in database: {e}",
+                "ERROR",
+            )
+
+        # Log dual write status
+        if success_redis and success_db:
+            self.log(
+                f"[DUAL-WRITE] Successfully wrote status '{status}' to both Redis and DB",
+                "DEBUG",
+            )
+        elif success_redis:
+            self.log(
+                f"[DUAL-WRITE] Status '{status}' written to Redis only (DB failed)",
+                "WARNING",
+            )
+        elif success_db:
+            self.log(
+                f"[DUAL-WRITE] Status '{status}' written to DB only (Redis failed)",
+                "WARNING",
+            )
+        else:
+            self.log(
+                f"[DUAL-WRITE] Failed to write status '{status}' to both Redis and DB",
                 "ERROR",
             )
 
@@ -480,8 +571,9 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
         """Main agent execution flow."""
         self.log("🚀 Starting AIdeator Agent", "INFO", config=self.config)
 
-        # Initialize Redis connection
+        # Initialize Redis and Database connections
         await self._init_redis()
+        await self._init_database()
 
         # Log available API keys for debugging
         await self.log_async(
@@ -860,6 +952,8 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                                             text_content = content_item["text"]
                                             # Output immediately for streaming (like TypeScript)
                                             print(text_content, end="", flush=True)
+                                            # Stream to Redis immediately
+                                            await self.publish_output(text_content)
                                             collected_output.append(text_content)
                                         elif content_item.get("type") == "tool_use":
                                             tool_info = f"🔧 Using tool: {content_item.get('name', 'unknown')}"
@@ -1174,6 +1268,8 @@ If the problem persists, contact support with the error details above.
 
                         # Output the chunk directly without emoji prefix for cleaner parsing
                         print(output_chunk, end="", flush=True)
+                        # Stream to Redis immediately
+                        await self.publish_output(output_chunk)
                         buffer = buffer[len(output_chunk) :]
 
                     # Also check for newlines to maintain structure
@@ -1181,11 +1277,15 @@ If the problem persists, contact support with the error details above.
                         lines = buffer.split("\n")
                         for line in lines[:-1]:  # All complete lines
                             print(line, flush=True)
+                            # Stream to Redis immediately
+                            await self.publish_output(line + "\n")
                         buffer = lines[-1]  # Keep the incomplete line
 
             # Output any remaining buffer
             if buffer.strip():
                 print(buffer, end="", flush=True)
+                # Stream to Redis immediately
+                await self.publish_output(buffer)
 
             self.log(
                 "Streaming LLM response complete",
@@ -1221,7 +1321,8 @@ async def main():
         # Clean up connections
         if agent.redis_client:
             await agent.redis_client.close()
-        await agent.db_service.disconnect()
+        if agent.db_service:
+            await agent.db_service.disconnect()
         sys.exit(0)
     except Exception as e:
         # Ensure error is visible in logs

@@ -1,172 +1,256 @@
 "use client"
 
-import { useState, use } from "react"
-import { FileCode, Terminal } from "lucide-react"
+import { useState, useEffect } from "react"
+import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { Input } from "@/components/ui/input"
-import { sessions } from "@/lib/data"
-import { notFound } from "next/navigation"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import { Clock, Layers, DollarSign, ArrowLeft, Plus } from "lucide-react"
+import Link from "next/link"
+import { apiClient } from "@/lib/api"
+import { Session, Turn } from "@/lib/types"
 
-export default function SessionPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params)
-  const [activeVersion, setActiveVersion] = useState(1)
+export default function SessionPage() {
+  const params = useParams()
+  const router = useRouter()
+  const sessionId = params.id as string
 
-  const session = sessions.find((s) => s.id === id)
+  const [session, setSession] = useState<Session | null>(null)
+  const [turns, setTurns] = useState<Turn[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  if (!session || !session.sessionDetails) {
-    return notFound()
+  useEffect(() => {
+    if (sessionId) {
+      loadSessionData()
+    }
+  }, [sessionId])
+
+  const loadSessionData = async () => {
+    try {
+      setIsLoading(true)
+      const [sessionResponse, turnsResponse] = await Promise.all([
+        apiClient.getSession(sessionId),
+        apiClient.getSessionTurns(sessionId),
+      ])
+      setSession(sessionResponse)
+      setTurns(turnsResponse)
+      setError(null)
+    } catch (err) {
+      console.error('Failed to load session data:', err)
+      setError('Failed to load session data')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const versionData = session.sessionDetails.versions.find((v) => v.id === activeVersion)
+  const handleNewTurn = () => {
+    // Navigate back to home with session context for creating new turn
+    router.push(`/?session=${sessionId}`)
+  }
 
-  if (!versionData) {
-    // Fallback to first version if active version not found
-    const firstVersion = session.sessionDetails.versions[0]
-    if (!firstVersion) return notFound()
-    setActiveVersion(firstVersion.id)
-    return null // Re-render will handle it
+  if (isLoading) {
+    return (
+      <div className="bg-gray-950 text-gray-50 min-h-screen">
+        <div className="container mx-auto max-w-4xl py-8">
+          <div className="flex items-center justify-center py-20">
+            <div className="animate-pulse">Loading session...</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error || !session) {
+    return (
+      <div className="bg-gray-950 text-gray-50 min-h-screen">
+        <div className="container mx-auto max-w-4xl py-8">
+          <div className="text-center py-20">
+            <p className="text-red-400 mb-4">{error || 'Session not found'}</p>
+            <Button onClick={() => router.push('/')} variant="outline">
+              Back to Home
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="flex flex-1 overflow-hidden bg-gray-950 text-gray-200">
-      {/* Left Sidebar */}
-      <aside className="w-80 bg-gray-900/70 border-r border-gray-800 p-4 flex flex-col overflow-y-auto">
-          <div className="flex items-center gap-2 mb-4">
-            {session.sessionDetails.versions.map((v) => (
-              <Button
-                key={v.id}
-                variant={activeVersion === v.id ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setActiveVersion(v.id)}
-                className="data-[state=active]:bg-gray-700"
-              >
-                Version {v.id}
-              </Button>
-            ))}
+    <div className="bg-gray-950 text-gray-50 min-h-screen">
+      <div className="container mx-auto max-w-4xl py-8">
+        {/* Header */}
+        <div className="flex items-center gap-4 mb-8">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push('/')}
+            className="text-gray-400 hover:text-gray-200"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <div className="flex-1">
+            <h1 className="text-2xl font-semibold">{session.title}</h1>
+            {session.description && (
+              <p className="text-gray-400 mt-1">{session.description}</p>
+            )}
           </div>
+          <Badge variant={session.is_active ? "default" : "secondary"}>
+            {session.is_active ? "Active" : "Completed"}
+          </Badge>
+        </div>
 
-          <div className="space-y-6 text-sm">
-            <div className="space-y-2">
-              <h3 className="font-semibold text-gray-400">Summary</h3>
-              <p className="text-gray-300">{versionData.summary}</p>
-            </div>
-            <div className="space-y-2">
-              <h3 className="font-semibold text-gray-400">Testing</h3>
-              <div className="flex items-center gap-2 text-xs bg-gray-800 p-2 rounded-md">
-                <span className="font-mono bg-gray-700 px-1.5 py-0.5 rounded">pytest</span>
-                <span className="text-gray-400">-v</span>
-                <span className="text-red-400 bg-red-900/50 px-1.5 py-0.5 rounded">0</span>
+        {/* Session Metadata */}
+        <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-gray-400" />
+              <div className="text-sm">
+                <div className="text-gray-400">Created</div>
+                <div>{new Date(session.created_at).toLocaleDateString()}</div>
               </div>
             </div>
-            <div className="space-y-2">
-              <h3 className="font-semibold text-gray-400">Network access</h3>
-              <p className="text-gray-300">Some requests were blocked due to network access restrictions.</p>
+            <div className="flex items-center gap-2">
+              <Layers className="w-4 h-4 text-gray-400" />
+              <div className="text-sm">
+                <div className="text-gray-400">Turns</div>
+                <div>{session.total_turns}</div>
+              </div>
             </div>
-            <div className="space-y-2">
-              <h3 className="font-semibold text-gray-400">FILE ({versionData.files.length})</h3>
-              <div className="space-y-1">
-                {versionData.files.map((file) => (
-                  <div key={file.name} className="flex justify-between items-center p-2 rounded-md hover:bg-gray-800">
-                    <span>{file.name}</span>
-                    <div className="font-mono text-xs">
-                      <span className="text-green-400">+{file.additions}</span>{" "}
-                      <span className="text-red-400">-{file.deletions}</span>
+            <div className="flex items-center gap-2">
+              <DollarSign className="w-4 h-4 text-gray-400" />
+              <div className="text-sm">
+                <div className="text-gray-400">Total Cost</div>
+                <div>${session.total_cost.toFixed(3)}</div>
+              </div>
+            </div>
+            <div className="text-sm">
+              <div className="text-gray-400">Models Used</div>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {session.models_used.map((model) => (
+                  <Badge key={model} variant="outline" className="text-xs">
+                    {model}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <Tabs defaultValue="turns" className="w-full">
+          <div className="flex items-center justify-between mb-4">
+            <TabsList className="bg-gray-900/50 border border-gray-800">
+              <TabsTrigger value="turns">Turns</TabsTrigger>
+              <TabsTrigger value="analytics">Analytics</TabsTrigger>
+            </TabsList>
+            <Button onClick={handleNewTurn} size="sm" className="gap-2">
+              <Plus className="w-4 h-4" />
+              New Turn
+            </Button>
+          </div>
+
+          <TabsContent value="turns" className="space-y-4">
+            {turns.length === 0 ? (
+              <div className="text-center py-12 bg-gray-900/30 border border-gray-800 rounded-lg">
+                <p className="text-gray-400 mb-4">No turns in this session yet.</p>
+                <Button onClick={handleNewTurn} variant="outline">
+                  Create First Turn
+                </Button>
+              </div>
+            ) : (
+              turns.map((turn, index) => (
+                <div
+                  key={turn.id}
+                  className="bg-gray-900/30 border border-gray-800 rounded-lg p-4 hover:bg-gray-900/50 transition-colors"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant="outline" className="text-xs">
+                          Turn {turn.turn_number}
+                        </Badge>
+                        <Badge
+                          variant={
+                            turn.status === "completed"
+                              ? "default"
+                              : turn.status === "failed"
+                              ? "destructive"
+                              : "secondary"
+                          }
+                          className="text-xs"
+                        >
+                          {turn.status}
+                        </Badge>
+                      </div>
+                      <p className="text-gray-200 mb-2">{turn.prompt}</p>
+                      <div className="text-sm text-gray-400">
+                        {new Date(turn.started_at).toLocaleString()}
+                        {turn.completed_at && (
+                          <>
+                            {" → "}
+                            {new Date(turn.completed_at).toLocaleString()}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right text-sm">
+                      <div className="text-gray-400">Models: {turn.models_requested.length}</div>
+                      <div className="text-gray-400">Cost: ${turn.total_cost.toFixed(3)}</div>
+                      {turn.duration_seconds && (
+                        <div className="text-gray-400">
+                          Duration: {Math.round(turn.duration_seconds)}s
+                        </div>
+                      )}
                     </div>
                   </div>
-                ))}
+
+                  <Separator className="my-3 bg-gray-800" />
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap gap-1">
+                      {turn.models_requested.map((model) => (
+                        <Badge key={model} variant="outline" className="text-xs">
+                          {model}
+                        </Badge>
+                      ))}
+                    </div>
+                    <Link href={`/session/${sessionId}/turn/${turn.id}`}>
+                      <Button variant="outline" size="sm">
+                        View Details
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              ))
+            )}
+          </TabsContent>
+
+          <TabsContent value="analytics" className="space-y-4">
+            <div className="bg-gray-900/30 border border-gray-800 rounded-lg p-6">
+              <h3 className="text-lg font-medium mb-4">Session Analytics</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="text-center p-4 bg-gray-800/50 rounded-lg">
+                  <div className="text-2xl font-bold">{turns.length}</div>
+                  <div className="text-sm text-gray-400">Total Turns</div>
+                </div>
+                <div className="text-center p-4 bg-gray-800/50 rounded-lg">
+                  <div className="text-2xl font-bold">
+                    {turns.filter((t) => t.status === "completed").length}
+                  </div>
+                  <div className="text-sm text-gray-400">Completed</div>
+                </div>
+                <div className="text-center p-4 bg-gray-800/50 rounded-lg">
+                  <div className="text-2xl font-bold">
+                    ${session.total_cost.toFixed(2)}
+                  </div>
+                  <div className="text-sm text-gray-400">Total Spent</div>
+                </div>
               </div>
             </div>
-          </div>
-          <div className="mt-auto pt-4">
-            <Input placeholder="Request changes or ask a question" className="bg-gray-800 border-gray-700" />
-          </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col bg-gray-950">
-          <Tabs defaultValue="diff" className="flex-1 flex flex-col">
-            <TabsList className="px-4 border-b border-gray-800 bg-transparent justify-start rounded-none">
-              <TabsTrigger
-                value="diff"
-                className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 border-white rounded-none"
-              >
-                <FileCode className="w-4 h-4 mr-2" />
-                Diff
-              </TabsTrigger>
-              <TabsTrigger
-                value="logs"
-                className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 border-white rounded-none"
-              >
-                <Terminal className="w-4 h-4 mr-2" />
-                Logs
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="diff" className="flex-1 overflow-y-auto p-4">
-              <Accordion type="single" collapsible className="w-full" defaultValue="item-0">
-                {versionData.files.map((file, index) => (
-                  <AccordionItem value={`item-${index}`} key={index} className="border-gray-800">
-                    <AccordionTrigger className="bg-gray-900 p-2 rounded-md hover:no-underline">
-                      <div className="flex justify-between items-center w-full">
-                        <span>{file.name}</span>
-                        <div className="font-mono text-xs">
-                          <span className="text-green-400">+{file.additions}</span>{" "}
-                          <span className="text-red-400">-{file.deletions}</span>
-                        </div>
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent className="p-0">
-                      <pre className="text-sm bg-black rounded-b-md overflow-x-auto">
-                        <code>
-                          {file.diff.map((line, i) => (
-                            <div
-                              key={i}
-                              className={`relative pl-12 pr-4 py-0.5 ${line.type === "add" ? "diff-add" : line.type === "del" ? "diff-del" : ""}`}
-                            >
-                              <span className="absolute left-4 select-none text-gray-500">
-                                {line.type !== "add" ? line.oldLine : ""}
-                              </span>
-                              <span className="absolute left-8 select-none text-gray-500">
-                                {line.type !== "del" ? line.newLine : ""}
-                              </span>
-                              <span>{line.content}</span>
-                            </div>
-                          ))}
-                        </code>
-                      </pre>
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
-            </TabsContent>
-            <TabsContent value="logs" className="flex-1 overflow-y-auto p-4 font-mono text-sm">
-              <pre>
-                {`[INFO] Starting session execution...
-[INFO] Cloning repository aideator/helloworld...
-[INFO] Repository cloned successfully.
-[INFO] Checking out branch 'main'...
-[INFO] Branch 'main' checked out.
-[INFO] Analyzing task: "make hello world label more ominous"
-[AGENT] Understanding the request... The user wants to change the text in README.md.
-[AGENT] Planning changes...
-[AGENT] 1. Read README.md
-[AGENT] 2. Replace "Hello World for Python" with something more ominous.
-[AGENT] 3. Write the changes back to README.md.
-[EXEC] Reading file: README.md
-[EXEC] Applying changes to README.md
-[EXEC] Writing file: README.md
-[INFO] Changes applied successfully.
-[INFO] Running tests...
-[TEST] pytest -v
-[TEST] ============================= test session starts ==============================
-[TEST] collected 0 items
-[TEST] ============================ 0 tests ran in 0.01s ==============================
-[INFO] Session completed successfully in 2m 1s.`}
-              </pre>
-            </TabsContent>
+          </TabsContent>
         </Tabs>
-      </main>
+      </div>
     </div>
   )
 }

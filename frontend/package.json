@@ -14,8 +14,8 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
     "test:all": "npm run test:quality && npm run test:unit && npm run test:e2e",
-    "test:unit": "jest --testPathPattern=tests/unit --passWithNoTests",
-    "test:integration": "jest --testPathPattern=tests/integration --passWithNoTests",
+    "test:unit": "jest --testPathPatterns=tests/unit --passWithNoTests",
+    "test:integration": "jest --testPathPatterns=tests/integration --passWithNoTests",
     "test:quality": "npm run type-check && npm run lint && npm run test:knip",
     "type-check": "tsc --noEmit",
     "test:knip": "knip --no-exit-code"
@@ -76,10 +76,15 @@
     "@playwright/test": "^1.54.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
     "@types/jest": "^30.0.0",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "eslint-config-next": "^15.3.5",
+    "jest": "^30.0.4",
+    "jest-environment-jsdom": "^30.0.4",
+    "knip": "^5.61.3",
     "eslint-config-next": "^15.3.5",
     "jest": "^30.0.4",
     "jest-environment-jsdom": "^30.0.4",
@@ -89,3 +94,4 @@
     "typescript": "^5"
   }
 }
+

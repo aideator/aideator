@@ -57,6 +57,7 @@ coverage.xml
 *.py,cover
 .cache
 test-results/
+frontend/coverage/
 
 # Mypy
 .mypy_cache/
@@ -155,7 +156,7 @@ node_modules
 !.yarn/versions
 
 # testing
-/coverage
+coverage/
 
 # next.js
 .next/

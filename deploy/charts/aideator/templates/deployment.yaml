@@ -55,6 +55,8 @@ spec:
               fi
               echo "Migrations completed successfully!"
           env:
+            - name: DEBUG
+              value: "{{ .Values.config.debug }}"
             - name: DATABASE_URL
               value: {{ .Values.database.url }}
             - name: DEBUG
