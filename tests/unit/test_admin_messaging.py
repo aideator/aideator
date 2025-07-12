@@ -82,7 +82,7 @@ class TestAdminMessagingEndpoints:
         # Import and call endpoint
         from app.api.v1.admin_messaging import get_database_stats
 
-        result = await get_database_stats(db=mock_db, current_user=mock_user)
+        result = await get_database_stats(db=mock_db)
 
         # Verify result
         assert result["total_runs"] == 10
@@ -118,7 +118,7 @@ class TestAdminMessagingEndpoints:
 
         from app.api.v1.admin_messaging import get_database_stats
 
-        result = await get_database_stats(db=mock_db, current_user=mock_user)
+        result = await get_database_stats(db=mock_db)
 
         # Should handle error gracefully
         assert result["database_size_bytes"] == 0
@@ -136,9 +136,7 @@ class TestAdminMessagingEndpoints:
 
         from app.api.v1.admin_messaging import get_active_runs
 
-        result = await get_active_runs(
-            limit=20, include_completed=False, db=mock_db, current_user=mock_user
-        )
+        result = await get_active_runs(db=mock_db, include_completed=False, limit=20)
 
         assert len(result) == 1
         assert result[0]["id"] == "test-run-123"
@@ -162,9 +160,7 @@ class TestAdminMessagingEndpoints:
 
         from app.api.v1.admin_messaging import get_active_runs
 
-        result = await get_active_runs(
-            limit=20, include_completed=True, db=mock_db, current_user=mock_user
-        )
+        result = await get_active_runs(db=mock_db, include_completed=True, limit=20)
 
         assert len(result) == 1
         assert result[0]["message_rate_per_second"] == 0
@@ -285,9 +281,7 @@ class TestAdminMessagingEndpoints:
 
         from app.api.v1.admin_messaging import cleanup_database
 
-        result = await cleanup_database(
-            older_than_days=7, dry_run=True, db=mock_db, current_user=mock_user
-        )
+        result = await cleanup_database(db=mock_db, older_than_days=7, dry_run=True)
 
         assert result["runs_affected"] == 2
         assert result["messages_affected"] == 100
@@ -313,9 +307,7 @@ class TestAdminMessagingEndpoints:
 
         from app.api.v1.admin_messaging import cleanup_database
 
-        result = await cleanup_database(
-            older_than_days=30, dry_run=False, db=mock_db, current_user=mock_user
-        )
+        result = await cleanup_database(db=mock_db, older_than_days=30, dry_run=False)
 
         assert result["runs_affected"] == 1
         assert result["messages_affected"] == 50
@@ -335,9 +327,7 @@ class TestAdminMessagingEndpoints:
 
         from app.api.v1.admin_messaging import cleanup_database
 
-        result = await cleanup_database(
-            older_than_days=1, dry_run=False, db=mock_db, current_user=mock_user
-        )
+        result = await cleanup_database(db=mock_db, older_than_days=1, dry_run=False)
 
         assert result["runs_affected"] == 0
         assert result["messages_affected"] == 0
@@ -393,9 +383,7 @@ class TestAdminMessagingEndpoints:
 
         from app.api.v1.admin_messaging import get_active_runs
 
-        result = await get_active_runs(
-            limit=20, include_completed=False, db=mock_db, current_user=mock_user
-        )
+        result = await get_active_runs(db=mock_db, include_completed=False, limit=20)
 
         assert len(result[0]["prompt"]) == 103  # 100 chars + "..."
         assert result[0]["prompt"].endswith("...")
@@ -419,9 +407,7 @@ class TestAdminMessagingEndpoints:
 
         from app.api.v1.admin_messaging import get_active_runs
 
-        result = await get_active_runs(
-            limit=20, include_completed=False, db=mock_db, current_user=mock_user
-        )
+        result = await get_active_runs(db=mock_db, include_completed=False, limit=20)
 
         assert result[0]["total_messages"] == 30  # 10 + 15 + 5
         assert len(result[0]["variation_metrics"]) == 3

@@ -323,15 +323,18 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             getattr(logging, level, logging.INFO),
             f"{message} | {json.dumps(kwargs) if kwargs else ''}",
         )
-        
+
         # Publish to database (async operation, fire and forget)
-        if hasattr(self, 'db_service') and self.db_service:
+        if hasattr(self, "db_service") and self.db_service:
             import asyncio
+
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
                     # Schedule as a task if loop is running
-                    loop.create_task(self.db_service.publish_log(message, level, **kwargs))
+                    loop.create_task(  # noqa: RUF006
+                        self.db_service.publish_log(message, level, **kwargs)
+                    )
                 else:
                     # If no loop is running, this is likely during initialization
                     pass
