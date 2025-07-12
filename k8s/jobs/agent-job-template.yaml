@@ -97,7 +97,7 @@ spec:
               value: "redis://aideator-redis:6379/0"
             # Database URL for agent to write outputs
             - name: DATABASE_URL
-              value: "sqlite:////app/data/aideator.db"
+              value: "postgresql://aideator:aideator123@aideator-postgresql:5432/aideator"
           command: ["python", "-u", "/app/agent/main.py"]
           resources:
             requests:

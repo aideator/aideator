@@ -84,9 +84,9 @@ Before any suggestion that changes dependencies, environment, or tools:
 - **Styling**: Tailwind CSS v4.1.11 with PostCSS v4
 - **State**: React hooks and context
 - **Backend**: FastAPI with async/await patterns
-- **Database**: SQLite with SQLModel ORM
+- **Database**: PostgreSQL with SQLModel ORM
 - **Container Orchestration**: Kubernetes Jobs with Helm
-- **Streaming**: Server-Sent Events (SSE) via Redis pub/sub (Redis-only architecture)
+- **Streaming**: Server-Sent Events (SSE) via database polling (PostgreSQL-based architecture)
 - **Testing**: Pytest (backend), Jest + Playwright (frontend)
 - **Package Management**: pip with requirements.txt and pyproject.toml
 - **Development**: Tilt for Kubernetes orchestration, k3d for local cluster
@@ -165,13 +165,19 @@ alembic/              # Database migrations (setup in progress)
 
 ### Database Tables
 1. **runs** - Agent execution runs (status, config, timestamps)
-2. **agent_outputs** - Streamed agent outputs per variation
+2. **agent_outputs** - Streamed agent outputs per variation (PRIMARY LOGGING TABLE)
 3. **users** - User accounts (optional, for API keys)
 4. **api_keys** - API authentication tokens
 
+### Agent Logging Architecture
+- **Primary Table**: `agent_outputs` - All agent outputs are logged here
+- **Output Types**: `stdout`, `stderr`, `logging`, `status`, `system`, `summary`, `diffs`, `addinfo`
+- **Database**: PostgreSQL with connection via `DATABASE_URL` environment variable
+- **Agent Service**: `DatabaseService` class handles all database operations
+
 ### Key Features
 - **Kubernetes Jobs**: Each agent runs as an isolated Job with TTL
-- **SSE Streaming**: Real-time output via kubectl logs → SSE
+- **Database Streaming**: Real-time output via database polling → SSE
 - **Multi-Agent Grid**: Frontend displays 1-5 agents simultaneously
 - **Local Development**: Tilt orchestrates k3d cluster + local registry
 
@@ -286,21 +292,20 @@ kubectl create secret generic openai-secret \
   -n aideator
 ```
 
-### Streaming Pipeline Architecture (Redis-only)
+### Streaming Pipeline Architecture (Database-based)
 
-**Recent Evolution**: The project has moved from dual kubectl/Redis streaming to a simplified Redis-only architecture.
+**Recent Evolution**: The project has moved from Redis pub/sub to a PostgreSQL-based streaming architecture.
 
 **Current Flow**:
 1. **Agent Side**:
-   - Publishes outputs to channel: `run:{run_id}:output:{variation_id}`
-   - Publishes logs to: `run:{run_id}:logs:{variation_id}`
-   - Publishes status to: `run:{run_id}:status`
-   - Falls back to stdout if Redis unavailable
+   - Writes outputs to `agent_outputs` table via `DatabaseService`
+   - Logs all agent activity (stdout, stderr, logging, status)
+   - Falls back to stdout if database unavailable
 
 2. **Backend Side**:
-   - RedisService manages pub/sub connections
-   - SSE endpoints subscribe directly to Redis channels
-   - No kubectl log streaming (removed for simplification)
+   - Database polling for new outputs
+   - SSE endpoints stream from `agent_outputs` table
+   - No Redis dependency (removed for simplification)
 
 3. **Frontend Side**:
    - Consumes SSE events in real-time
@@ -312,6 +317,6 @@ kubectl create secret generic openai-secret \
 - Wait 10+ seconds for Tilt rebuilds
 - Use complete Tailwind class names (no interpolation)
 - Create openai-secret before first deployment
-- Redis is REQUIRED - agents will fail without it
-- Monitor Redis channels when debugging streaming issues
-- Verify both kubectl logs AND SSE show same output
+- PostgreSQL is REQUIRED - agents will fail without database connection
+- Monitor `agent_outputs` table when debugging streaming issues
+- Verify both kubectl logs AND database outputs show same data

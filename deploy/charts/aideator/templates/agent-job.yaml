@@ -69,6 +69,9 @@ spec:
               value: "INFO"
             - name: PYTHONUNBUFFERED
               value: "1"
+            # Database configuration for PostgreSQL
+            - name: DATABASE_URL
+              value: "postgresql://aideator:{{ .Values.postgresql.password | default "aideator123" }}@{{ include "aideator.fullname" . }}-postgresql:5432/aideator"
           command: ["python", "-u", "/app/agent/main.py"]
           resources:
             {{- toYaml .Values.agents.resources | nindent 12 }}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test the admin API endpoints to verify they're working with the test data."""
+"""Test the simplified admin messaging interface."""
 
 import requests
 import json
@@ -7,54 +7,53 @@ from datetime import datetime
 
 API_BASE = "http://localhost:8000"
 
-def test_admin_endpoints():
-    """Test all admin endpoints."""
-    print("🧪 Testing Admin API Endpoints...\n")
+def test_simplified_admin():
+    """Test the simplified admin messaging endpoints."""
+    print("🧪 Testing Simplified Admin Messaging Interface...\n")
     
-    # Test 1: Database Stats
-    print("1. Testing /api/v1/admin/stats")
+    # Test 1: Overview
+    print("1. Testing /api/v1/admin-messaging/overview")
     try:
-        response = requests.get(f"{API_BASE}/api/v1/admin/stats")
+        response = requests.get(f"{API_BASE}/api/v1/admin-messaging/overview")
         if response.status_code == 200:
-            stats = response.json()
-            print("✅ Stats endpoint working!")
-            print(f"   Total runs: {stats.get('total_runs', 0)}")
-            print(f"   Total messages: {stats.get('total_messages', 0)}")
-            print(f"   Runs by status: {stats.get('runs_by_status', {})}")
+            overview = response.json()
+            print("✅ Overview endpoint working!")
+            print(f"   Active runs: {overview.get('active_runs', 0)}")
+            print(f"   Total messages: {overview.get('total_messages', 0)}")
+            print(f"   Recent messages (1h): {overview.get('recent_messages_1h', 0)}")
+            print(f"   Message types: {overview.get('message_types', {})}")
         else:
-            print(f"❌ Stats endpoint failed: {response.status_code}")
+            print(f"❌ Overview endpoint failed: {response.status_code}")
             print(f"   Response: {response.text[:200]}")
     except Exception as e:
-        print(f"❌ Stats endpoint error: {e}")
+        print(f"❌ Overview endpoint error: {e}")
     
     print()
     
-    # Test 2: Active Runs
-    print("2. Testing /api/v1/admin/runs/active")
+    # Test 2: Runs
+    print("2. Testing /api/v1/admin-messaging/runs")
     try:
-        response = requests.get(f"{API_BASE}/api/v1/admin/runs/active?include_completed=true&limit=20")
+        response = requests.get(f"{API_BASE}/api/v1/admin-messaging/runs?limit=5")
         if response.status_code == 200:
             runs = response.json()
-            print(f"✅ Active runs endpoint working! Found {len(runs)} runs")
+            print(f"✅ Runs endpoint working! Found {len(runs)} runs")
             for run in runs[:3]:  # Show first 3
-                print(f"   - {run['id']}: {run['status']} ({run['total_messages']} messages)")
+                print(f"   - {run['id']}: {run['status']} ({run['message_count']} messages)")
         else:
-            print(f"❌ Active runs endpoint failed: {response.status_code}")
+            print(f"❌ Runs endpoint failed: {response.status_code}")
             print(f"   Response: {response.text[:200]}")
     except Exception as e:
-        print(f"❌ Active runs endpoint error: {e}")
+        print(f"❌ Runs endpoint error: {e}")
     
     print()
     
     # Test 3: Messages
-    print("3. Testing /api/v1/admin/messages/stream")
+    print("3. Testing /api/v1/admin-messaging/messages")
     try:
-        response = requests.get(f"{API_BASE}/api/v1/admin/messages/stream?limit=10")
+        response = requests.get(f"{API_BASE}/api/v1/admin-messaging/messages?limit=10")
         if response.status_code == 200:
-            data = response.json()
-            messages = data.get('messages', [])
-            total = data.get('total', 0)
-            print(f"✅ Messages endpoint working! Total: {total}, Showing: {len(messages)}")
+            messages = response.json()
+            print(f"✅ Messages endpoint working! Found {len(messages)} messages")
             for msg in messages[:3]:  # Show first 3
                 print(f"   - [{msg['output_type']}] {msg['content'][:50]}...")
         else:
@@ -65,26 +64,50 @@ def test_admin_endpoints():
     
     print()
     
-    # Test 4: Health Check
-    print("4. Testing /api/v1/admin/health")
+    # Test 4: Live Activity
+    print("4. Testing /api/v1/admin-messaging/live")
     try:
-        response = requests.get(f"{API_BASE}/api/v1/admin/health")
+        response = requests.get(f"{API_BASE}/api/v1/admin-messaging/live")
+        if response.status_code == 200:
+            live = response.json()
+            print(f"✅ Live activity endpoint working!")
+            print(f"   Active containers: {live.get('active_containers', 0)}")
+            print(f"   Messages (5min): {live.get('total_messages_5min', 0)}")
+        else:
+            print(f"❌ Live activity endpoint failed: {response.status_code}")
+            print(f"   Response: {response.text[:200]}")
+    except Exception as e:
+        print(f"❌ Live activity endpoint error: {e}")
+    
+    print()
+    
+    # Test 5: Health Check
+    print("5. Testing /api/v1/admin-messaging/health")
+    try:
+        response = requests.get(f"{API_BASE}/api/v1/admin-messaging/health")
         if response.status_code == 200:
             health = response.json()
             print(f"✅ Health endpoint working!")
-            print(f"   Database connection: {health.get('database_connection', False)}")
-            print(f"   Healthy: {health.get('healthy', False)}")
-            print(f"   Response time: {health.get('response_time_ms', 0)}ms")
+            print(f"   Status: {health.get('status', 'unknown')}")
+            print(f"   Database connected: {health.get('database_connected', False)}")
+            print(f"   Total messages: {health.get('total_messages', 0)}")
         else:
             print(f"❌ Health endpoint failed: {response.status_code}")
     except Exception as e:
         print(f"❌ Health endpoint error: {e}")
     
-    print("\n" + "="*50)
-    print("🎯 Summary: Check if all endpoints show ✅ above")
-    print("If any show ❌, the backend might not be running correctly")
-    print("="*50)
+    print("\n" + "="*60)
+    print("🎯 SIMPLIFIED ADMIN MESSAGING INTERFACE")
+    print("="*60)
+    print("✅ All endpoints should be working and easy to understand")
+    print("📊 Use these endpoints to visualize container messaging:")
+    print("   - /overview: Quick stats and message types")
+    print("   - /runs: List of runs with message counts")
+    print("   - /messages: Recent messages from containers")
+    print("   - /live: Live activity (last 5 minutes)")
+    print("   - /health: Database health check")
+    print("="*60)
 
 
 if __name__ == "__main__":
-    test_admin_endpoints()
+    test_simplified_admin()
