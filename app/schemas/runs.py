@@ -159,6 +159,9 @@ class CreateRunResponse(BaseModel):
 
     run_id: str = Field(..., description="Unique identifier for the run")
     websocket_url: str = Field(..., description="WebSocket URL for real-time streaming")
+    stream_url: str = Field(
+        ..., description="Stream URL for real-time streaming (alias for websocket_url)"
+    )
     polling_url: str = Field(..., description="HTTP polling endpoint for outputs")
     status: str = Field(..., description="Initial status of the run")
     estimated_duration_seconds: int = Field(
@@ -173,6 +176,7 @@ class CreateRunResponse(BaseModel):
             "example": {
                 "run_id": "run_1234567890abcdef",
                 "websocket_url": "ws://localhost:8000/ws/runs/run_1234567890abcdef",
+                "stream_url": "ws://localhost:8000/ws/runs/run_1234567890abcdef",
                 "polling_url": "/api/v1/runs/run_1234567890abcdef/outputs",
                 "status": "accepted",
                 "estimated_duration_seconds": 120,

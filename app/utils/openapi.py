@@ -45,6 +45,10 @@ def custom_openapi(app: FastAPI) -> Callable[[], dict[str, Any]]:
                 "description": "Agent run management endpoints",
             },
             {
+                "name": "Streaming",
+                "description": "Server-Sent Events for real-time agent output",
+            },
+            {
                 "name": "WebSocket",
                 "description": "WebSocket endpoints for real-time streaming",
             },
@@ -128,25 +132,25 @@ def custom_openapi(app: FastAPI) -> Callable[[], dict[str, Any]]:
                 "summary": "WebSocket stream for agent outputs",
                 "description": """
                 WebSocket endpoint for real-time streaming of agent outputs.
-                
+
                 **Connection:**
                 - Connect to: `ws://localhost:8000/ws/runs/{run_id}`
                 - Protocol: WebSocket
                 - Authentication: Optional (query params or headers)
-                
+
                 **Message Types Received:**
                 - `connected` - Connection confirmation
                 - `llm` - Agent LLM output with content
-                - `stdout` - Agent stdout logs  
+                - `stdout` - Agent stdout logs
                 - `status` - Status updates (running, completed, failed)
                 - `control_ack` - Control command acknowledgments
                 - `error` - Error messages
                 - `pong` - Ping response
-                
+
                 **Message Types Sent:**
                 - `cancel` - Cancel the run
                 - `ping` - Keepalive ping
-                
+
                 **Message Format:**
                 ```json
                 {
@@ -168,20 +172,14 @@ def custom_openapi(app: FastAPI) -> Callable[[], dict[str, Any]]:
                         "in": "path",
                         "required": True,
                         "schema": {"type": "string"},
-                        "description": "The run ID to stream"
+                        "description": "The run ID to stream",
                     }
                 ],
                 "responses": {
-                    "101": {
-                        "description": "WebSocket connection established"
-                    },
-                    "404": {
-                        "description": "Run not found"
-                    },
-                    "403": {
-                        "description": "Access denied"
-                    }
-                }
+                    "101": {"description": "WebSocket connection established"},
+                    "404": {"description": "Run not found"},
+                    "403": {"description": "Access denied"},
+                },
             }
         }
 
@@ -191,17 +189,17 @@ def custom_openapi(app: FastAPI) -> Callable[[], dict[str, Any]]:
                 "summary": "WebSocket debug stream for stdout logs only",
                 "description": """
                 WebSocket endpoint for debugging - streams only stdout logs for a specific variation.
-                
+
                 **Connection:**
                 - Connect to: `ws://localhost:8000/ws/runs/{run_id}/debug?variation_id=0`
                 - Protocol: WebSocket
                 - Filters: Only stdout messages for specified variation
-                
+
                 **Message Format:**
                 ```json
                 {
                   "type": "stdout",
-                  "message_id": "stream_id", 
+                  "message_id": "stream_id",
                   "data": {
                     "run_id": "run-abc123",
                     "variation_id": "0",
@@ -217,24 +215,20 @@ def custom_openapi(app: FastAPI) -> Callable[[], dict[str, Any]]:
                         "in": "path",
                         "required": True,
                         "schema": {"type": "string"},
-                        "description": "The run ID to debug"
+                        "description": "The run ID to debug",
                     },
                     {
                         "name": "variation_id",
                         "in": "query",
                         "required": False,
                         "schema": {"type": "integer", "default": 0},
-                        "description": "Variation ID to filter logs (default: 0)"
-                    }
+                        "description": "Variation ID to filter logs (default: 0)",
+                    },
                 ],
                 "responses": {
-                    "101": {
-                        "description": "WebSocket connection established"
-                    },
-                    "404": {
-                        "description": "Run not found"
-                    }
-                }
+                    "101": {"description": "WebSocket connection established"},
+                    "404": {"description": "Run not found"},
+                },
             }
         }
 
