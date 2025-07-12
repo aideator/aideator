@@ -3,16 +3,12 @@
 import * as React from "react"
 import * as LabelPrimitive from "@radix-ui/react-label"
 import { Slot } from "@radix-ui/react-slot"
-import {
-  Controller,
-  FormProvider,
-  useFormContext,
-} from "react-hook-form"
-import type {
-  ControllerProps,
-  FieldPath,
-  FieldValues,
-} from "react-hook-form"
+import * as ReactHookForm from "react-hook-form"
+
+const { Controller, FormProvider, useFormContext } = ReactHookForm
+type ControllerProps = ReactHookForm.ControllerProps
+type FieldPath<T extends ReactHookForm.FieldValues = ReactHookForm.FieldValues> = ReactHookForm.FieldPath<T>
+type FieldValues = ReactHookForm.FieldValues
 
 import { cn } from "@/lib/utils"
 import { Label } from "@/components/ui/label"

@@ -13,25 +13,19 @@ describe('Alert Components', () => {
   it('should apply default variant styling', () => {
     render(<Alert data-testid="alert">Default Alert</Alert>)
     const alert = screen.getByTestId('alert')
-    expect(alert).toHaveClass('border', 'text-foreground')
+    expect(alert).toHaveClass('border text-foreground')
   })
 
   it('should apply destructive variant styling', () => {
     render(<Alert variant="destructive" data-testid="alert">Destructive Alert</Alert>)
     const alert = screen.getByTestId('alert')
-    expect(alert).toHaveClass('border-destructive/50', 'text-destructive')
+    expect(alert).toHaveClass('border-destructive/50 text-destructive')
   })
 
   it('should apply base styling classes', () => {
     render(<Alert data-testid="alert">Alert</Alert>)
     const alert = screen.getByTestId('alert')
-    expect(alert).toHaveClass(
-      'relative',
-      'w-full',
-      'rounded-lg',
-      'border',
-      'p-4'
-    )
+    expect(alert).toHaveClass('relative w-full rounded-lg border p-4')
   })
 
   it('should render AlertTitle component', () => {
@@ -42,7 +36,7 @@ describe('Alert Components', () => {
     )
     const title = screen.getByTestId('alert-title')
     expect(title).toBeInTheDocument()
-    expect(title).toHaveClass('mb-1', 'font-medium', 'leading-none', 'tracking-tight')
+    expect(title).toHaveClass('mb-1 font-medium leading-none tracking-tight')
     expect(title).toHaveTextContent('Alert Title')
   })
 

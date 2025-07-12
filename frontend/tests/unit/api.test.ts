@@ -15,9 +15,19 @@ const mockWebSocket = {
   close: jest.fn(),
   addEventListener: jest.fn(),
   removeEventListener: jest.fn(),
+  onmessage: null as ((event: MessageEvent) => void) | null,
+  onerror: null as ((event: Event) => void) | null,
   readyState: WebSocket.OPEN,
 }
-global.WebSocket = jest.fn(() => mockWebSocket)
+
+global.WebSocket = jest.fn().mockImplementation(() => mockWebSocket) as any
+// Add static constants
+Object.assign(global.WebSocket, {
+  CONNECTING: 0,
+  OPEN: 1,
+  CLOSING: 2,
+  CLOSED: 3,
+})
 
 describe('APIClient', () => {
   beforeEach(() => {

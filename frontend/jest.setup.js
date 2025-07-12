@@ -17,13 +17,24 @@ jest.mock('next/navigation', () => ({
 }))
 
 // Mock WebSocket
-global.WebSocket = jest.fn(() => ({
+const mockWebSocket = {
   close: jest.fn(),
   send: jest.fn(),
   addEventListener: jest.fn(),
   removeEventListener: jest.fn(),
+  onmessage: null,
+  onerror: null,
   readyState: 1, // OPEN
-}))
+}
+
+global.WebSocket = jest.fn().mockImplementation(() => mockWebSocket)
+// Add static constants
+Object.assign(global.WebSocket, {
+  CONNECTING: 0,
+  OPEN: 1,
+  CLOSING: 2,
+  CLOSED: 3,
+})
 
 // Mock fetch
 global.fetch = jest.fn()

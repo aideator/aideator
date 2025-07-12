@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime  # noqa: TC003
+from typing import Any
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 

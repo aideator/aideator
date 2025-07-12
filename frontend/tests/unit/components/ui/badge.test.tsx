@@ -11,19 +11,19 @@ describe('Badge', () => {
   it('should apply default variant styling', () => {
     render(<Badge data-testid="badge">Default Badge</Badge>)
     const badge = screen.getByTestId('badge')
-    expect(badge).toHaveClass('bg-primary', 'text-primary-foreground')
+    expect(badge).toHaveClass('bg-primary text-primary-foreground')
   })
 
   it('should apply secondary variant styling', () => {
     render(<Badge variant="secondary" data-testid="badge">Secondary Badge</Badge>)
     const badge = screen.getByTestId('badge')
-    expect(badge).toHaveClass('bg-secondary', 'text-secondary-foreground')
+    expect(badge).toHaveClass('bg-secondary text-secondary-foreground')
   })
 
   it('should apply destructive variant styling', () => {
     render(<Badge variant="destructive" data-testid="badge">Destructive Badge</Badge>)
     const badge = screen.getByTestId('badge')
-    expect(badge).toHaveClass('bg-destructive', 'text-destructive-foreground')
+    expect(badge).toHaveClass('bg-destructive text-destructive-foreground')
   })
 
   it('should apply outline variant styling', () => {
@@ -35,17 +35,7 @@ describe('Badge', () => {
   it('should apply base styling classes', () => {
     render(<Badge data-testid="badge">Badge</Badge>)
     const badge = screen.getByTestId('badge')
-    expect(badge).toHaveClass(
-      'inline-flex',
-      'items-center',
-      'rounded-full',
-      'border',
-      'px-2.5',
-      'py-0.5',
-      'text-xs',
-      'font-semibold',
-      'transition-colors'
-    )
+    expect(badge).toHaveClass('inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors')
   })
 
   it('should apply custom className', () => {
@@ -70,7 +60,7 @@ describe('Badge', () => {
   it('should handle focus and hover states', () => {
     render(<Badge data-testid="badge">Focusable Badge</Badge>)
     const badge = screen.getByTestId('badge')
-    expect(badge).toHaveClass('focus:outline-none', 'focus:ring-2', 'focus:ring-ring', 'focus:ring-offset-2')
+    expect(badge).toHaveClass('focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2')
   })
 
   it('should render with different content types', () => {

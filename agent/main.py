@@ -364,9 +364,14 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
                     # Schedule as a task if loop is running
-                    loop.create_task(  # noqa: RUF006
+                    task = loop.create_task(
                         self.db_service.publish_log(message, level, **kwargs)
                     )
+                    # Store task reference to avoid warning
+                    if not hasattr(self, "_bg_tasks"):
+                        self._bg_tasks = set()
+                    self._bg_tasks.add(task)
+                    task.add_done_callback(self._bg_tasks.discard)
                 else:
                     # If no loop is running, this is likely during initialization
                     pass

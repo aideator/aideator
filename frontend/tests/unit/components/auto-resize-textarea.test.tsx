@@ -30,7 +30,7 @@ describe('AutoResizeTextarea', () => {
   it('should apply default props', () => {
     render(<AutoResizeTextarea data-testid="textarea" />)
     const textarea = screen.getByTestId('textarea')
-    expect(textarea).toHaveClass('bg-transparent', 'border-0', 'text-base', 'resize-none')
+    expect(textarea).toHaveClass('bg-transparent border-0 text-base resize-none')
   })
 
   it('should apply custom className', () => {
