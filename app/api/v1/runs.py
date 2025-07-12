@@ -207,9 +207,12 @@ async def create_run(
         db_session=db,
     )
 
+    stream_url = f"ws://{settings.host}:{settings.port}/ws/runs/{run_id}"
     return CreateRunResponse(
         run_id=run_id,
-        stream_url=f"{settings.api_v1_prefix}/runs/{run_id}/stream",
+        websocket_url=stream_url,
+        stream_url=stream_url,
+        polling_url=f"{settings.api_v1_prefix}/runs/{run_id}/outputs",
         status="accepted",
         estimated_duration_seconds=len(request.model_variants) * 40,  # Rough estimate
         session_id=session_id,
@@ -377,7 +380,24 @@ async def cancel_run(
     "/{run_id}/outputs",
     response_model=list[dict],
     summary="Poll for agent outputs",
-    description="Get agent outputs since a given timestamp",
+    description="""
+    Get agent outputs since a given timestamp. This endpoint provides an alternative to WebSocket streaming for clients that prefer HTTP polling.
+
+    **Usage Pattern:**
+    1. Create a run via POST /runs
+    2. Poll this endpoint every 500ms with the `since` parameter set to the timestamp of the last received output
+    3. Process new outputs and update the `since` parameter for the next poll
+
+    **Filtering:**
+    - Use `variation_id` to get outputs from a specific model variant only
+    - Use `output_type` to filter by message type ('llm', 'stdout', 'status')
+    - Use `since` to get only outputs after a specific timestamp
+
+    **Performance:**
+    - Results are limited to 1000 outputs per request
+    - Outputs are ordered by timestamp (oldest first)
+    - Use pagination with `since` parameter for large result sets
+    """,
 )
 async def get_agent_outputs(
     run_id: str,

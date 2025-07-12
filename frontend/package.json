@@ -6,7 +6,19 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "next lint",
-    "start": "next start"
+    "start": "next start",
+    "test": "jest --passWithNoTests",
+    "test:watch": "jest --watch --passWithNoTests",
+    "test:coverage": "jest --coverage --passWithNoTests",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
+    "test:all": "npm run test:quality && npm run test:unit && npm run test:e2e",
+    "test:unit": "jest --testPathPattern=tests/unit --passWithNoTests",
+    "test:integration": "jest --testPathPattern=tests/integration --passWithNoTests",
+    "test:quality": "npm run type-check && npm run lint && npm run test:knip",
+    "type-check": "tsc --noEmit",
+    "test:knip": "knip --no-exit-code"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -60,9 +72,18 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@playwright/test": "^1.54.1",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@types/jest": "^30.0.0",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "eslint-config-next": "^15.3.5",
+    "jest": "^30.0.4",
+    "jest-environment-jsdom": "^30.0.4",
+    "knip": "^5.61.3",
     "postcss": "^8.5",
     "tailwindcss": "^3.4.17",
     "typescript": "^5"

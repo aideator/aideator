@@ -141,9 +141,11 @@ def create_application() -> FastAPI:
         return {
             "name": settings.project_name,
             "version": settings.version,
-            "docs": "/docs" if settings.debug else None,
+            "docs": "/docs",
+            "redoc": "/redoc",
             "openapi": f"{settings.api_v1_prefix}/openapi.json",
             "health": "/health",
+            "description": "AIdeator - Kubernetes-native LLM orchestration platform",
         }
 
     @app.get("/health", tags=["System"])

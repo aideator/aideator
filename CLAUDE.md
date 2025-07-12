@@ -71,7 +71,7 @@ Before any suggestion that changes dependencies, environment, or tools:
 
 **AIdeator** - A Kubernetes-native multi-agent AI orchestration platform
 - Runs multiple AI agents in parallel in isolated containers
-- Streams agent thought processes in real-time via SSE
+- Streams agent thought processes in real-time via WebSocket + Redis Streams
 - Enables side-by-side comparison of different AI approaches
 - Cloud-native scalability with standard Kubernetes tooling
 
@@ -89,7 +89,7 @@ Before any suggestion that changes dependencies, environment, or tools:
 - **Backend**: FastAPI with async/await patterns
 - **Database**: SQLite with SQLModel ORM
 - **Container Orchestration**: Kubernetes Jobs with Helm
-- **Streaming**: Server-Sent Events (SSE) via Redis pub/sub (Redis-only architecture)
+- **Streaming**: WebSocket + Redis Streams with dual-write persistence to PostgreSQL
 - **Testing**: Pytest (backend), Jest + Playwright (frontend)
 - **Package Management**: pip with requirements.txt and pyproject.toml
 - **Development**: Tilt for Kubernetes orchestration, k3d for local cluster
@@ -217,7 +217,7 @@ alembic/              # Database migrations (setup in progress)
 
 ### Key Features
 - **Kubernetes Jobs**: Each agent runs as an isolated Job with TTL
-- **SSE Streaming**: Real-time output via kubectl logs → SSE
+- **WebSocket Streaming**: Real-time output via Redis Streams → WebSocket
 - **Multi-Agent Grid**: Frontend displays 1-5 agents simultaneously
 - **Local Development**: Tilt orchestrates k3d cluster + local registry
 
@@ -227,14 +227,15 @@ alembic/              # Database migrations (setup in progress)
 
 ### Testing Approach
 - **Black Box E2E**: Use Tilt's port forwarding, not kubectl port-forward
-- **SSE Testing**: Always use timeout to prevent hanging
+- **WebSocket Testing**: Always use timeout to prevent hanging connections
 - **Agent Testing**: Use agent-job-dev-test for quick iteration
 
 ### Development Workflow
 ```bash
 # Verify streaming works
 kubectl logs -f job/agent-job-dev-test -n aideator
-timeout 20 curl -N http://localhost:8000/api/v1/runs/${RUN_ID}/stream
+# Test WebSocket connection
+timeout 20 wscat -c ws://localhost:8000/ws/runs/${RUN_ID}
 ```
 
 ---
@@ -244,7 +245,7 @@ timeout 20 curl -N http://localhost:8000/api/v1/runs/${RUN_ID}/stream
 ### Creating a New Agent Run
 1. Ensure Tilt is running (`tilt up`)
 2. Create run via API: `POST /api/v1/runs`
-3. Stream output: `GET /api/v1/runs/{id}/stream`
+3. Connect WebSocket: `ws://localhost:8000/ws/runs/{id}`
 4. Select winner: `POST /api/v1/runs/{id}/select`
 
 ### Testing Agent Changes
@@ -256,9 +257,10 @@ timeout 20 curl -N http://localhost:8000/api/v1/runs/${RUN_ID}/stream
 
 ### Debugging Streaming Issues
 1. Check Redis connectivity with `redis-cli ping`
-2. Monitor Redis channels with `redis-cli monitor`
+2. Monitor Redis streams with `redis-cli monitor` or `XREAD`
 3. Verify agent Redis connection in logs
-4. Test SSE endpoint with timeout on curl commands
+4. Test WebSocket endpoint with timeout using `wscat`
+5. Check database persistence in `agent_outputs` table
 
 ---
 
@@ -382,32 +384,51 @@ kubectl create secret generic openai-secret \
   -n aideator
 ```
 
-### Streaming Pipeline Architecture (Redis-only)
+### Streaming Pipeline Architecture (WebSocket + Redis Streams + PostgreSQL)
 
-**Recent Evolution**: The project has moved from dual kubectl/Redis streaming to a simplified Redis-only architecture.
+**Current Architecture**: Dual-write approach using WebSocket for real-time streaming and PostgreSQL for persistence.
+
+**Streaming Flow**:
+```
+[Agent in K8s Job] → [Dual Write] → [Real-time] + [Persistence]
+       ↓                   ↓             ↓           ↓
+[LLM Output]    → [Redis Streams] → [WebSocket] → [Frontend]
+[Debug Logs]    → [PostgreSQL]   → [API Query] → [History]
+[Status Updates]
+```
 
 **Current Flow**:
-1. **Agent Side**:
-   - Publishes outputs to channel: `run:{run_id}:output:{variation_id}`
-   - Publishes logs to: `run:{run_id}:logs:{variation_id}`
-   - Publishes status to: `run:{run_id}:status`
-   - Falls back to stdout if Redis unavailable
+1. **Agent Side (Dual Write)**:
+   - **Redis Streams**: `XADD` to `run:{run_id}:llm`, `run:{run_id}:stdout`, `run:{run_id}:status`
+   - **PostgreSQL**: `INSERT` into `agent_outputs` table with `run_id`, `variation_id`, `content`
+   - **Guaranteed Consistency**: Both writes in single operation
+   - **Stream Format**: `{variation_id, content, timestamp, output_type, metadata}`
 
 2. **Backend Side**:
-   - RedisService manages pub/sub connections
-   - SSE endpoints subscribe directly to Redis channels
-   - No kubectl log streaming (removed for simplification)
+   - **WebSocket Endpoints**: `/ws/runs/{run_id}` and `/ws/runs/{run_id}/debug`
+   - **RedisService**: `read_run_streams()` with `XREAD` from multiple stream patterns
+   - **Message Types**: `connected`, `llm`, `stdout`, `status`, `control_ack`, `error`, `pong`
+   - **Bidirectional**: Clients can send control commands (`cancel`, `ping`)
 
 3. **Frontend Side**:
-   - Consumes SSE events in real-time
-   - Handles reconnection automatically
+   - **WebSocket Client**: Connects to `/ws/runs/{run_id}` for real-time streaming
+   - **Tabbed Interface**: Multiple agent variations displayed in tabs (not side-by-side)
+   - **Message Handling**: Routes messages by `variation_id` to appropriate tab
+   - **Reconnection Logic**: Automatic reconnect with message ID tracking for resume
+
+**Database Tables**:
+- **`runs`**: Run metadata, status, configuration, user info
+- **`agent_outputs`**: Persistent storage of all agent messages with timestamps
+- **Redis Streams**: Temporary real-time message passing (TTL-based cleanup)
 
 ### Common Pitfalls
-- Always use timeout when testing SSE endpoints
+- Always use timeout when testing WebSocket endpoints
 - Don't use kubectl port-forward when Tilt is running
 - Wait 10+ seconds for Tilt rebuilds
 - Use complete Tailwind class names (no interpolation)
 - Create openai-secret before first deployment
 - Redis is REQUIRED - agents will fail without it
-- Monitor Redis channels when debugging streaming issues
-- Verify both kubectl logs AND SSE show same output
+- PostgreSQL is REQUIRED - agents need database connection for persistence
+- Monitor Redis streams with `redis-cli XREAD` when debugging
+- Verify both WebSocket streaming AND database persistence work
+- Test WebSocket reconnection logic with network interruptions
