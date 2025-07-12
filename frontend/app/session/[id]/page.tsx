@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, use } from "react"
 import { FileCode, Terminal } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -9,10 +9,11 @@ import { Input } from "@/components/ui/input"
 import { sessions } from "@/lib/data"
 import { notFound } from "next/navigation"
 
-export default function SessionPage({ params }: { params: { id: string } }) {
+export default function SessionPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const [activeVersion, setActiveVersion] = useState(1)
 
-  const session = sessions.find((s) => s.id === params.id)
+  const session = sessions.find((s) => s.id === id)
 
   if (!session || !session.sessionDetails) {
     return notFound()
