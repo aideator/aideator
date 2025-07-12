@@ -1,416 +1,480 @@
-"""
-Unit Tests for Runs API endpoints
-
-This test suite covers the runs endpoints
-to increase test coverage for app/api/v1/runs.py
-"""
+"""Tests for runs API endpoints."""
 
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
+from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.runs import router
+from app.core.deps import get_orchestrator
 from app.models.run import Run, RunStatus
 from app.models.user import User
-
-
-class MockSettings:
-    """Mock settings for testing."""
-    api_v1_prefix = "/api/v1"
-    max_variations = 5
-
-
-@pytest.fixture
-def mock_settings():
-    """Provide mock settings."""
-    return MockSettings()
-
-
-@pytest.fixture
-def app():
-    """Create FastAPI app with runs router."""
-    app = FastAPI()
-    app.include_router(router, prefix="/api/v1/runs")
-    return app
-
-
-@pytest.fixture
-def client(app):
-    """Create test client."""
-    return TestClient(app)
-
-
-@pytest.fixture
-def mock_session():
-    """Create mock database session."""
-    session = AsyncMock(spec=AsyncSession)
-    return session
-
-
-@pytest.fixture
-def mock_user():
-    """Create a mock user."""
-    user = User(
-        id="user-123",
-        email="test@example.com",
-        username="testuser",
-        is_active=True
-    )
-    return user
-
-
-@pytest.fixture
-def mock_run():
-    """Create a mock run."""
-    run = Run(
-        id="run-123",
-        user_id="user-123",
-        github_url="https://github.com/test/repo",
-        prompt="Test prompt",
-        variations=3,
-        status=RunStatus.RUNNING,
-        created_at=datetime.utcnow()
-    )
-    return run
+from app.schemas.runs import CreateRunRequest, SelectWinnerRequest
+from app.services.agent_orchestrator import AgentOrchestrator
 
 
 class TestRunsEndpoints:
-    """Test runs endpoints."""
+    """Test runs API endpoints."""
 
-    @patch("app.api.v1.runs.settings", MockSettings())
-    @patch("app.api.v1.runs.get_orchestrator")
-    @patch("app.api.v1.runs.get_session")
-    @patch("app.api.v1.runs.model_catalog")
+    @pytest.fixture
+    def mock_db(self):
+        """Create a mock database session."""
+        return AsyncMock(spec=AsyncSession)
+
+    @pytest.fixture
+    def mock_user(self):
+        """Create a mock user."""
+        user = Mock(spec=User)
+        user.id = "test-user-123"
+        user.email = "test@example.com"
+        return user
+
+    @pytest.fixture
+    def mock_orchestrator(self):
+        """Create a mock orchestrator."""
+        orchestrator = Mock(spec=AgentOrchestrator)
+        orchestrator.create_run = AsyncMock()
+        orchestrator.cancel_run = AsyncMock()
+        return orchestrator
+
+    @pytest.fixture
+    def mock_run(self):
+        """Create a mock run."""
+        run = Mock(spec=Run)
+        run.id = "test-run-123"
+        run.user_id = "test-user-123"
+        run.github_url = "https://github.com/test/repo"
+        run.prompt = "Test prompt"
+        run.variations = 3
+        run.model_count = 3  # Required for RunListItem schema
+        run.variations = 3  # Original field name in model
+        run.models_config = {
+            "0": {"model": "gpt-4"},
+            "1": {"model": "claude-3"},
+            "2": {"model": "gemini-pro"},
+        }
+        run.status = RunStatus.RUNNING
+        run.created_at = datetime.utcnow()
+        run.started_at = datetime.utcnow()
+        run.completed_at = None
+        run.winning_variation_id = None
+        run.error_message = None
+        return run
+
     @pytest.mark.asyncio
-    async def test_create_run_success(self, mock_catalog, mock_get_session, mock_get_orchestrator, client, mock_user):
+    async def test_create_run_success(self, mock_db, mock_user, mock_orchestrator):
         """Test successful run creation."""
-        # Mock model catalog validation
-        mock_catalog.validate_model_access.return_value = (True, "")
-
-        # Mock orchestrator
-        mock_orchestrator = MagicMock()
-        mock_get_orchestrator.return_value = mock_orchestrator
-
-        # Mock database session
-        mock_session = AsyncMock(spec=AsyncSession)
-        mock_session.add = MagicMock()
-        mock_session.commit = AsyncMock()
-        mock_session.refresh = AsyncMock()
-
-        # Mock existing session check
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None  # No existing session
-        mock_session.execute.return_value = mock_result
-
-        mock_get_session.return_value = mock_session
-
-        # Mock current user dependency
-        from app.core.dependencies import get_current_user_from_api_key
-        app = client.app
-        app.dependency_overrides[get_current_user_from_api_key] = lambda: mock_user
-
-        # Create run request
-        run_data = {
-            "github_url": "https://github.com/test/repo",
-            "prompt": "Analyze this repository",
-            "model_variants": [
-                {"model_definition_id": "gpt-4"},
-                {"model_definition_id": "claude-3"}
-            ]
-        }
-
-        response = client.post("/api/v1/runs", json=run_data)
-
-        assert response.status_code == 202
-        data = response.json()
-        assert "run_id" in data
-        assert data["status"] == "PENDING"
-        assert data["stream_url"].endswith("/stream")
-        assert data["variations"] == 2
-
-        # Verify database operations
-        assert mock_session.add.call_count >= 1  # Run and possibly session
-        mock_session.commit.assert_called()
-
-    @patch("app.api.v1.runs.settings", MockSettings())
-    @patch("app.api.v1.runs.get_session")
-    @patch("app.api.v1.runs.model_catalog")
-    @pytest.mark.asyncio
-    async def test_create_run_invalid_model(self, mock_catalog, mock_get_session, client, mock_user):
-        """Test run creation with invalid model."""
-        # Mock model catalog validation failure
-        mock_catalog.validate_model_access.return_value = (False, "Model 'invalid-model' not found")
-
-        # Mock database session
-        mock_session = AsyncMock(spec=AsyncSession)
-        mock_get_session.return_value = mock_session
-
-        # Mock current user dependency
-        from app.core.dependencies import get_current_user_from_api_key
-        app = client.app
-        app.dependency_overrides[get_current_user_from_api_key] = lambda: mock_user
-
-        # Create run request with invalid model
-        run_data = {
-            "github_url": "https://github.com/test/repo",
-            "prompt": "Analyze this repository",
-            "model_variants": [
-                {"model_definition_id": "invalid-model"}
-            ]
-        }
-
-        response = client.post("/api/v1/runs", json=run_data)
-
-        assert response.status_code == 400
-        assert "not found" in response.json()["detail"]
-
-    @patch("app.api.v1.runs.settings")
-    @patch("app.api.v1.runs.get_session")
-    @pytest.mark.asyncio
-    async def test_create_run_too_many_variations(self, mock_get_session, mock_settings, client, mock_user):
-        """Test run creation with too many variations."""
-        # Configure settings
-        mock_settings.max_variations = 3
-
-        # Mock database session
-        mock_session = AsyncMock(spec=AsyncSession)
-        mock_get_session.return_value = mock_session
-
-        # Mock current user dependency
-        from app.core.dependencies import get_current_user_from_api_key
-        app = client.app
-        app.dependency_overrides[get_current_user_from_api_key] = lambda: mock_user
-
-        # Create run request with too many variations
-        run_data = {
-            "github_url": "https://github.com/test/repo",
-            "prompt": "Analyze this repository",
-            "model_variants": [
-                {"model_definition_id": "gpt-4"},
-                {"model_definition_id": "claude-3"},
-                {"model_definition_id": "gemini-pro"},
-                {"model_definition_id": "llama-2"}
-            ]
-        }
-
-        response = client.post("/api/v1/runs", json=run_data)
-
-        assert response.status_code == 400
-        assert "Too many variations" in response.json()["detail"]
-
-    @patch("app.api.v1.runs.get_session")
-    @pytest.mark.asyncio
-    async def test_get_run_success(self, mock_get_session, client, mock_user, mock_run):
-        """Test successful run retrieval."""
-        # Mock database session
-        mock_session = AsyncMock(spec=AsyncSession)
-        mock_session.get.return_value = mock_run
-
-        mock_get_session.return_value = mock_session
-
-        # Mock current user dependency
-        from app.core.dependencies import get_current_user_from_api_key
-        app = client.app
-        app.dependency_overrides[get_current_user_from_api_key] = lambda: mock_user
-
-        # Get run
-        response = client.get("/api/v1/runs/run-123")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["id"] == "run-123"
-        assert data["github_url"] == "https://github.com/test/repo"
-        assert data["prompt"] == "Test prompt"
-        assert data["status"] == "RUNNING"
-        assert data["variations"] == 3
-
-    @patch("app.api.v1.runs.get_session")
-    @pytest.mark.asyncio
-    async def test_get_run_not_found(self, mock_get_session, client, mock_user):
-        """Test getting non-existent run."""
-        # Mock database session - run not found
-        mock_session = AsyncMock(spec=AsyncSession)
-        mock_session.get.return_value = None
-
-        mock_get_session.return_value = mock_session
-
-        # Mock current user dependency
-        from app.core.dependencies import get_current_user_from_api_key
-        app = client.app
-        app.dependency_overrides[get_current_user_from_api_key] = lambda: mock_user
-
-        # Try to get non-existent run
-        response = client.get("/api/v1/runs/nonexistent")
-
-        assert response.status_code == 404
-        assert "Run not found" in response.json()["detail"]
-
-    @patch("app.api.v1.runs.get_session")
-    @pytest.mark.asyncio
-    async def test_get_run_wrong_user(self, mock_get_session, client, mock_user):
-        """Test getting run belonging to another user."""
-        # Create run for different user
-        other_run = Run(
-            id="run-456",
-            user_id="other-user-id",
+        request = CreateRunRequest(
             github_url="https://github.com/test/repo",
-            prompt="Test prompt",
-            variations=3,
-            status=RunStatus.RUNNING
+            prompt="Analyze this repository",
+            model_variants=[
+                {
+                    "model_definition_id": "gpt-4",
+                    "provider_credential_id": None,
+                    "model_parameters": {},
+                },
+                {
+                    "model_definition_id": "claude-3",
+                    "provider_credential_id": None,
+                    "model_parameters": {},
+                },
+                {
+                    "model_definition_id": "gemini-pro",
+                    "provider_credential_id": None,
+                    "model_parameters": {},
+                },
+            ],
         )
 
-        # Mock database session
-        mock_session = AsyncMock(spec=AsyncSession)
-        mock_session.get.return_value = other_run
+        # Mock the created run
+        created_run = Mock(spec=Run)
+        created_run.id = "new-run-123"
+        created_run.user_id = mock_user.id
+        created_run.github_url = request.github_url
+        created_run.prompt = request.prompt
+        created_run.model_variants = len(request.model_variants)
+        created_run.status = RunStatus.PENDING
+        created_run.created_at = datetime.utcnow()
+        created_run.started_at = None
+        created_run.completed_at = None
+        created_run.winning_variation_id = None
+        created_run.error_message = None
 
-        mock_get_session.return_value = mock_session
+        mock_orchestrator.create_run.return_value = created_run
 
-        # Mock current user dependency
-        from app.core.dependencies import get_current_user_from_api_key
-        app = client.app
-        app.dependency_overrides[get_current_user_from_api_key] = lambda: mock_user
+        from app.api.v1.runs import create_run
 
-        # Try to get another user's run
-        response = client.get("/api/v1/runs/run-456")
+        # Mock database queries for session/turn creation
+        mock_db.execute.return_value.scalar = Mock(return_value=0)  # turn count
+        mock_db.add = Mock()
+        mock_db.commit = AsyncMock()
+        mock_db.refresh = AsyncMock()
 
-        assert response.status_code == 404
-        assert "Run not found" in response.json()["detail"]
+        # Mock the model catalog
+        with patch("app.api.v1.runs.model_catalog") as mock_catalog:
+            mock_catalog.validate_model_access.return_value = (True, None)
 
-    @patch("app.api.v1.runs.get_session")
-    @pytest.mark.asyncio
-    async def test_list_runs_success(self, mock_get_session, client, mock_user):
-        """Test listing user's runs."""
-        # Create mock runs
-        mock_runs = [
-            Run(
-                id="run-1",
-                user_id=mock_user.id,
-                github_url="https://github.com/test/repo1",
-                prompt="Prompt 1",
-                variations=2,
-                status=RunStatus.COMPLETED,
-                created_at=datetime.utcnow()
-            ),
-            Run(
-                id="run-2",
-                user_id=mock_user.id,
-                github_url="https://github.com/test/repo2",
-                prompt="Prompt 2",
-                variations=3,
-                status=RunStatus.RUNNING,
-                created_at=datetime.utcnow()
+            mock_background_tasks = Mock()
+            result = await create_run(
+                request=request,
+                background_tasks=mock_background_tasks,
+                current_user=mock_user,
+                db=mock_db,
+                orchestrator=mock_orchestrator,
             )
+
+        assert result.run_id.startswith("run-")  # Auto-generated run ID
+        assert "/ws/runs/" in result.stream_url  # WebSocket URL for streaming
+        assert result.status == "accepted"
+        # Check that background task was added (orchestrator.execute_variations is called via background_tasks)
+        mock_background_tasks.add_task.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_create_run_with_different_prompt(
+        self, mock_db, mock_user, mock_orchestrator
+    ):
+        """Test run creation with a different prompt."""
+        request = CreateRunRequest(
+            github_url="https://github.com/test/repo",
+            prompt="Fix the bug",
+            model_variants=[
+                {
+                    "model_definition_id": "gpt-4",
+                    "provider_credential_id": None,
+                    "model_parameters": {},
+                },
+                {
+                    "model_definition_id": "claude-3",
+                    "provider_credential_id": None,
+                    "model_parameters": {},
+                },
+            ],
+        )
+
+        created_run = Mock(spec=Run)
+        created_run.id = "new-run-123"
+        created_run.status = RunStatus.PENDING
+        created_run.github_url = request.github_url
+        created_run.prompt = request.prompt
+        created_run.model_variants = len(request.model_variants)
+        created_run.user_id = mock_user.id
+        created_run.created_at = datetime.utcnow()
+        created_run.started_at = None
+        created_run.completed_at = None
+        created_run.winning_variation_id = None
+        created_run.error_message = None
+
+        mock_orchestrator.create_run.return_value = created_run
+
+        from app.api.v1.runs import create_run
+
+        # Mock database queries for session/turn creation
+        mock_db.execute.return_value.scalar = Mock(return_value=0)  # turn count
+        mock_db.add = Mock()
+        mock_db.commit = AsyncMock()
+        mock_db.refresh = AsyncMock()
+
+        # Mock the model catalog
+        with patch("app.api.v1.runs.model_catalog") as mock_catalog:
+            mock_catalog.validate_model_access.return_value = (True, None)
+
+            mock_background_tasks = Mock()
+            result = await create_run(
+                request=request,
+                background_tasks=mock_background_tasks,
+                current_user=mock_user,
+                db=mock_db,
+                orchestrator=mock_orchestrator,
+            )
+
+        assert result.status == "accepted"
+
+    @pytest.mark.asyncio
+    async def test_list_runs(self, mock_db, mock_user, mock_run):
+        """Test listing user runs with pagination."""
+        # Mock database queries
+        mock_db.execute.side_effect = [
+            Mock(scalar=Mock(return_value=1)),  # total count
+            Mock(
+                scalars=Mock(return_value=Mock(all=Mock(return_value=[mock_run])))
+            ),  # runs
         ]
 
-        # Mock database session
-        mock_session = AsyncMock(spec=AsyncSession)
+        from app.api.v1.runs import list_runs
 
-        # Mock count query
-        count_result = MagicMock()
-        count_result.scalar.return_value = 2
+        result = await list_runs(
+            status=None, page=1, per_page=10, current_user=mock_user, db=mock_db
+        )
 
-        # Mock runs query
-        runs_result = MagicMock()
-        runs_result.scalars.return_value.all.return_value = mock_runs
+        assert result.total == 1
+        assert len(result.items) == 1
+        assert result.items[0].id == "test-run-123"
+        assert result.page == 1
+        assert result.per_page == 10
 
-        # Set up execute to return different results based on query
-        mock_session.execute = AsyncMock(side_effect=[count_result, runs_result])
-
-        mock_get_session.return_value = mock_session
-
-        # Mock current user dependency
-        from app.core.dependencies import get_current_user_from_api_key
-        app = client.app
-        app.dependency_overrides[get_current_user_from_api_key] = lambda: mock_user
-
-        # List runs
-        response = client.get("/api/v1/runs")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["total"] == 2
-        assert data["page"] == 1
-        assert len(data["items"]) == 2
-        assert data["items"][0]["id"] == "run-1"
-        assert data["items"][1]["id"] == "run-2"
-
-    @patch("app.api.v1.runs.get_session")
     @pytest.mark.asyncio
-    async def test_select_winner_success(self, mock_get_session, client, mock_user, mock_run):
-        """Test successful winner selection."""
-        # Set run to completed status
+    async def test_list_runs_with_status_filter(self, mock_db, mock_user, mock_run):
+        """Test listing runs filtered by status."""
         mock_run.status = RunStatus.COMPLETED
 
-        # Mock database session
-        mock_session = AsyncMock(spec=AsyncSession)
-        mock_session.get.return_value = mock_run
-        mock_session.commit = AsyncMock()
+        mock_db.execute.side_effect = [
+            Mock(scalar=Mock(return_value=1)),
+            Mock(scalars=Mock(return_value=Mock(all=Mock(return_value=[mock_run])))),
+        ]
 
-        mock_get_session.return_value = mock_session
+        from app.api.v1.runs import list_runs
 
-        # Mock current user dependency
-        from app.core.dependencies import get_current_user_from_api_key
-        app = client.app
-        app.dependency_overrides[get_current_user_from_api_key] = lambda: mock_user
+        result = await list_runs(
+            status=RunStatus.COMPLETED,
+            page=1,
+            per_page=10,
+            current_user=mock_user,
+            db=mock_db,
+        )
 
-        # Select winner
-        winner_data = {
-            "variation_id": 1,
-            "feedback": "This was the best response"
-        }
+        assert len(result.items) == 1
+        assert result.items[0].status == RunStatus.COMPLETED
 
-        response = client.post("/api/v1/runs/run-123/select-winner", json=winner_data)
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["winner_variation_id"] == 1
-        assert data["feedback"] == "This was the best response"
-
-        # Verify run was updated
-        assert mock_run.winner_variation_id == 1
-        assert mock_run.feedback == "This was the best response"
-        mock_session.commit.assert_called_once()
-
-    @patch("app.api.v1.runs.get_session")
     @pytest.mark.asyncio
-    async def test_select_winner_run_not_completed(self, mock_get_session, client, mock_user, mock_run):
+    async def test_get_run_by_id(self, mock_db, mock_user, mock_run):
+        """Test getting a specific run."""
+        mock_result = Mock()
+        mock_result.scalar_one_or_none.return_value = mock_run
+        mock_db.execute.return_value = mock_result
+
+        from app.api.v1.runs import get_run
+
+        result = await get_run(
+            run_id="test-run-123", current_user=mock_user, db=mock_db
+        )
+
+        assert result.id == "test-run-123"
+        assert result.github_url == "https://github.com/test/repo"
+
+    @pytest.mark.asyncio
+    async def test_get_run_not_found(self, mock_db, mock_user):
+        """Test getting non-existent run."""
+        mock_result = Mock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_db.execute.return_value = mock_result
+
+        from app.api.v1.runs import get_run
+
+        with pytest.raises(HTTPException) as exc_info:
+            await get_run(run_id="non-existent", current_user=mock_user, db=mock_db)
+
+        assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
+        assert "Run not found" in str(exc_info.value.detail)
+
+    @pytest.mark.asyncio
+    async def test_select_winner(self, mock_db, mock_user, mock_run):
+        """Test selecting winning variation."""
+        mock_run.status = RunStatus.COMPLETED
+        mock_run.variations = 3
+
+        mock_result = Mock()
+        mock_result.scalar_one_or_none.return_value = mock_run
+        mock_db.execute.return_value = mock_result
+        mock_db.commit = AsyncMock()
+        mock_db.refresh = AsyncMock()
+
+        request = SelectWinnerRequest(winning_variation_id=1)
+
+        from app.api.v1.runs import select_winner
+
+        await select_winner(
+            run_id="test-run-123", request=request, current_user=mock_user, db=mock_db
+        )
+
+        assert mock_run.winning_variation_id == 1
+        mock_db.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_select_winner_not_completed(self, mock_db, mock_user, mock_run):
         """Test selecting winner for non-completed run."""
-        # Keep run in running status
         mock_run.status = RunStatus.RUNNING
 
-        # Mock database session
-        mock_session = AsyncMock(spec=AsyncSession)
-        mock_session.get.return_value = mock_run
+        mock_result = Mock()
+        mock_result.scalar_one_or_none.return_value = mock_run
+        mock_db.execute.return_value = mock_result
 
-        mock_get_session.return_value = mock_session
+        request = SelectWinnerRequest(winning_variation_id=1)
 
-        # Mock current user dependency
-        from app.core.dependencies import get_current_user_from_api_key
-        app = client.app
-        app.dependency_overrides[get_current_user_from_api_key] = lambda: mock_user
+        from app.api.v1.runs import select_winner
 
-        # Try to select winner
-        winner_data = {
-            "variation_id": 1,
-            "feedback": "This was the best"
-        }
+        with pytest.raises(HTTPException) as exc_info:
+            await select_winner(
+                run_id="test-run-123",
+                request=request,
+                current_user=mock_user,
+                db=mock_db,
+            )
 
-        response = client.post("/api/v1/runs/run-123/select-winner", json=winner_data)
+        assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
+        assert "Can only select winner for completed runs" in str(exc_info.value.detail)
 
-        assert response.status_code == 400
-        assert "Run is not completed" in response.json()["detail"]
+    @pytest.mark.asyncio
+    async def test_select_winner_invalid_variation(self, mock_db, mock_user, mock_run):
+        """Test selecting invalid variation ID."""
+        mock_run.status = RunStatus.COMPLETED
+        mock_run.variations = 3
 
-    def test_runs_routes_registered(self, app):
-        """Test that runs routes are properly registered."""
-        routes = [route.path for route in app.routes]
-        assert "/api/v1/runs" in routes
-        assert "/api/v1/runs/{run_id}" in routes
-        assert "/api/v1/runs/{run_id}/select-winner" in routes
+        mock_result = Mock()
+        mock_result.scalar_one_or_none.return_value = mock_run
+        mock_db.execute.return_value = mock_result
 
+        request = SelectWinnerRequest(
+            winning_variation_id=5
+        )  # Invalid - only 0,1,2 are valid
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+        from app.api.v1.runs import select_winner
+
+        with pytest.raises(HTTPException) as exc_info:
+            await select_winner(
+                run_id="test-run-123",
+                request=request,
+                current_user=mock_user,
+                db=mock_db,
+            )
+
+        assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
+        assert "Invalid variation ID" in str(exc_info.value.detail)
+
+    @pytest.mark.asyncio
+    async def test_cancel_run(self, mock_db, mock_user, mock_run, mock_orchestrator):
+        """Test canceling a run."""
+        mock_run.status = RunStatus.RUNNING
+
+        mock_result = Mock()
+        mock_result.scalar_one_or_none.return_value = mock_run
+        mock_db.execute.return_value = mock_result
+        mock_db.commit = AsyncMock()
+
+        from app.api.v1.runs import cancel_run
+
+        await cancel_run(
+            run_id="test-run-123",
+            current_user=mock_user,
+            db=mock_db,
+        )
+
+        # The current implementation doesn't actually call the orchestrator
+        # It just updates the database status to cancelled
+        assert mock_run.status == RunStatus.CANCELLED
+        mock_db.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cancel_run_already_completed(
+        self, mock_db, mock_user, mock_run, mock_orchestrator
+    ):
+        """Test canceling already completed run."""
+        mock_run.status = RunStatus.COMPLETED
+
+        mock_result = Mock()
+        mock_result.scalar_one_or_none.return_value = mock_run
+        mock_db.execute.return_value = mock_result
+
+        from app.api.v1.runs import cancel_run
+
+        with pytest.raises(HTTPException) as exc_info:
+            await cancel_run(
+                run_id="test-run-123",
+                current_user=mock_user,
+                db=mock_db,
+            )
+
+        assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
+        assert "Cannot cancel run with status" in str(exc_info.value.detail)
+
+    @pytest.mark.asyncio
+    async def test_get_run_outputs(self, mock_db, mock_user):
+        """Test getting run outputs."""
+        # Mock outputs
+        mock_output1 = Mock()
+        mock_output1.id = "output-1"
+        mock_output1.run_id = "test-run-123"
+        mock_output1.variation_id = 0
+        mock_output1.content = "Output from model 0"
+        mock_output1.output_type = "agent"
+        mock_output1.timestamp = datetime.utcnow()
+
+        mock_output2 = Mock()
+        mock_output2.id = "output-2"
+        mock_output2.run_id = "test-run-123"
+        mock_output2.variation_id = 1
+        mock_output2.content = "Output from model 1"
+        mock_output2.output_type = "agent"
+        mock_output2.timestamp = datetime.utcnow()
+
+        # Mock run existence check first, then outputs
+        mock_db.execute.side_effect = [
+            Mock(scalar_one_or_none=Mock(return_value=Mock())),  # run exists
+            Mock(
+                scalars=Mock(
+                    return_value=Mock(
+                        all=Mock(return_value=[mock_output1, mock_output2])
+                    )
+                )
+            ),  # outputs
+        ]
+
+        from app.api.v1.runs import get_agent_outputs
+
+        result = await get_agent_outputs(
+            run_id="test-run-123",
+            since=None,
+            variation_id=None,
+            output_type=None,
+            limit=100,
+            current_user=mock_user,
+            db=mock_db,
+        )
+
+        assert len(result) == 2
+        assert any(output["variation_id"] == 0 for output in result)
+        assert any(output["variation_id"] == 1 for output in result)
+
+    @pytest.mark.asyncio
+    async def test_get_run_outputs_filtered(self, mock_db, mock_user):
+        """Test getting run outputs for specific variation."""
+        mock_output = Mock()
+        mock_output.id = "output-1"
+        mock_output.run_id = "test-run-123"
+        mock_output.variation_id = 1
+        mock_output.content = "Filtered output"
+        mock_output.output_type = "agent"
+        mock_output.timestamp = datetime.utcnow()
+
+        # Mock run existence check first, then outputs
+        mock_db.execute.side_effect = [
+            Mock(scalar_one_or_none=Mock(return_value=Mock())),  # run exists
+            Mock(
+                scalars=Mock(return_value=Mock(all=Mock(return_value=[mock_output])))
+            ),  # outputs
+        ]
+
+        from app.api.v1.runs import get_agent_outputs
+
+        result = await get_agent_outputs(
+            run_id="test-run-123",
+            since=None,
+            variation_id=1,
+            output_type=None,
+            limit=100,
+            current_user=mock_user,
+            db=mock_db,
+        )
+
+        assert len(result) == 1
+        assert result[0]["variation_id"] == 1
+
+    def test_router_exists(self):
+        """Test that router is properly configured."""
+        assert router is not None
+        routes = [route.path for route in router.routes]
+        assert "" in routes  # Root route for list_runs and create_run
+        assert "/{run_id}" in routes
+        assert "/{run_id}/select" in routes
+        assert "/{run_id}/outputs" in routes

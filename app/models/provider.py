@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
 from sqlalchemy import JSON, Column
 from sqlalchemy import Enum as SQLEnum
@@ -20,45 +21,14 @@ class ProviderType(str, Enum):
 
     # Cloud providers
     AZURE = "azure"
-    AWS = "aws"
-    GCP = "gcp"
 
-    # Specialized providers
+    # Specialized providers (only ones actually used in the codebase)
     HUGGINGFACE = "huggingface"
     TOGETHER = "together"
-    REPLICATE = "replicate"
     GROQ = "groq"
     DEEPSEEK = "deepseek"
     PERPLEXITY = "perplexity"
     OLLAMA = "ollama"
-    NVIDIA_NIM = "nvidia_nim"
-
-    # Other providers
-    DEEPINFRA = "deepinfra"
-    FIREWORKS = "fireworks"
-    XAI = "xai"
-    VOYAGE = "voyage"
-    ANYSCALE = "anyscale"
-    OPENROUTER = "openrouter"
-    SAMBANOVA = "sambanova"
-    NEBIUS = "nebius"
-    PREDIBASE = "predibase"
-    VLLM = "vllm"
-    GALADRIEL = "galadriel"
-    AI21 = "ai21"
-    BASETEN = "baseten"
-    CLOUDFLARE = "cloudflare"
-    DATABRICKS = "databricks"
-    TRITON = "triton"
-    SAGEMAKER = "sagemaker"
-    PALM = "palm"
-    WATSON = "watson"
-    MARITALK = "maritalk"
-    NLP_CLOUD = "nlp_cloud"
-    ALEPH_ALPHA = "aleph_alpha"
-    PETALS = "petals"
-    CLARIFAI = "clarifai"
-    CUSTOM = "custom"
 
 
 class ModelCapability(str, Enum):
@@ -67,18 +37,9 @@ class ModelCapability(str, Enum):
     TEXT_COMPLETION = "text_completion"
     CHAT_COMPLETION = "chat_completion"
     VISION = "vision"
-    EMBEDDING = "embedding"
-    EMBEDDINGS = "embeddings"  # Some providers use plural
-    AUDIO_INPUT = "audio_input"
-    AUDIO_OUTPUT = "audio_output"
-    IMAGE_GENERATION = "image_generation"
-    WEB_SEARCH = "web_search"
+    EMBEDDINGS = "embeddings"  # Used in model_catalog.py
     FUNCTION_CALLING = "function_calling"
-    ASSISTANT_PREFILL = "assistant_prefill"
-    JSON_SCHEMA = "json_schema"
-    PDF_INPUT = "pdf_input"
     STREAMING = "streaming"
-    PARALLEL_TOOL_CALLS = "parallel_tool_calls"
 
 
 class ProviderCredential(SQLModel, table=True):
@@ -94,7 +55,7 @@ class ProviderCredential(SQLModel, table=True):
     name: str  # User-friendly name like "My OpenAI Key"
 
     # Encrypted credentials
-    encrypted_credentials: dict = Field(sa_column=Column(JSON))
+    encrypted_credentials: dict[str, str] = Field(sa_column=Column(JSON))
 
     # Metadata
     is_active: bool = Field(default=True)
@@ -131,7 +92,9 @@ class ModelDefinition(SQLModel, table=True):
         sa_column=Column(SQLEnum(ProviderType), nullable=False, index=True)
     )
     model_name: str = Field(index=True)  # e.g., "gpt-4", "claude-3-sonnet"
-    litellm_model_name: str = Field(index=True)  # e.g., "openai/gpt-4", "anthropic/claude-3-sonnet"
+    litellm_model_name: str = Field(
+        index=True
+    )  # e.g., "openai/gpt-4", "anthropic/claude-3-sonnet"
     display_name: str  # Human-friendly name
     description: str | None = Field(default=None)
 
@@ -145,8 +108,7 @@ class ModelDefinition(SQLModel, table=True):
 
     # Capabilities
     capabilities: list[ModelCapability] = Field(
-        default_factory=list,
-        sa_column=Column(JSON)
+        default_factory=list, sa_column=Column(JSON)
     )
 
     # Authentication requirements
@@ -155,7 +117,9 @@ class ModelDefinition(SQLModel, table=True):
     requires_project_id: bool = Field(default=False)
 
     # Configuration
-    default_parameters: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    default_parameters: dict[str, Any] = Field(
+        default_factory=dict, sa_column=Column(JSON)
+    )
 
     # Metadata
     is_active: bool = Field(default=True)
@@ -178,7 +142,11 @@ class ModelDefinition(SQLModel, table=True):
                 "max_output_tokens": 4096,
                 "input_price_per_1m_tokens": 30.0,
                 "output_price_per_1m_tokens": 60.0,
-                "capabilities": ["text_completion", "chat_completion", "function_calling"],
+                "capabilities": [
+                    "text_completion",
+                    "chat_completion",
+                    "function_calling",
+                ],
                 "requires_api_key": True,
                 "is_active": True,
             }
@@ -193,15 +161,17 @@ class ModelVariant(SQLModel, table=True):
     id: str = Field(primary_key=True)
     run_id: str = Field(foreign_key="runs.id", index=True)
     variation_id: int = Field(index=True)
-    model_definition_id: str = Field(foreign_key="model_definitions.model_name", index=True)
+    model_definition_id: str = Field(
+        foreign_key="model_definitions.model_name", index=True
+    )
     provider_credential_id: str | None = Field(
-        foreign_key="provider_credentials.id",
-        default=None,
-        index=True
+        foreign_key="provider_credentials.id", default=None, index=True
     )
 
     # Runtime configuration
-    model_parameters: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    model_parameters: dict[str, Any] = Field(
+        default_factory=dict, sa_column=Column(JSON)
+    )
 
     # Results
     status: str = Field(default="pending")  # pending, running, completed, failed

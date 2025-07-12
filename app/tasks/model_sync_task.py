@@ -3,6 +3,7 @@ Background task for syncing models from LiteLLM proxy.
 """
 
 import asyncio
+import contextlib
 import logging
 from datetime import timedelta
 
@@ -18,9 +19,9 @@ class ModelSyncTask:
     def __init__(self, sync_interval_minutes: int = 60):
         self.sync_interval = timedelta(minutes=sync_interval_minutes)
         self.is_running = False
-        self._task = None
+        self._task: asyncio.Task[None] | None = None
 
-    async def start(self):
+    async def start(self) -> None:
         """Start the background sync task."""
         if self.is_running:
             logger.warning("Model sync task is already running")
@@ -30,18 +31,16 @@ class ModelSyncTask:
         self._task = asyncio.create_task(self._run_sync_loop())
         logger.info("Model sync task started")
 
-    async def stop(self):
+    async def stop(self) -> None:
         """Stop the background sync task."""
         self.is_running = False
         if self._task:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
         logger.info("Model sync task stopped")
 
-    async def _run_sync_loop(self):
+    async def _run_sync_loop(self) -> None:
         """Main sync loop."""
         # Run initial sync immediately
         await self._sync_once()
@@ -60,7 +59,7 @@ class ModelSyncTask:
                 logger.error(f"Error in model sync loop: {e!s}")
                 # Continue running even if sync fails
 
-    async def _sync_once(self):
+    async def _sync_once(self) -> None:
         """Run a single sync operation."""
         logger.info("Starting model sync from LiteLLM proxy")
 
@@ -79,7 +78,7 @@ class ModelSyncTask:
         except Exception as e:
             logger.error(f"Model sync failed: {e!s}")
 
-    async def sync_now(self):
+    async def sync_now(self) -> None:
         """Trigger an immediate sync (useful for manual triggers)."""
         await self._sync_once()
 

@@ -31,20 +31,20 @@ class TestDatabaseInitProviderKey:
         return DatabaseInitService(mock_session)
 
     @patch("app.services.database_init.get_settings")
-    @patch("app.services.database_init.ProviderKeyService")
-    def test_new_user_gets_openai_provider_key(self, mock_provider_service_class, mock_get_settings, init_service, mock_session):
+    @patch("app.services.encryption_service.get_encryption_service")
+    def test_new_user_gets_openai_provider_key(
+        self, mock_get_encryption, mock_get_settings, init_service, mock_session
+    ):
         """Test that new test user gets OpenAI provider key from settings."""
         # Mock settings with OpenAI API key
         mock_settings = Mock()
         mock_settings.openai_api_key = "sk-test1234567890"
         mock_get_settings.return_value = mock_settings
 
-        # Mock provider key service
-        mock_provider_service = Mock()
-        mock_created_key = Mock()
-        mock_created_key.key_hint = "sk-...7890"
-        mock_provider_service.create_provider_key.return_value = mock_created_key
-        mock_provider_service_class.return_value = mock_provider_service
+        # Mock encryption service
+        mock_encryption = Mock()
+        mock_encryption.encrypt_api_key.return_value = ("encrypted_key", "sk-...7890")
+        mock_get_encryption.return_value = mock_encryption
 
         # Mock that test user doesn't exist
         mock_session.exec.return_value.first.return_value = None
@@ -65,23 +65,34 @@ class TestDatabaseInitProviderKey:
         assert result["email"] == "test@aideator.local"
         assert "api_key" in result
 
-        # Verify that provider key service was called correctly
-        mock_provider_service.create_provider_key.assert_called_once()
-        call_args = mock_provider_service.create_provider_key.call_args
+        # Verify that encryption service was called correctly
+        mock_encryption.encrypt_api_key.assert_called_once_with("sk-test1234567890")
 
-        assert call_args[1]["user_id"] == result["user_id"]
-        assert call_args[1]["provider_key_data"]["provider"] == "openai"
-        assert call_args[1]["provider_key_data"]["api_key"] == "sk-test1234567890"
-        assert call_args[1]["provider_key_data"]["name"] == "Development OpenAI Key"
-        assert "Auto-created from .env" in call_args[1]["provider_key_data"]["description"]
+        # Verify that a provider key was added to the database
+        assert mock_session.add.call_count >= 2  # User, API key, and provider key
+
+        # Check that the provider key was created by examining the add calls
+        add_calls = mock_session.add.call_args_list
+        provider_key_added = any(
+            isinstance(call[0][0], ProviderAPIKeyDB) for call in add_calls
+        )
+        assert provider_key_added
 
     @patch("app.services.database_init.get_settings")
-    def test_existing_user_gets_provider_key_if_missing(self, mock_get_settings, init_service, mock_session):
+    @patch("app.services.encryption_service.get_encryption_service")
+    def test_existing_user_gets_provider_key_if_missing(
+        self, mock_get_encryption, mock_get_settings, init_service, mock_session
+    ):
         """Test that existing test user gets provider key if they don't have one."""
         # Mock settings with OpenAI API key
         mock_settings = Mock()
         mock_settings.openai_api_key = "sk-test1234567890"
         mock_get_settings.return_value = mock_settings
+
+        # Mock encryption service
+        mock_encryption = Mock()
+        mock_encryption.encrypt_api_key.return_value = ("encrypted_key", "sk-...7890")
+        mock_get_encryption.return_value = mock_encryption
 
         # Mock existing user
         mock_user = Mock(spec=User)
@@ -89,31 +100,36 @@ class TestDatabaseInitProviderKey:
         mock_user.email = "test@aideator.local"
 
         # Mock no existing API key
-        mock_exec_results = [mock_user, None, None]  # user exists, no API key, no provider key
+        mock_exec_results = [
+            mock_user,
+            None,
+            None,
+        ]  # user exists, no API key, no provider key
         mock_session.exec.return_value.first.side_effect = mock_exec_results
 
-        # Mock provider key service
-        with patch("app.services.database_init.ProviderKeyService") as mock_provider_service_class:
-            mock_provider_service = Mock()
-            mock_created_key = Mock()
-            mock_created_key.key_hint = "sk-...7890"
-            mock_provider_service.create_provider_key.return_value = mock_created_key
-            mock_provider_service_class.return_value = mock_provider_service
+        # Mock password hashing and secrets
+        with patch("app.services.database_init.get_password_hash") as mock_hash:
+            with patch("app.services.database_init.secrets") as mock_secrets:
+                mock_hash.return_value = "hashed_password"
+                mock_secrets.token_urlsafe.return_value = "test123"
 
-            # Mock password hashing and secrets
-            with patch("app.services.database_init.get_password_hash") as mock_hash:
-                with patch("app.services.database_init.secrets") as mock_secrets:
-                    mock_hash.return_value = "hashed_password"
-                    mock_secrets.token_urlsafe.return_value = "test123"
+                # Call the method
+                init_service.initialize_test_user()
 
-                    # Call the method
-                    result = init_service.initialize_test_user()
+        # Verify that encryption service was called
+        mock_encryption.encrypt_api_key.assert_called_once_with("sk-test1234567890")
 
-        # Verify that provider key was created
-        mock_provider_service.create_provider_key.assert_called_once()
+        # Verify that a provider key was added
+        add_calls = mock_session.add.call_args_list
+        provider_key_added = any(
+            isinstance(call[0][0], ProviderAPIKeyDB) for call in add_calls
+        )
+        assert provider_key_added
 
     @patch("app.services.database_init.get_settings")
-    def test_no_provider_key_created_when_no_openai_key(self, mock_get_settings, init_service, mock_session):
+    def test_no_provider_key_created_when_no_openai_key(
+        self, mock_get_settings, init_service, mock_session
+    ):
         """Test that no provider key is created when OpenAI API key is not available."""
         # Mock settings with no OpenAI API key
         mock_settings = Mock()
@@ -123,39 +139,40 @@ class TestDatabaseInitProviderKey:
         # Mock that test user doesn't exist
         mock_session.exec.return_value.first.return_value = None
 
-        # Mock provider key service (should not be called)
-        with patch("app.services.database_init.ProviderKeyService") as mock_provider_service_class:
-            mock_provider_service = Mock()
-            mock_provider_service_class.return_value = mock_provider_service
+        # Mock password hashing and secrets
+        with patch("app.services.database_init.get_password_hash") as mock_hash:
+            with patch("app.services.database_init.secrets") as mock_secrets:
+                mock_hash.return_value = "hashed_password"
+                mock_secrets.token_urlsafe.return_value = "test123"
 
-            # Mock password hashing and secrets
-            with patch("app.services.database_init.get_password_hash") as mock_hash:
-                with patch("app.services.database_init.secrets") as mock_secrets:
-                    mock_hash.return_value = "hashed_password"
-                    mock_secrets.token_urlsafe.return_value = "test123"
-
-                    # Call the method
-                    result = init_service.initialize_test_user()
-
-        # Verify that provider key service was NOT called
-        mock_provider_service.create_provider_key.assert_not_called()
+                # Call the method
+                result = init_service.initialize_test_user()
 
         # Verify user was still created successfully
         assert result["message"] == "Test user created successfully"
 
+        # Verify that no provider key was added (since no OpenAI key available)
+        add_calls = mock_session.add.call_args_list
+        provider_key_added = any(
+            isinstance(call[0][0], ProviderAPIKeyDB) for call in add_calls
+        )
+        assert not provider_key_added
+
     @patch("app.services.database_init.get_settings")
-    @patch("app.services.database_init.ProviderKeyService")
-    def test_provider_key_creation_failure_doesnt_break_user_creation(self, mock_provider_service_class, mock_get_settings, init_service, mock_session):
+    @patch("app.services.encryption_service.get_encryption_service")
+    def test_provider_key_creation_failure_doesnt_break_user_creation(
+        self, mock_get_encryption, mock_get_settings, init_service, mock_session
+    ):
         """Test that provider key creation failure doesn't prevent user creation."""
         # Mock settings with OpenAI API key
         mock_settings = Mock()
         mock_settings.openai_api_key = "sk-test1234567890"
         mock_get_settings.return_value = mock_settings
 
-        # Mock provider key service that raises an exception
-        mock_provider_service = Mock()
-        mock_provider_service.create_provider_key.side_effect = Exception("Encryption failed")
-        mock_provider_service_class.return_value = mock_provider_service
+        # Mock encryption service that raises an exception
+        mock_encryption = Mock()
+        mock_encryption.encrypt_api_key.side_effect = Exception("Encryption failed")
+        mock_get_encryption.return_value = mock_encryption
 
         # Mock that test user doesn't exist
         mock_session.exec.return_value.first.return_value = None
@@ -176,10 +193,15 @@ class TestDatabaseInitProviderKey:
 
         # Verify that warning was logged
         mock_logger.warning.assert_called_once()
-        assert "Failed to create OpenAI provider key" in mock_logger.warning.call_args[0][0]
+        assert (
+            "Failed to create OpenAI provider key"
+            in mock_logger.warning.call_args[0][0]
+        )
 
     @patch("app.services.database_init.get_settings")
-    def test_existing_provider_key_not_duplicated(self, mock_get_settings, init_service, mock_session):
+    def test_existing_provider_key_not_duplicated(
+        self, mock_get_settings, init_service, mock_session
+    ):
         """Test that existing provider key is not duplicated."""
         # Mock settings with OpenAI API key
         mock_settings = Mock()
@@ -195,20 +217,21 @@ class TestDatabaseInitProviderKey:
         mock_existing_provider_key = Mock(spec=ProviderAPIKeyDB)
 
         # Mock session responses: user exists, API key exists, provider key exists
-        mock_exec_results = [mock_user, mock_existing_api_key, mock_existing_provider_key]
+        mock_exec_results = [
+            mock_user,
+            mock_existing_api_key,
+            mock_existing_provider_key,
+        ]
         mock_session.exec.return_value.first.side_effect = mock_exec_results
 
-        # Mock provider key service
-        with patch("app.services.database_init.ProviderKeyService") as mock_provider_service_class:
-            mock_provider_service = Mock()
-            mock_provider_service_class.return_value = mock_provider_service
-
-            # Call the method
-            result = init_service.initialize_test_user()
-
-        # Verify that provider key was NOT created (already exists)
-        mock_provider_service.create_provider_key.assert_not_called()
+        # Call the method
+        result = init_service.initialize_test_user()
 
         # Verify that existing user response was returned
         assert result["message"] == "Test user already exists"
         assert result["api_key_exists"] is True
+
+        # Verify that no new provider key was added (since one already exists)
+        add_calls = mock_session.add.call_args_list
+        # Since user and API key already exist, no new objects should be added
+        assert len(add_calls) == 0

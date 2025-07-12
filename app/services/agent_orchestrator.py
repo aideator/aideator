@@ -1,9 +1,8 @@
 """
-Agent orchestrator using Kubernetes jobs with Redis-based streaming.
+Agent orchestrator using Kubernetes jobs with Redis Streams.
 """
 
 import asyncio
-import json
 from datetime import datetime
 from typing import Any
 
@@ -23,21 +22,27 @@ settings = get_settings()
 class AgentOrchestrator:
     """Orchestrates LLM agents using Kubernetes jobs."""
 
-    def __init__(self, kubernetes_service: KubernetesService):
+    def __init__(
+        self,
+        kubernetes_service: KubernetesService,
+    ):
         self.kubernetes = kubernetes_service
+        self.redis = redis_service
         self.active_runs: dict[str, dict[str, Any]] = {}
         self._job_count_lock = asyncio.Lock()
         self._total_active_jobs = 0
 
     async def _check_concurrency_limits(self, requested_jobs: int) -> bool:
         """Check if we can create the requested number of jobs.
-        
+
         Returns True if within limits, False otherwise.
         """
         async with self._job_count_lock:
             # Check run limit
             if len(self.active_runs) >= settings.max_concurrent_runs:
-                logger.warning(f"Max concurrent runs limit reached: {settings.max_concurrent_runs}")
+                logger.warning(
+                    f"Max concurrent runs limit reached: {settings.max_concurrent_runs}"
+                )
                 return False
 
             # Check job limit
@@ -59,7 +64,9 @@ class AgentOrchestrator:
         """Decrement the active job count."""
         async with self._job_count_lock:
             self._total_active_jobs -= count
-            self._total_active_jobs = max(0, self._total_active_jobs)  # Ensure non-negative
+            self._total_active_jobs = max(
+                0, self._total_active_jobs
+            )  # Ensure non-negative
             logger.info(f"Active jobs: {self._total_active_jobs}")
 
     async def execute_variations(
@@ -80,19 +87,10 @@ class AgentOrchestrator:
             repo_url=repo_url,
         )
 
-        # Check concurrency limits before starting
-        if not await self._check_concurrency_limits(variations):
-            raise RuntimeError(
-                f"Cannot start run: would exceed concurrency limits. "
-                f"Active runs: {len(self.active_runs)}/{settings.max_concurrent_runs}, "
-                f"Active jobs: {self._total_active_jobs}/{settings.max_concurrent_jobs}"
-            )
-
-        # Update run status
-        if db_session:
-            await self._update_run_status(
-                db_session, run_id, RunStatus.RUNNING
-            )
+        # Log that we're starting - this will help debug if the task is running
+        logger.info(
+            f"🚀 ORCHESTRATOR STARTING: run_id={run_id}, variations={variations}"
+        )
 
         # Store run metadata and increment job count
         self.active_runs[run_id] = {
@@ -102,25 +100,31 @@ class AgentOrchestrator:
             "agent_config": agent_config.model_dump() if agent_config else None,
             "status": "starting",
             "start_time": datetime.utcnow().isoformat(),
-            "jobs": []
+            "jobs": [],
         }
+
+        # Initialize Redis connection if needed
+        if not await self.redis.health_check():
+            await self.redis.connect()
+
+        # Update run status
+        if db_session:
+            await self._update_run_status(db_session, run_id, RunStatus.RUNNING)
 
         try:
             # Increment job count
             await self._increment_job_count(variations)
 
-            await self._execute_individual_jobs(run_id, repo_url, prompt, variations, agent_mode, db_session)
+            await self._execute_individual_jobs(
+                run_id, repo_url, prompt, variations, agent_mode, db_session
+            )
 
         except Exception as e:
             logger.error(f"Error executing variations for run {run_id}: {e}")
             self.active_runs[run_id]["status"] = "failed"
-            
-            # Publish error to Redis
-            await redis_service.publish_status(
-                run_id,
-                "failed",
-                {"error": str(e)}
-            )
+
+            # Send error event to Redis
+            await self.redis.add_status_update(run_id, "failed", {"error": str(e)})
 
             # Decrement job count on failure
             await self._decrement_job_count(variations)
@@ -132,7 +136,6 @@ class AgentOrchestrator:
         finally:
             # Clean up run metadata after some time
             asyncio.create_task(self._cleanup_run_metadata(run_id, delay=3600))
-
 
     async def _execute_individual_jobs(
         self,
@@ -159,56 +162,50 @@ class AgentOrchestrator:
         self.active_runs[run_id]["jobs"] = [job[0] for job in jobs]
         self.active_runs[run_id]["status"] = "running"
 
-        # Publish start event to Redis
-        await redis_service.publish_status(
-            run_id,
-            "started",
-            {"message": f"Created {len(jobs)} agent jobs", "jobs": [job[0] for job in jobs]}
-        )
-        
-        # Monitor job statuses
-        completed_variations = set()
-        failed_variations = set()
-        
-        # Wait for all jobs to complete
-        while len(completed_variations) + len(failed_variations) < variations:
-            await asyncio.sleep(5)  # Check every 5 seconds
-            
-            for job_name, variation_id in jobs:
-                if variation_id in completed_variations or variation_id in failed_variations:
-                    continue
-                    
-                status = await self.kubernetes.get_job_status(job_name)
-                
-                if status["status"] == "completed":
-                    completed_variations.add(variation_id)
-                    await redis_service.publish_status(
-                        run_id,
-                        "variation_completed",
-                        {"variation_id": variation_id, "job_name": job_name}
-                    )
-                elif status["status"] == "failed":
-                    failed_variations.add(variation_id)
-                    await redis_service.publish_status(
-                        run_id,
-                        "variation_failed",
-                        {"variation_id": variation_id, "job_name": job_name, "error": "Job failed"}
-                    )
+        # Send start event to Redis
+        logger.info(f"Starting {len(jobs)} agent jobs for run {run_id}")
+        await self.redis.add_status_update(run_id, "running", {"job_count": len(jobs)})
 
-        # Publish run completion
-        await redis_service.publish_status(
-            run_id,
-            "completed",
-            {
-                "completed_variations": list(completed_variations),
-                "failed_variations": list(failed_variations),
-                "total_variations": variations
-            }
-        )
+        # Agents now handle their own streaming to Redis Streams
+        # Just wait for all jobs to complete
+        await self._wait_for_jobs_completion(run_id, [job_name for job_name, _ in jobs])
+
+        # Send run completion status to Redis
+        await self.redis.add_status_update(run_id, "completed")
 
         # Update database status
         if db_session:
             await self._update_run_status(db_session, run_id, RunStatus.COMPLETED)
+
+    async def _wait_for_jobs_completion(
+        self, run_id: str, job_names: list[str]
+    ) -> None:
+        """Wait for all jobs to complete."""
+        try:
+            logger.info(
+                f"Waiting for {len(job_names)} jobs to complete for run {run_id}"
+            )
+
+            while True:
+                all_completed = True
+                for job_name in job_names:
+                    job_status = await self.kubernetes.get_job_status(job_name)
+                    status = job_status.get("status", "unknown")
+
+                    if status not in ["completed", "failed"]:
+                        all_completed = False
+                        break
+
+                if all_completed:
+                    logger.info(f"All jobs completed for run {run_id}")
+                    break
+
+                # Wait before checking again
+                await asyncio.sleep(5)
+
+        except Exception as e:
+            logger.error(f"Error waiting for job completion: {e}")
+            await self.redis.add_status_update(run_id, "failed", {"error": str(e)})
 
     async def get_run_status(self, run_id: str) -> dict[str, Any]:
         """Get the status of a run."""
@@ -221,10 +218,7 @@ class AgentOrchestrator:
         job_statuses = []
         for job_name in run_data["jobs"]:
             job_status = await self.kubernetes.get_job_status(job_name)
-            job_statuses.append({
-                "job_name": job_name,
-                "status": job_status
-            })
+            job_statuses.append({"job_name": job_name, "status": job_status})
 
         return {
             "run_id": run_id,
@@ -233,7 +227,7 @@ class AgentOrchestrator:
             "variations": run_data["variations"],
             "jobs": job_statuses,
             "repo_url": run_data["repo_url"],
-            "prompt": run_data["prompt"]
+            "prompt": run_data["prompt"],
         }
 
     async def cancel_run(self, run_id: str) -> bool:
@@ -252,13 +246,9 @@ class AgentOrchestrator:
 
         # Update run status
         run_data["status"] = "cancelled"
-        
-        # Publish cancellation to Redis
-        await redis_service.publish_status(
-            run_id,
-            "cancelled",
-            {"message": "Run cancelled by user"}
-        )
+
+        # Send cancellation event to Redis
+        await self.redis.add_status_update(run_id, "cancelled")
 
         return success
 
@@ -300,21 +290,3 @@ class AgentOrchestrator:
         except Exception as e:
             logger.error(f"Failed to update run status: {e}")
             await db_session.rollback()
-
-    async def _wait_for_sse_connections(self, run_id: str, max_wait_seconds: int = 10) -> None:
-        """Wait for SSE connections to be established before starting orchestration."""
-        logger.info(f"Waiting for SSE connections for run {run_id}...")
-
-        for i in range(max_wait_seconds * 10):  # Check every 100ms
-            if self.sse._connections.get(run_id):
-                logger.info(f"SSE connection established for run {run_id} after {i/10:.1f}s")
-                # Send connected message to all variations
-                variations = self.active_runs.get(run_id, {}).get("variations", 1)
-                for variation_id in range(variations):
-                    await self.sse.send_agent_output(run_id, variation_id, "🔗 Connected! Starting agent variations...")
-                return
-
-            await asyncio.sleep(0.1)  # 100ms check interval
-
-        logger.warning(f"No SSE connections found for run {run_id} after {max_wait_seconds}s, proceeding anyway")
-        # Continue without SSE - jobs will still run, just no streaming

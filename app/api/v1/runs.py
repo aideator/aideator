@@ -1,18 +1,19 @@
 import uuid
 from datetime import datetime
-from typing import Optional, List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
 
 from app.core.config import get_settings
 from app.core.database import get_session
-from app.core.dependencies import CurrentUserAPIKey
+from app.core.dependencies import CurrentUserAPIKey, get_current_user_from_api_key
 from app.core.deps import get_orchestrator
 from app.core.logging import get_logger
-from app.models.run import Run, RunStatus, AgentOutput
+from app.models.run import AgentOutput, Run, RunStatus
 from app.models.session import Session, Turn
+from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.runs import (
     CreateRunRequest,
@@ -21,6 +22,7 @@ from app.schemas.runs import (
     RunListItem,
     SelectWinnerRequest,
 )
+from app.services.agent_orchestrator import AgentOrchestrator
 from app.services.model_catalog import model_catalog
 
 settings = get_settings()
@@ -39,12 +41,12 @@ async def create_run(
     request: CreateRunRequest,
     background_tasks: BackgroundTasks,
     current_user: CurrentUserAPIKey,
-    orchestrator = Depends(get_orchestrator),
+    orchestrator: AgentOrchestrator = Depends(get_orchestrator),
     db: AsyncSession = Depends(get_session),
 ) -> CreateRunResponse:
     """
     Create a new agent run that will spawn N containerized LLM agents.
-    
+
     The run is processed asynchronously in the background using Kubernetes Jobs.
     Connect to the returned stream_url to receive real-time agent outputs.
     """
@@ -54,7 +56,9 @@ async def create_run(
     # Validate that requested models have available API keys
     available_keys = {
         "openai": bool(settings.openai_api_key and settings.openai_api_key.strip()),
-        "anthropic": bool(settings.anthropic_api_key and settings.anthropic_api_key.strip()),
+        "anthropic": bool(
+            settings.anthropic_api_key and settings.anthropic_api_key.strip()
+        ),
         "gemini": bool(settings.gemini_api_key and settings.gemini_api_key.strip()),
     }
 
@@ -64,10 +68,9 @@ async def create_run(
             variant.model_definition_id, available_keys
         )
         if not is_valid:
-            unavailable_models.append({
-                "model": variant.model_definition_id,
-                "error": error_msg
-            })
+            unavailable_models.append(
+                {"model": variant.model_definition_id, "error": error_msg}
+            )
 
     if unavailable_models:
         # Get available alternatives
@@ -78,12 +81,13 @@ async def create_run(
             "message": "Some requested models are not available due to missing API keys",
             "unavailable_models": unavailable_models,
             "available_models": available_model_names,
-            "suggestion": f"Try using one of these available models: {', '.join(available_model_names)}" if available_model_names else "No models are currently available. Please configure API keys."
+            "suggestion": f"Try using one of these available models: {', '.join(available_model_names)}"
+            if available_model_names
+            else "No models are currently available. Please configure API keys.",
         }
 
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=error_detail
+            status_code=status.HTTP_400_BAD_REQUEST, detail=error_detail
         )
 
     # Handle session and turn creation
@@ -98,33 +102,41 @@ async def create_run(
             user_id=current_user.id,
             title=f"Session {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
             description="Multi-model comparison session",
-            models_used=[variant.model_definition_id for variant in request.model_variants],
+            models_used=[
+                variant.model_definition_id for variant in request.model_variants
+            ],
         )
         db.add(session)
         logger.info(f"Created new session: {session_id}")
     else:
         # Verify session exists and belongs to user
-        session_query = select(Session).where(
-            Session.id == session_id,
-            Session.user_id == current_user.id
+        session_query = (
+            select(Session)
+            .where(Session.id == session_id)
+            .where(Session.user_id == current_user.id)
         )
         session_result = await db.execute(session_query)
-        session = session_result.scalar_one_or_none()
-
-        if not session:
+        session_temp = session_result.scalar_one_or_none()
+        if session_temp is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found or not accessible"
+                detail="Session not found or not accessible",
             )
+        session = session_temp
+
+        # Session is now guaranteed to exist
 
     if not turn_id:
         # Create a new turn if none provided
         turn_id = str(uuid.uuid4())
 
         # Get next turn number
-        turn_count_query = select(func.count(Turn.id)).where(Turn.session_id == session_id)
+        turn_count_query = (
+            select(func.count()).select_from(Turn).where(Turn.session_id == session_id)
+        )
         turn_count_result = await db.execute(turn_count_query)
-        turn_number = turn_count_result.scalar() + 1
+        turn_count = turn_count_result.scalar()
+        turn_number = (turn_count or 0) + 1
 
         turn = Turn(
             id=turn_id,
@@ -132,25 +144,27 @@ async def create_run(
             user_id=current_user.id,
             turn_number=turn_number,
             prompt=request.prompt,
-            models_requested=[variant.model_definition_id for variant in request.model_variants],
+            models_requested=[
+                variant.model_definition_id for variant in request.model_variants
+            ],
             status="pending",
         )
         db.add(turn)
         logger.info(f"Created new turn: {turn_id} (turn #{turn_number})")
     else:
         # Verify turn exists and belongs to the session
-        turn_query = select(Turn).where(
-            Turn.id == turn_id,
-            Turn.session_id == session_id
+        turn_query = (
+            select(Turn).where(Turn.id == turn_id).where(Turn.session_id == session_id)
         )
         turn_result = await db.execute(turn_query)
-        turn = turn_result.scalar_one_or_none()
+        turn_temp = turn_result.scalar_one_or_none()
 
-        if not turn:
+        if turn_temp is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Turn not found or not accessible"
+                detail="Turn not found or not accessible",
             )
+        turn = turn_temp
 
     # Create run record
     run = Run(
@@ -159,7 +173,9 @@ async def create_run(
         prompt=request.prompt,
         variations=len(request.model_variants),  # Number of model variants
         agent_config={
-            "model_variants": [variant.model_dump() for variant in request.model_variants],
+            "model_variants": [
+                variant.model_dump() for variant in request.model_variants
+            ],
             "use_claude_code": request.use_claude_code,
             "agent_mode": request.agent_mode,
             "session_id": session_id,
@@ -191,9 +207,12 @@ async def create_run(
         db_session=db,
     )
 
+    stream_url = f"ws://{settings.host}:{settings.port}/ws/runs/{run_id}"
     return CreateRunResponse(
         run_id=run_id,
-        stream_url=f"{settings.api_v1_prefix}/runs/{run_id}/stream",
+        websocket_url=stream_url,
+        stream_url=stream_url,
+        polling_url=f"{settings.api_v1_prefix}/runs/{run_id}/outputs",
         status="accepted",
         estimated_duration_seconds=len(request.model_variants) * 40,  # Rough estimate
         session_id=session_id,
@@ -215,7 +234,8 @@ async def list_runs(
 ) -> PaginatedResponse:
     """List runs with optional filtering."""
     # Build query
-    query = select(Run).order_by(Run.created_at.desc())
+    # Build query
+    query = select(Run).order_by(desc(Run.created_at))  # type: ignore[arg-type]
 
     # Apply filters
     query = query.where(Run.user_id == current_user.id)
@@ -258,15 +278,12 @@ async def get_run(
     db: AsyncSession = Depends(get_session),
 ) -> Run:
     """Get detailed information about a specific run."""
-    query = select(Run).where(Run.id == run_id)
-
-    # Filter by user
-    query = query.where(Run.user_id == current_user.id)
+    query = select(Run).where(Run.id == run_id).where(Run.user_id == current_user.id)
 
     result = await db.execute(query)
     run = result.scalar_one_or_none()
 
-    if not run:
+    if run is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Run not found",
@@ -287,15 +304,12 @@ async def select_winner(
     db: AsyncSession = Depends(get_session),
 ) -> Run:
     """Select the winning variation for a completed run."""
-    query = select(Run).where(Run.id == run_id)
-
-    # Filter by user
-    query = query.where(Run.user_id == current_user.id)
+    query = select(Run).where(Run.id == run_id).where(Run.user_id == current_user.id)
 
     result = await db.execute(query)
     run = result.scalar_one_or_none()
 
-    if not run:
+    if run is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Run not found",
@@ -338,15 +352,12 @@ async def cancel_run(
     db: AsyncSession = Depends(get_session),
 ) -> None:
     """Cancel a pending or running run."""
-    query = select(Run).where(Run.id == run_id)
-
-    # Filter by user
-    query = query.where(Run.user_id == current_user.id)
+    query = select(Run).where(Run.id == run_id).where(Run.user_id == current_user.id)
 
     result = await db.execute(query)
     run = result.scalar_one_or_none()
 
-    if not run:
+    if run is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Run not found",
@@ -367,22 +378,41 @@ async def cancel_run(
 
 @router.get(
     "/{run_id}/outputs",
-    response_model=List[dict],
+    response_model=list[dict],
     summary="Poll for agent outputs",
-    description="Get agent outputs since a given timestamp",
+    description="""
+    Get agent outputs since a given timestamp. This endpoint provides an alternative to WebSocket streaming for clients that prefer HTTP polling.
+
+    **Usage Pattern:**
+    1. Create a run via POST /runs
+    2. Poll this endpoint every 500ms with the `since` parameter set to the timestamp of the last received output
+    3. Process new outputs and update the `since` parameter for the next poll
+
+    **Filtering:**
+    - Use `variation_id` to get outputs from a specific model variant only
+    - Use `output_type` to filter by message type ('llm', 'stdout', 'status')
+    - Use `since` to get only outputs after a specific timestamp
+
+    **Performance:**
+    - Results are limited to 1000 outputs per request
+    - Outputs are ordered by timestamp (oldest first)
+    - Use pagination with `since` parameter for large result sets
+    """,
 )
 async def get_agent_outputs(
     run_id: str,
-    since: Optional[datetime] = Query(None, description="ISO timestamp to get outputs after"),
-    variation_id: Optional[int] = Query(None, description="Filter by variation ID"),
-    output_type: Optional[str] = Query(None, description="Filter by output type"),
+    since: datetime | None = Query(
+        None, description="ISO timestamp to get outputs after"
+    ),
+    variation_id: int | None = Query(None, description="Filter by variation ID"),
+    output_type: str | None = Query(None, description="Filter by output type"),
     limit: int = Query(100, le=1000, description="Maximum number of outputs to return"),
     db: AsyncSession = Depends(get_session),
-    current_user: Optional[User] = Depends(get_current_user_from_api_key),
-) -> List[dict]:
+    current_user: User | None = Depends(get_current_user_from_api_key),
+) -> list[dict]:
     """
     Poll for new agent outputs since a given timestamp.
-    
+
     This endpoint replaces the SSE streaming with database polling.
     Frontend should call this every 0.5 seconds with the last received timestamp.
     """
@@ -390,19 +420,19 @@ async def get_agent_outputs(
     query = select(Run).where(Run.id == run_id)
     if current_user:
         query = query.where(Run.user_id == current_user.id)
-    
+
     result = await db.execute(query)
     run = result.scalar_one_or_none()
-    
+
     if not run:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Run not found",
         )
-    
+
     # Build query for outputs
     outputs_query = select(AgentOutput).where(AgentOutput.run_id == run_id)
-    
+
     # Apply filters
     if since:
         outputs_query = outputs_query.where(AgentOutput.timestamp > since)
@@ -410,14 +440,14 @@ async def get_agent_outputs(
         outputs_query = outputs_query.where(AgentOutput.variation_id == variation_id)
     if output_type:
         outputs_query = outputs_query.where(AgentOutput.output_type == output_type)
-    
+
     # Order by timestamp and limit
     outputs_query = outputs_query.order_by(AgentOutput.timestamp).limit(limit)
-    
+
     # Execute query
     result = await db.execute(outputs_query)
     outputs = result.scalars().all()
-    
+
     # Convert to response format
     return [
         {

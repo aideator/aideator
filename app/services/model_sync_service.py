@@ -7,13 +7,11 @@ from datetime import datetime
 from typing import Any
 
 import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import Session, select
 
 from app.core.config import get_settings
 from app.models.model_definition import ModelDefinitionDB, ModelSyncLog
-from app.models.user import User
-from app.services.model_discovery_service import model_discovery_service
-from app.services.provider_key_service import ProviderKeyService
 
 logger = logging.getLogger(__name__)
 
@@ -21,20 +19,23 @@ logger = logging.getLogger(__name__)
 class ModelSyncService:
     """Synchronizes model definitions from LiteLLM proxy to our database."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         settings = get_settings()
         self.proxy_base_url = settings.LITELLM_PROXY_URL or "http://localhost:4000"
         self.proxy_api_key = settings.LITELLM_MASTER_KEY or ""
 
-    async def sync_models(self, session: Session) -> ModelSyncLog:
+    async def sync_models(self, session: Session | AsyncSession) -> ModelSyncLog:
         """Fetch models from LiteLLM proxy and sync to database.
-        
+
         Returns:
             ModelSyncLog with details of the sync operation
         """
         sync_log = ModelSyncLog(status="in_progress")
         session.add(sync_log)
-        session.commit()
+        if isinstance(session, AsyncSession):
+            await session.commit()
+        else:
+            session.commit()
 
         try:
             # Fetch models from LiteLLM proxy
@@ -45,16 +46,23 @@ class ModelSyncService:
             for model_data in models_data:
                 try:
                     await self._process_model(session, model_data, sync_log)
-                    session.commit()  # Commit after each model to avoid conflicts
+                    if isinstance(session, AsyncSession):
+                        await session.commit()
+                    else:
+                        session.commit()  # Commit after each model to avoid conflicts
                 except Exception as e:
-                    session.rollback()
+                    if isinstance(session, AsyncSession):
+                        await session.rollback()
+                    else:
+                        session.rollback()
                     # If it's a unique constraint violation, the model already exists - skip it
                     if "duplicate key value violates unique constraint" in str(e):
-                        logger.warning(f"Model {model_data.get('model_name')} already exists, skipping")
+                        logger.warning(
+                            f"Model {model_data.get('model_name')} already exists, skipping"
+                        )
                         continue
-                    else:
-                        # Re-raise other exceptions
-                        raise
+                    # Re-raise other exceptions
+                    raise
 
             # Deactivate models not seen in this sync
             await self._deactivate_missing_models(session, models_data, sync_log)
@@ -68,7 +76,10 @@ class ModelSyncService:
             sync_log.error_message = str(e)
             sync_log.completed_at = datetime.utcnow()
 
-        session.commit()
+        if isinstance(session, AsyncSession):
+            await session.commit()
+        else:
+            session.commit()
         return sync_log
 
     async def _fetch_models_from_proxy(self) -> list[dict[str, Any]]:
@@ -80,27 +91,20 @@ class ModelSyncService:
         async with httpx.AsyncClient() as client:
             # First get basic model list
             models_response = await client.get(
-                f"{self.proxy_base_url}/v1/models",
-                headers=headers,
-                timeout=30.0
+                f"{self.proxy_base_url}/v1/models", headers=headers, timeout=30.0
             )
             models_response.raise_for_status()
             models_list = models_response.json().get("data", [])
 
             # Then get detailed model info
             model_info_response = await client.get(
-                f"{self.proxy_base_url}/v1/model/info",
-                headers=headers,
-                timeout=30.0
+                f"{self.proxy_base_url}/v1/model/info", headers=headers, timeout=30.0
             )
             model_info_response.raise_for_status()
             model_info_data = model_info_response.json().get("data", [])
 
             # Merge the data
-            model_info_map = {
-                info["model_name"]: info
-                for info in model_info_data
-            }
+            model_info_map = {info["model_name"]: info for info in model_info_data}
 
             merged_models = []
             for model in models_list:
@@ -109,30 +113,40 @@ class ModelSyncService:
                     merged_models.append(model_info_map[model_name])
                 else:
                     # Basic info only
-                    merged_models.append({
-                        "model_name": model_name,
-                        "litellm_params": {"model": model_name},
-                        "model_info": {}
-                    })
+                    merged_models.append(
+                        {
+                            "model_name": model_name,
+                            "litellm_params": {"model": model_name},
+                            "model_info": {},
+                        }
+                    )
 
             return merged_models
 
     async def _process_model(
         self,
-        session: Session,
+        session: Session | AsyncSession,
         model_data: dict[str, Any],
-        sync_log: ModelSyncLog
-    ):
+        sync_log: ModelSyncLog,
+    ) -> None:
         """Process a single model from the proxy."""
         model_name = model_data["model_name"]
         model_info = model_data.get("model_info", {})
 
         # Check if model exists
-        existing_model = session.exec(
-            select(ModelDefinitionDB).where(
-                ModelDefinitionDB.model_name == model_name
+        if isinstance(session, AsyncSession):
+            result = await session.execute(
+                select(ModelDefinitionDB).where(
+                    ModelDefinitionDB.model_name == model_name
+                )
             )
-        ).first()
+            existing_model = result.scalar_one_or_none()
+        else:
+            existing_model = session.exec(
+                select(ModelDefinitionDB).where(
+                    ModelDefinitionDB.model_name == model_name
+                )
+            ).first()
 
         if existing_model:
             # Update existing model
@@ -147,10 +161,24 @@ class ModelSyncService:
             existing_model.max_input_tokens = model_info.get("max_input_tokens")
             existing_model.max_output_tokens = model_info.get("max_output_tokens")
             existing_model.input_cost_per_token = model_info.get("input_cost_per_token")
-            existing_model.output_cost_per_token = model_info.get("output_cost_per_token")
-            existing_model.supports_function_calling = model_info.get("supports_function_calling") if model_info.get("supports_function_calling") is not None else False
-            existing_model.supports_vision = model_info.get("supports_vision") if model_info.get("supports_vision") is not None else False
-            existing_model.supports_streaming = model_info.get("supports_streaming") if model_info.get("supports_streaming") is not None else True
+            existing_model.output_cost_per_token = model_info.get(
+                "output_cost_per_token"
+            )
+            existing_model.supports_function_calling = (
+                model_info.get("supports_function_calling")
+                if model_info.get("supports_function_calling") is not None
+                else False
+            )
+            existing_model.supports_vision = (
+                model_info.get("supports_vision")
+                if model_info.get("supports_vision") is not None
+                else False
+            )
+            existing_model.supports_streaming = (
+                model_info.get("supports_streaming")
+                if model_info.get("supports_streaming") is not None
+                else True
+            )
 
             sync_log.models_updated += 1
 
@@ -168,9 +196,15 @@ class ModelSyncService:
                 max_output_tokens=model_info.get("max_output_tokens"),
                 input_cost_per_token=model_info.get("input_cost_per_token"),
                 output_cost_per_token=model_info.get("output_cost_per_token"),
-                supports_function_calling=model_info.get("supports_function_calling") if model_info.get("supports_function_calling") is not None else False,
-                supports_vision=model_info.get("supports_vision") if model_info.get("supports_vision") is not None else False,
-                supports_streaming=model_info.get("supports_streaming") if model_info.get("supports_streaming") is not None else True,
+                supports_function_calling=model_info.get("supports_function_calling")
+                if model_info.get("supports_function_calling") is not None
+                else False,
+                supports_vision=model_info.get("supports_vision")
+                if model_info.get("supports_vision") is not None
+                else False,
+                supports_streaming=model_info.get("supports_streaming")
+                if model_info.get("supports_streaming") is not None
+                else True,
                 description=self._generate_description(model_name, model_info),
                 category=self._determine_category(model_name, model_info),
                 tags=self._generate_tags(model_name, model_info),
@@ -178,26 +212,30 @@ class ModelSyncService:
                 is_popular=self._is_popular(model_name),
                 requires_api_key=self._requires_api_key(model_info),
                 api_key_env_var=self._get_api_key_env_var(model_info),
-                extra_metadata=model_info
+                extra_metadata=model_info,
             )
             session.add(new_model)
             sync_log.models_added += 1
 
     async def _deactivate_missing_models(
         self,
-        session: Session,
+        session: Session | AsyncSession,
         current_models: list[dict[str, Any]],
-        sync_log: ModelSyncLog
-    ):
+        sync_log: ModelSyncLog,
+    ) -> None:
         """Deactivate models that weren't seen in the current sync."""
         current_model_names = {m["model_name"] for m in current_models}
 
         # Find active models not in current sync
-        active_models = session.exec(
-            select(ModelDefinitionDB).where(
-                ModelDefinitionDB.is_active == True
+        if isinstance(session, AsyncSession):
+            result = await session.execute(
+                select(ModelDefinitionDB).where(ModelDefinitionDB.is_active)
             )
-        ).all()
+            active_models = result.scalars().all()
+        else:
+            active_models = session.exec(
+                select(ModelDefinitionDB).where(ModelDefinitionDB.is_active)
+            ).all()
 
         for model in active_models:
             if model.model_name not in current_model_names:
@@ -222,7 +260,7 @@ class ModelSyncService:
 
         return " ".join(formatted_parts)
 
-    def _generate_description(self, model_name: str, model_info: dict) -> str:
+    def _generate_description(self, model_name: str, model_info: dict[str, Any]) -> str:
         """Generate a description based on model characteristics."""
         descriptions = {
             "gpt-4": "OpenAI's most capable model for complex tasks",
@@ -250,7 +288,7 @@ class ModelSyncService:
             return "Large context window model"
         return "General purpose language model"
 
-    def _determine_category(self, model_name: str, model_info: dict) -> str:
+    def _determine_category(self, model_name: str, model_info: dict[str, Any]) -> str:
         """Determine the category of the model."""
         if "embed" in model_name.lower():
             return "embedding"
@@ -258,11 +296,13 @@ class ModelSyncService:
             return "vision"
         if "code" in model_name.lower() or "codex" in model_name.lower():
             return "code"
-        if any(x in model_name.lower() for x in ["gpt-4", "claude-3-opus", "gemini-pro"]):
+        if any(
+            x in model_name.lower() for x in ["gpt-4", "claude-3-opus", "gemini-pro"]
+        ):
             return "advanced"
         return "general"
 
-    def _generate_tags(self, model_name: str, model_info: dict) -> list[str]:
+    def _generate_tags(self, model_name: str, model_info: dict[str, Any]) -> list[str]:
         """Generate tags for the model."""
         tags = []
 
@@ -284,25 +324,27 @@ class ModelSyncService:
     def _is_recommended(self, model_name: str) -> bool:
         """Determine if this is a recommended model."""
         recommended = [
-            "gpt-4o", "gpt-4", "claude-3-opus", "claude-3-sonnet",
-            "gemini-1.5-pro", "gemini-1.5-flash"
+            "gpt-4o",
+            "gpt-4",
+            "claude-3-opus",
+            "claude-3-sonnet",
+            "gemini-1.5-pro",
+            "gemini-1.5-flash",
         ]
         return any(r in model_name.lower() for r in recommended)
 
     def _is_popular(self, model_name: str) -> bool:
         """Determine if this is a popular model."""
-        popular = [
-            "gpt-4", "gpt-3.5-turbo", "claude-3", "gemini"
-        ]
+        popular = ["gpt-4", "gpt-3.5-turbo", "claude-3", "gemini"]
         return any(p in model_name.lower() for p in popular)
 
-    def _requires_api_key(self, model_info: dict) -> bool:
+    def _requires_api_key(self, model_info: dict[str, Any]) -> bool:
         """Determine if the model requires an API key."""
         # Most models require API keys except local ones
         provider = model_info.get("litellm_provider", "").lower()
         return provider not in ["ollama", "local"]
 
-    def _get_api_key_env_var(self, model_info: dict) -> str | None:
+    def _get_api_key_env_var(self, model_info: dict[str, Any]) -> str | None:
         """Get the environment variable name for the API key."""
         provider_env_vars = {
             "openai": "OPENAI_API_KEY",

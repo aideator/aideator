@@ -20,9 +20,7 @@ class TestCustomOpenAPI:
         """Test that custom_openapi creates a proper schema."""
         # Create a mock FastAPI app
         app = FastAPI(
-            title="Test API",
-            version="1.0.0",
-            description="Test API Description"
+            title="Test API", version="1.0.0", description="Test API Description"
         )
 
         # Add a test route
@@ -47,7 +45,9 @@ class TestCustomOpenAPI:
         assert "ApiKeyAuth" in schema["components"]["securitySchemes"]
         assert schema["components"]["securitySchemes"]["ApiKeyAuth"]["type"] == "apiKey"
         assert schema["components"]["securitySchemes"]["ApiKeyAuth"]["in"] == "header"
-        assert schema["components"]["securitySchemes"]["ApiKeyAuth"]["name"] == "X-API-Key"
+        assert (
+            schema["components"]["securitySchemes"]["ApiKeyAuth"]["name"] == "X-API-Key"
+        )
 
         # Verify global security requirement
         assert "security" in schema
@@ -106,8 +106,8 @@ class TestCustomOpenAPI:
             title="Test API",
             servers=[
                 {"url": "https://api.example.com", "description": "Production"},
-                {"url": "http://localhost:8000", "description": "Local"}
-            ]
+                {"url": "http://localhost:8000", "description": "Local"},
+            ],
         )
 
         openapi_func = custom_openapi(app)
@@ -132,22 +132,47 @@ class TestCustomOpenAPI:
         assert "ValidationError" in responses
         assert responses["ValidationError"]["description"] == "Validation error"
         assert "application/json" in responses["ValidationError"]["content"]
-        assert "$ref" in responses["ValidationError"]["content"]["application/json"]["schema"]
-        assert responses["ValidationError"]["content"]["application/json"]["schema"]["$ref"] == "#/components/schemas/HTTPValidationError"
+        assert (
+            "$ref"
+            in responses["ValidationError"]["content"]["application/json"]["schema"]
+        )
+        assert (
+            responses["ValidationError"]["content"]["application/json"]["schema"][
+                "$ref"
+            ]
+            == "#/components/schemas/HTTPValidationError"
+        )
 
         # Verify UnauthorizedError response
         assert "UnauthorizedError" in responses
-        assert responses["UnauthorizedError"]["description"] == "API key is missing or invalid"
+        assert (
+            responses["UnauthorizedError"]["description"]
+            == "API key is missing or invalid"
+        )
         assert "application/json" in responses["UnauthorizedError"]["content"]
-        assert "$ref" in responses["UnauthorizedError"]["content"]["application/json"]["schema"]
-        assert responses["UnauthorizedError"]["content"]["application/json"]["schema"]["$ref"] == "#/components/schemas/ErrorResponse"
+        assert (
+            "$ref"
+            in responses["UnauthorizedError"]["content"]["application/json"]["schema"]
+        )
+        assert (
+            responses["UnauthorizedError"]["content"]["application/json"]["schema"][
+                "$ref"
+            ]
+            == "#/components/schemas/ErrorResponse"
+        )
 
         # Verify RateLimitError response
         assert "RateLimitError" in responses
         assert responses["RateLimitError"]["description"] == "Rate limit exceeded"
         assert "application/json" in responses["RateLimitError"]["content"]
-        assert "$ref" in responses["RateLimitError"]["content"]["application/json"]["schema"]
-        assert responses["RateLimitError"]["content"]["application/json"]["schema"]["$ref"] == "#/components/schemas/ErrorResponse"
+        assert (
+            "$ref"
+            in responses["RateLimitError"]["content"]["application/json"]["schema"]
+        )
+        assert (
+            responses["RateLimitError"]["content"]["application/json"]["schema"]["$ref"]
+            == "#/components/schemas/ErrorResponse"
+        )
 
     def test_custom_openapi_all_tags(self):
         """Test all tags have correct descriptions."""
@@ -170,7 +195,7 @@ class TestCustomOpenAPI:
             title="Test API",
             version="2.0.0",
             description="Test Description",
-            servers=[{"url": "http://test.com"}]
+            servers=[{"url": "http://test.com"}],
         )
 
         # Add routes
@@ -183,14 +208,10 @@ class TestCustomOpenAPI:
             pass
 
         # Mock the get_openapi return value
-        mock_get_openapi.return_value = {
-            "info": {},
-            "paths": {},
-            "components": {}
-        }
+        mock_get_openapi.return_value = {"info": {}, "paths": {}, "components": {}}
 
         openapi_func = custom_openapi(app)
-        schema = openapi_func()
+        openapi_func()
 
         # Verify get_openapi was called with correct args
         mock_get_openapi.assert_called_once()

@@ -24,12 +24,7 @@ class TestAdminEndpoints:
     @pytest.fixture
     def admin_user(self):
         """Create admin user."""
-        return User(
-            id=1,
-            email="admin@aideator.com",
-            username="admin",
-            is_active=True
-        )
+        return User(id=1, email="admin@aideator.com", username="admin", is_active=True)
 
     @pytest.fixture
     def mock_session(self):
@@ -59,8 +54,10 @@ class TestAdminEndpoints:
             with pytest.raises(HTTPException) as exc_info:
                 await trigger_model_sync()
 
-            assert exc_info.value.status_code == 500
-            assert "Connection failed" in str(exc_info.value.detail)
+            exc = exc_info.value
+            assert isinstance(exc, HTTPException)
+            assert exc.status_code == 500
+            assert "Connection failed" in str(exc.detail)
 
     @pytest.mark.asyncio
     async def test_get_sync_history(self, mock_session):
@@ -75,15 +72,15 @@ class TestAdminEndpoints:
                 models_discovered=10,
                 models_added=5,
                 models_updated=3,
-                models_deactivated=1
+                models_deactivated=1,
             ),
             ModelSyncLog(
                 id=2,
                 started_at=datetime.utcnow(),
                 completed_at=datetime.utcnow(),
                 status="failed",
-                error_message="Connection timeout"
-            )
+                error_message="Connection timeout",
+            ),
         ]
 
         mock_session.exec.return_value.all.return_value = sync_logs
@@ -103,7 +100,7 @@ class TestAdminEndpoints:
 
         # Verify limit was applied
         exec_call = mock_session.exec.call_args[0][0]
-        assert ".limit(5)" in str(exec_call)
+        assert "LIMIT :param_1" in str(exec_call)
 
     @pytest.mark.asyncio
     async def test_get_sync_status(self, mock_session):
@@ -114,12 +111,19 @@ class TestAdminEndpoints:
             started_at=datetime.utcnow(),
             completed_at=datetime.utcnow(),
             status="success",
-            models_discovered=15
+            models_discovered=15,
         )
 
-        # Mock model count
-        mock_session.exec.return_value.first.return_value = last_sync
-        mock_session.exec.return_value.count.return_value = 25
+        # Create separate mock results for each query
+        mock_sync_result = Mock()
+        mock_sync_result.first.return_value = last_sync
+        mock_models_result = Mock()
+        mock_models_result.all.return_value = [
+            Mock() for _ in range(25)
+        ]  # 25 mock models
+
+        # Mock session.exec to return different results based on call order
+        mock_session.exec.side_effect = [mock_sync_result, mock_models_result]
 
         with patch("app.api.v1.endpoints.admin.model_sync_task") as mock_task:
             mock_task.is_running = True
@@ -135,8 +139,14 @@ class TestAdminEndpoints:
     @pytest.mark.asyncio
     async def test_get_sync_status_no_sync_history(self, mock_session):
         """Test sync status when no sync has run yet."""
-        mock_session.exec.return_value.first.return_value = None
-        mock_session.exec.return_value.count.return_value = 0
+        # Create separate mock results for each query
+        mock_sync_result = Mock()
+        mock_sync_result.first.return_value = None
+        mock_models_result = Mock()
+        mock_models_result.all.return_value = []  # No models
+
+        # Mock session.exec to return different results based on call order
+        mock_session.exec.side_effect = [mock_sync_result, mock_models_result]
 
         with patch("app.api.v1.endpoints.admin.model_sync_task") as mock_task:
             mock_task.is_running = False

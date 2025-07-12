@@ -1,37 +1,30 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import { AuthProvider } from "@/contexts/AuthContext";
-import "./globals.css";
+import type React from "react"
+import type { Metadata } from "next"
+import { Inter } from "next/font/google"
+import "./globals.css"
+import { cn } from "@/lib/utils"
+import { PageHeader } from "@/components/page-header"
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
 
 export const metadata: Metadata = {
-  title: "aideator - Multi-Agent Analysis Platform",
-  description: "Run multiple AI agents in parallel and compare their analysis side-by-side",
-};
+  title: "AIdeator",
+  description: "A Kubernetes-native multi-agent AI orchestration platform"
+}
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: {
+  children: React.ReactNode
+}) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <AuthProvider>
+    <html lang="en" className="dark">
+      <body className={cn("min-h-screen bg-background font-sans antialiased flex flex-col", inter.variable)}>
+        <PageHeader />
+        <main className="flex-1 flex flex-col">
           {children}
-        </AuthProvider>
+        </main>
       </body>
     </html>
-  );
+  )
 }

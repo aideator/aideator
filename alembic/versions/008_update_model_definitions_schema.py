@@ -5,10 +5,10 @@ Revises: 007
 Create Date: 2025-07-10 12:00:00.000000
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-import sqlmodel
 
 from alembic import op
 
@@ -24,39 +24,48 @@ def upgrade() -> None:
 
     # First, drop the foreign key constraint from model_variants if it exists
     connection = op.get_bind()
-    
+
     # Check if model_variants table exists
-    result = connection.execute(sa.text("""
+    result = connection.execute(
+        sa.text("""
         SELECT EXISTS (
-            SELECT FROM information_schema.tables 
+            SELECT FROM information_schema.tables
             WHERE table_name = 'model_variants'
         )
-    """))
+    """)
+    )
     table_exists = result.scalar()
-    
+
     if table_exists:
         # Check if the constraint exists
-        result = connection.execute(sa.text("""
+        result = connection.execute(
+            sa.text("""
             SELECT EXISTS (
-                SELECT FROM information_schema.table_constraints 
-                WHERE table_name = 'model_variants' 
+                SELECT FROM information_schema.table_constraints
+                WHERE table_name = 'model_variants'
                 AND constraint_name = 'model_variants_model_definition_id_fkey'
             )
-        """))
+        """)
+        )
         constraint_exists = result.scalar()
-        
+
         if constraint_exists:
-            op.drop_constraint("model_variants_model_definition_id_fkey", "model_variants", type_="foreignkey")
+            op.drop_constraint(
+                "model_variants_model_definition_id_fkey",
+                "model_variants",
+                type_="foreignkey",
+            )
 
     # Create new table with updated schema
-    op.create_table("model_definitions_new",
+    op.create_table(
+        "model_definitions_new",
         sa.Column("id", sa.Integer(), nullable=False, autoincrement=True),
-        sa.Column("model_name", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-        sa.Column("provider", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-        sa.Column("litellm_model_name", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-        sa.Column("litellm_provider", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-        sa.Column("display_name", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-        sa.Column("description", sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+        sa.Column("model_name", sa.String(), nullable=False),
+        sa.Column("provider", sa.String(), nullable=False),
+        sa.Column("litellm_model_name", sa.String(), nullable=False),
+        sa.Column("litellm_provider", sa.String(), nullable=False),
+        sa.Column("display_name", sa.String(), nullable=False),
+        sa.Column("description", sa.String(), nullable=True),
         sa.Column("context_window", sa.Integer(), nullable=True),
         sa.Column("max_tokens", sa.Integer(), nullable=True),
         sa.Column("max_input_tokens", sa.Integer(), nullable=True),
@@ -72,9 +81,9 @@ def upgrade() -> None:
         sa.Column("requires_api_key", sa.Boolean(), nullable=False),
         sa.Column("requires_region", sa.Boolean(), nullable=False),
         sa.Column("requires_project_id", sa.Boolean(), nullable=False),
-        sa.Column("api_key_env_var", sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+        sa.Column("api_key_env_var", sa.String(), nullable=True),
         sa.Column("default_parameters", sa.JSON(), nullable=False),
-        sa.Column("category", sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+        sa.Column("category", sa.String(), nullable=True),
         sa.Column("tags", sa.JSON(), nullable=False),
         sa.Column("is_recommended", sa.Boolean(), nullable=False),
         sa.Column("is_popular", sa.Boolean(), nullable=False),
@@ -85,7 +94,7 @@ def upgrade() -> None:
         sa.Column("last_seen_at", sa.DateTime(), nullable=False),
         sa.Column("extra_metadata", sa.JSON(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("model_name")
+        sa.UniqueConstraint("model_name"),
     )
 
     # Copy data from old table to new table, mapping columns appropriately
@@ -109,7 +118,7 @@ def upgrade() -> None:
                 api_key_env_var, category, tags, is_recommended, is_popular,
                 first_seen_at, last_seen_at, extra_metadata
             )
-            SELECT 
+            SELECT
                 id as model_name, provider, id as litellm_model_name, provider as litellm_provider,
                 display_name, description, context_window, max_output_tokens,
                 input_price_per_1m_tokens, output_price_per_1m_tokens,
@@ -135,9 +144,15 @@ def upgrade() -> None:
     op.rename_table("model_definitions_new", "model_definitions")
 
     # Create indexes for new table
-    op.create_index("idx_model_definitions_provider", "model_definitions", ["litellm_provider"])
-    op.create_index("idx_model_definitions_is_active", "model_definitions", ["is_active"])
-    op.create_index("idx_model_definitions_model_name", "model_definitions", ["model_name"])
+    op.create_index(
+        "idx_model_definitions_provider", "model_definitions", ["litellm_provider"]
+    )
+    op.create_index(
+        "idx_model_definitions_is_active", "model_definitions", ["is_active"]
+    )
+    op.create_index(
+        "idx_model_definitions_model_name", "model_definitions", ["model_name"]
+    )
     op.create_index("idx_model_definitions_category", "model_definitions", ["category"])
 
     # Since model_variants table now references a different column (model_name instead of id),
@@ -150,7 +165,8 @@ def downgrade() -> None:
     """Revert model_definitions table to previous schema."""
 
     # Create old table structure
-    op.create_table("model_definitions_old",
+    op.create_table(
+        "model_definitions_old",
         sa.Column("id", sa.String(), nullable=False),
         sa.Column("provider", sa.String(), nullable=False),
         sa.Column("display_name", sa.String(), nullable=False),
@@ -167,7 +183,7 @@ def downgrade() -> None:
         sa.Column("is_active", sa.Boolean(), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
-        sa.PrimaryKeyConstraint("id")
+        sa.PrimaryKeyConstraint("id"),
     )
 
     # Copy data back, preserving what we can
@@ -178,7 +194,7 @@ def downgrade() -> None:
             requires_api_key, requires_region, requires_project_id, default_parameters,
             is_active, created_at, updated_at
         )
-        SELECT 
+        SELECT
             model_name as id, provider, display_name, description, context_window, max_output_tokens,
             input_price_per_1m_tokens, output_price_per_1m_tokens, capabilities,
             requires_api_key, requires_region, requires_project_id, default_parameters,
@@ -198,4 +214,6 @@ def downgrade() -> None:
 
     # Recreate old indexes
     op.create_index("idx_model_definitions_provider", "model_definitions", ["provider"])
-    op.create_index("idx_model_definitions_is_active", "model_definitions", ["is_active"])
+    op.create_index(
+        "idx_model_definitions_is_active", "model_definitions", ["is_active"]
+    )

@@ -1,0 +1,25 @@
+{
+  "entry": [
+    "app/**/*.{js,jsx,ts,tsx}",
+    "components/**/*.{js,jsx,ts,tsx}",
+    "hooks/**/*.{js,jsx,ts,tsx}",
+    "lib/**/*.{js,jsx,ts,tsx}"
+  ],
+  "project": [
+    "app/**/*.{js,jsx,ts,tsx}",
+    "components/**/*.{js,jsx,ts,tsx}",
+    "hooks/**/*.{js,jsx,ts,tsx}",
+    "lib/**/*.{js,jsx,ts,tsx}",
+    "tests/**/*.{js,jsx,ts,tsx}"
+  ],
+  "ignore": [
+    "node_modules/**",
+    ".next/**",
+    "coverage/**",
+    "test-results/**",
+    "playwright-report/**"
+  ],
+  "ignoreDependencies": [
+    "@types/*"
+  ]
+}

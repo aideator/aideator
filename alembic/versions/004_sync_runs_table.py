@@ -5,6 +5,7 @@ Revises: 003
 Create Date: 2025-07-10 16:30:00.000000
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -22,19 +23,26 @@ def upgrade() -> None:
     """Add missing columns to runs table."""
 
     # Add winning_variation_id column
-    op.add_column("runs", sa.Column("winning_variation_id", sa.Integer(), nullable=True))
+    op.add_column(
+        "runs", sa.Column("winning_variation_id", sa.Integer(), nullable=True)
+    )
 
     # Add started_at column
     op.add_column("runs", sa.Column("started_at", sa.DateTime(), nullable=True))
 
     # Add agent_config column
-    op.add_column("runs", sa.Column("agent_config", sa.JSON(), nullable=False, server_default="{}"))
+    op.add_column(
+        "runs",
+        sa.Column("agent_config", sa.JSON(), nullable=False, server_default="{}"),
+    )
 
     # Add api_key_id column
     op.add_column("runs", sa.Column("api_key_id", sa.String(), nullable=True))
 
     # Add results column
-    op.add_column("runs", sa.Column("results", sa.JSON(), nullable=False, server_default="{}"))
+    op.add_column(
+        "runs", sa.Column("results", sa.JSON(), nullable=False, server_default="{}")
+    )
 
     # Add statistics columns
     op.add_column("runs", sa.Column("total_tokens_used", sa.Integer(), nullable=True))
@@ -53,7 +61,7 @@ def upgrade() -> None:
         "api_keys",
         ["api_key_id"],
         ["id"],
-        ondelete="SET NULL"
+        ondelete="SET NULL",
     )
 
 

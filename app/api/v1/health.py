@@ -1,6 +1,7 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -40,8 +41,8 @@ async def detailed_health_check(
 
     # Check database
     try:
-        await db.execute("SELECT 1")
-        health_status["checks"]["database"] = True
+        await db.execute(text("SELECT 1"))
+        health_status["checks"]["database"] = "OK"
     except Exception as e:
         health_status["status"] = "degraded"
         health_status["checks"]["database"] = str(e)
@@ -76,7 +77,8 @@ async def system_status(
         },
         "capacity": {
             "runs_available": settings.max_concurrent_runs - len(active_runs),
-            "jobs_available": settings.max_concurrent_jobs - orchestrator._total_active_jobs,
+            "jobs_available": settings.max_concurrent_jobs
+            - orchestrator._total_active_jobs,
         },
         "active_run_ids": list(active_runs.keys()),
     }
@@ -85,65 +87,62 @@ async def system_status(
 @router.get("/redis/test", summary="Test Redis connectivity and pub/sub")
 async def test_redis() -> dict[str, Any]:
     """Test Redis connection and pub/sub functionality."""
-    from app.services.redis_service import redis_service
     import asyncio
-    
+
+    from app.services.redis_service import redis_service
+
     result = {
         "connected": False,
         "redis_url": settings.redis_url,
         "health_check": False,
         "publish_test": False,
         "subscribe_test": False,
-        "error": None
+        "error": None,
     }
-    
+
     try:
         # Test 1: Health check
         result["health_check"] = await redis_service.health_check()
         result["connected"] = result["health_check"]
-        
+
         # Test 2: Publish test
         test_run_id = "test-run-123"
         test_content = "This is a test message"
-        subscribers = await redis_service.publish_agent_output(
+        subscribers = await redis_service.publish_agent_output(  # type: ignore[possibly-unbound-attribute]
             test_run_id, "0", test_content
         )
         result["publish_test"] = True
         result["publish_subscribers"] = subscribers
-        
+
         # Test 3: Subscribe test (with timeout)
         messages_received = []
-        
+
         async def subscribe_test():
-            async for message in redis_service.subscribe_to_run(test_run_id):
+            async for message in redis_service.subscribe_to_run(test_run_id):  # type: ignore[possibly-unbound-attribute]
                 messages_received.append(message)
                 if len(messages_received) >= 1:
                     break
-        
+
         # Publish after subscribing
         async def publish_after_delay():
             await asyncio.sleep(0.5)
-            await redis_service.publish_agent_output(
+            await redis_service.publish_agent_output(  # type: ignore[possibly-unbound-attribute]
                 test_run_id, "1", "Test message for subscriber"
             )
-        
+
         # Run subscribe and publish concurrently with timeout
         try:
             await asyncio.wait_for(
-                asyncio.gather(
-                    subscribe_test(),
-                    publish_after_delay()
-                ),
-                timeout=2.0
+                asyncio.gather(subscribe_test(), publish_after_delay()), timeout=2.0
             )
             result["subscribe_test"] = len(messages_received) > 0
             result["messages_received"] = len(messages_received)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             result["subscribe_test"] = False
             result["messages_received"] = 0
-            
+
     except Exception as e:
         result["error"] = str(e)
         logger.error(f"Redis test failed: {e}", exc_info=True)
-    
+
     return result

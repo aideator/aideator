@@ -8,17 +8,18 @@
 
 ## What is AIdeator?
 
-AIdeator runs multiple AI agents simultaneously in isolated Kubernetes containers, streaming their thought processes in real-time. Watch agents work side-by-side, compare different approaches, and select the best solution.
+AIdeator runs multiple AI agents simultaneously in isolated Kubernetes containers, streaming their thought processes in real-time via WebSocket + Redis Streams. Compare different approaches in a tabbed interface and select the best solution.
 
 ## Quick Start
 
 ### Prerequisites
 - Docker (required)
-- Anthropic API key
 
 Everything else will be installed automatically!
 
 > **Note**: The setup uses `ctlptl` for local registry management. If you already have a k3d cluster or ctlptl registry, the bootstrap script will reuse them.
+
+> **Nix Users**: See [docs/nix-guide.md](docs/nix-guide.md) for a declarative development environment setup.
 
 ### Setup & Run
 
@@ -30,20 +31,15 @@ cd aideator
 # Run bootstrap (creates .env, installs dependencies)
 ./bootstrap.sh
 
-# Edit .env with your API key
-# Then run bootstrap again
-./bootstrap.sh
-
 # Start development
 tilt up
 ```
 
 That's it! The bootstrap script will:
-- Install nix and direnv if needed
-- Install kubectl, helm, tilt, k3d via nix
-- Create the Kubernetes cluster
-- Set up secrets
-- Install frontend dependencies
+- Check for required tools and provide installation instructions
+- Create the Kubernetes cluster using ctlptl
+- Set up environment variables and secrets
+- Install frontend and Python dependencies
 
 ### Services
 
@@ -134,8 +130,9 @@ See [architecture.md](_docs/architecture.md) for detailed technical documentatio
 ## Key Features
 
 - 🔄 **Parallel Execution** - Run 1-5 agents simultaneously
-- 📡 **Real-time Streaming** - Watch agent thoughts via Server-Sent Events
-- 🎯 **Side-by-Side Comparison** - Compare outputs in responsive grid
+- 📡 **Real-time Streaming** - Watch agent thoughts via WebSocket + Redis Streams
+- 🎯 **Tabbed Comparison** - Compare outputs in focused tabbed interface
+- 💾 **Dual Persistence** - Real-time streaming + PostgreSQL history
 - ☁️ **Cloud-Native** - Kubernetes Jobs with automatic cleanup
 - 🔧 **Developer-Friendly** - Hot reload with Tilt
 

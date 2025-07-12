@@ -1,7 +1,8 @@
+from datetime import datetime
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer
-from passlib.context import CryptContext
+from passlib.context import CryptContext  # type: ignore[import-untyped]
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +24,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # Initialize services
 kubernetes_service = KubernetesService()
 agent_orchestrator = AgentOrchestrator(kubernetes_service)
+
 
 def get_orchestrator() -> AgentOrchestrator:
     """Get agent orchestrator instance."""
@@ -47,9 +49,7 @@ async def get_current_user_from_api_key(
         )
 
     # Find API key in database
-    result = await db.execute(
-        select(APIKey).where(APIKey.is_active == True)
-    )
+    result = await db.execute(select(APIKey).where(APIKey.is_active == True))  # type: ignore[arg-type] # noqa: E712
     api_keys = result.scalars().all()
 
     # Check each key (we can't query by hash)
@@ -111,7 +111,3 @@ async def require_superuser(
             detail="Insufficient privileges",
         )
     return current_user
-
-
-# Import datetime at the top of the file
-from datetime import datetime

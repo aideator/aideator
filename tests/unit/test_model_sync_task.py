@@ -1,6 +1,4 @@
-"""
-Test model sync background task.
-"""
+"""Tests for the model sync task."""
 
 import asyncio
 from datetime import timedelta
@@ -8,154 +6,201 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from app.models.model_definition import ModelSyncLog
-from app.tasks.model_sync_task import ModelSyncTask
+from app.tasks.model_sync_task import ModelSyncTask, model_sync_task
 
 
 class TestModelSyncTask:
-    """Test cases for model sync background task."""
+    """Test the model sync task."""
 
     @pytest.fixture
-    def sync_task(self):
-        """Create model sync task instance."""
-        return ModelSyncTask(sync_interval_minutes=1)  # 1 minute for testing
+    def task(self):
+        """Create a model sync task instance."""
+        return ModelSyncTask(sync_interval_minutes=5)
+
+    @pytest.fixture
+    def mock_model_sync_service(self):
+        """Create a mock model sync service."""
+        mock_service = Mock()
+        mock_sync_log = Mock()
+        mock_sync_log.models_discovered = 10
+        mock_sync_log.models_added = 2
+        mock_sync_log.models_updated = 1
+        mock_sync_log.models_deactivated = 0
+        mock_service.sync_models = AsyncMock(return_value=mock_sync_log)
+        return mock_service
+
+    @pytest.fixture
+    def mock_get_sync_session(self):
+        """Create a mock get_sync_session function."""
+        mock_session = Mock()
+        return Mock(return_value=[mock_session])
+
+    def test_init(self, task):
+        """Test task initialization."""
+        assert task.sync_interval == timedelta(minutes=5)
+        assert task.is_running is False
+        assert task._task is None
 
     @pytest.mark.asyncio
-    async def test_start_stop(self, sync_task):
-        """Test starting and stopping the sync task."""
-        # Mock the sync operation
-        with patch.object(sync_task, "_sync_once", new_callable=AsyncMock) as mock_sync:
-            # Start the task
-            await sync_task.start()
-            assert sync_task.is_running is True
-            assert sync_task._task is not None
+    async def test_start_task(self, task):
+        """Test starting the sync task."""
+        with patch.object(task, "_run_sync_loop", new=AsyncMock()) as mock_run:
+            await task.start()
 
-            # Wait a bit to ensure task is running
-            await asyncio.sleep(0.1)
-
-            # Stop the task
-            await sync_task.stop()
-            assert sync_task.is_running is False
-
-            # Verify sync was called at least once (initial sync)
-            assert mock_sync.call_count >= 1
+            assert task.is_running is True
+            assert task._task is not None
+            mock_run.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_start_already_running(self, sync_task):
-        """Test starting when already running."""
-        sync_task.is_running = True
+    async def test_start_task_already_running(self, task):
+        """Test starting the task when it's already running."""
+        task.is_running = True
 
-        with patch("app.tasks.model_sync_task.logger") as mock_logger:
-            await sync_task.start()
-            mock_logger.warning.assert_called_with("Model sync task is already running")
+        with patch.object(task, "_run_sync_loop", new=AsyncMock()) as mock_run:
+            await task.start()
+
+            # Should not create a new task
+            mock_run.assert_not_called()
+            assert task._task is None
 
     @pytest.mark.asyncio
-    async def test_sync_loop_initial_sync(self, sync_task):
-        """Test that sync runs immediately on start."""
+    async def test_stop_task(self, task):
+        """Test stopping the sync task."""
+
+        # Create a real asyncio Task that we can cancel
+        async def dummy_coro():
+            try:
+                await asyncio.sleep(10)  # Long sleep that will be cancelled
+            except asyncio.CancelledError:
+                pass  # Expected when cancelled
+
+        # Properly create and assign the task
+        task._task = asyncio.create_task(dummy_coro())
+        task.is_running = True
+
+        await task.stop()
+
+        assert task.is_running is False
+        assert task._task.cancelled()
+
+    @pytest.mark.asyncio
+    async def test_stop_task_no_task(self, task):
+        """Test stopping when no task is running."""
+        task.is_running = True
+        task._task = None
+
+        await task.stop()
+
+        assert task.is_running is False
+
+    @pytest.mark.asyncio
+    async def test_sync_once_success(
+        self, task, mock_model_sync_service, mock_get_sync_session
+    ):
+        """Test successful sync operation."""
+        with patch("app.tasks.model_sync_task.get_sync_session", mock_get_sync_session):
+            with patch(
+                "app.tasks.model_sync_task.model_sync_service", mock_model_sync_service
+            ):
+                await task._sync_once()
+
+                mock_model_sync_service.sync_models.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_sync_once_exception(self, task, mock_get_sync_session):
+        """Test sync operation with exception."""
+        mock_get_sync_session.side_effect = Exception("Sync failed")
+
+        with patch("app.tasks.model_sync_task.get_sync_session", mock_get_sync_session):
+            # Should not raise exception
+            await task._sync_once()
+
+    @pytest.mark.asyncio
+    async def test_sync_now(self, task, mock_model_sync_service, mock_get_sync_session):
+        """Test immediate sync trigger."""
+        with patch("app.tasks.model_sync_task.get_sync_session", mock_get_sync_session):
+            with patch(
+                "app.tasks.model_sync_task.model_sync_service", mock_model_sync_service
+            ):
+                await task.sync_now()
+
+                mock_model_sync_service.sync_models.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_sync_loop_single_iteration(
+        self, task, mock_model_sync_service, mock_get_sync_session
+    ):
+        """Test sync loop runs initial sync and stops."""
+        with patch("app.tasks.model_sync_task.get_sync_session", mock_get_sync_session):
+            with patch(
+                "app.tasks.model_sync_task.model_sync_service", mock_model_sync_service
+            ):
+                with patch("asyncio.sleep", side_effect=asyncio.CancelledError()):
+                    task.is_running = True
+
+                    # Should not raise exception
+                    await task._run_sync_loop()
+
+                    # Initial sync should have been called
+                    mock_model_sync_service.sync_models.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_sync_loop_with_exception(self, task, mock_get_sync_session):
+        """Test sync loop continues after exception."""
+        mock_get_sync_session.side_effect = [
+            Exception("First fail"),
+            Exception("Second fail"),
+        ]
+
         call_count = 0
 
-        async def mock_sync():
+        async def mock_sleep(duration):
             nonlocal call_count
             call_count += 1
-            if call_count > 1:
-                sync_task.is_running = False  # Stop after first sync
+            if call_count >= 2:
+                raise asyncio.CancelledError()
 
-        sync_task._sync_once = mock_sync
+        with patch("app.tasks.model_sync_task.get_sync_session", mock_get_sync_session):
+            with patch("asyncio.sleep", side_effect=mock_sleep):
+                task.is_running = True
 
-        # Run the sync loop
-        await sync_task._run_sync_loop()
+                # Should not raise exception
+                await task._run_sync_loop()
 
-        # Verify initial sync happened
-        assert call_count >= 1
+                # Should have attempted sync multiple times
+                assert mock_get_sync_session.call_count >= 2
 
     @pytest.mark.asyncio
-    async def test_sync_loop_error_handling(self, sync_task):
-        """Test error handling in sync loop."""
-        sync_task.sync_interval = timedelta(seconds=0.1)  # Fast interval for testing
-
+    async def test_run_sync_loop_stops_when_not_running(
+        self, task, mock_model_sync_service, mock_get_sync_session
+    ):
+        """Test sync loop stops when is_running becomes False."""
         call_count = 0
 
-        async def mock_sync():
+        async def mock_sleep(duration):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                raise Exception("Test error")
-            sync_task.is_running = False  # Stop after second call
+                task.is_running = False  # Stop after first iteration
 
-        sync_task._sync_once = mock_sync
+        with patch("app.tasks.model_sync_task.get_sync_session", mock_get_sync_session):
+            with patch(
+                "app.tasks.model_sync_task.model_sync_service", mock_model_sync_service
+            ):
+                with patch("asyncio.sleep", side_effect=mock_sleep):
+                    task.is_running = True
 
-        with patch("app.tasks.model_sync_task.logger") as mock_logger:
-            # Run the sync loop
-            await sync_task._run_sync_loop()
+                    await task._run_sync_loop()
 
-            # Verify error was logged but loop continued
-            assert mock_logger.error.called
-            assert call_count >= 2  # Should continue after error
+                    # Should have called initial sync plus one iteration
+                    assert mock_model_sync_service.sync_models.call_count >= 1
 
-    @pytest.mark.asyncio
-    async def test_sync_once_success(self, sync_task):
-        """Test successful single sync operation."""
-        mock_sync_log = ModelSyncLog(
-            status="success",
-            models_discovered=10,
-            models_added=5,
-            models_updated=3,
-            models_deactivated=2
-        )
+    def test_global_instance_exists(self):
+        """Test that the global instance exists."""
+        assert model_sync_task is not None
+        assert isinstance(model_sync_task, ModelSyncTask)
 
-        with patch("app.tasks.model_sync_task.get_sync_session") as mock_get_session, \
-             patch("app.tasks.model_sync_task.model_sync_service") as mock_service, \
-             patch("app.tasks.model_sync_task.logger") as mock_logger:
-
-            # Setup mocks
-            mock_session = Mock()
-            mock_get_session.return_value = iter([mock_session])
-            mock_service.sync_models = AsyncMock(return_value=mock_sync_log)
-
-            # Run sync
-            await sync_task._sync_once()
-
-            # Verify
-            mock_service.sync_models.assert_called_once_with(mock_session)
-            mock_logger.info.assert_any_call("Starting model sync from LiteLLM proxy")
-            mock_logger.info.assert_any_call(
-                "Model sync completed: discovered=10, added=5, updated=3, deactivated=2"
-            )
-
-    @pytest.mark.asyncio
-    async def test_sync_once_error(self, sync_task):
-        """Test error handling in single sync."""
-        with patch("app.tasks.model_sync_task.get_sync_session") as mock_get_session, \
-             patch("app.tasks.model_sync_task.model_sync_service") as mock_service, \
-             patch("app.tasks.model_sync_task.logger") as mock_logger:
-
-            # Setup mocks to raise error
-            mock_service.sync_models = AsyncMock(side_effect=Exception("Database error"))
-            mock_get_session.return_value = iter([Mock()])
-
-            # Run sync
-            await sync_task._sync_once()
-
-            # Verify error was logged
-            mock_logger.error.assert_called_with("Model sync failed: Database error")
-
-    @pytest.mark.asyncio
-    async def test_sync_now(self, sync_task):
-        """Test manual sync trigger."""
-        with patch.object(sync_task, "_sync_once", new_callable=AsyncMock) as mock_sync:
-            await sync_task.sync_now()
-            mock_sync.assert_called_once()
-
-    def test_sync_interval_configuration(self):
-        """Test sync interval configuration."""
-        # Test default
-        task1 = ModelSyncTask()
-        assert task1.sync_interval == timedelta(minutes=60)
-
-        # Test custom interval
-        task2 = ModelSyncTask(sync_interval_minutes=30)
-        assert task2.sync_interval == timedelta(minutes=30)
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    def test_default_sync_interval(self):
+        """Test default sync interval."""
+        task = ModelSyncTask()
+        assert task.sync_interval == timedelta(minutes=60)

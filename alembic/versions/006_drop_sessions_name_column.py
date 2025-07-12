@@ -5,6 +5,7 @@ Revises: 005
 Create Date: 2025-07-10 16:37:00.000000
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -29,4 +30,7 @@ def downgrade() -> None:
     """Restore the name column."""
 
     # Add back the name column
-    op.add_column("sessions", sa.Column("name", sa.String(), nullable=False, server_default="Untitled"))
+    op.add_column(
+        "sessions",
+        sa.Column("name", sa.String(), nullable=False, server_default="Untitled"),
+    )

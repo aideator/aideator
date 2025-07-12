@@ -1,266 +1,268 @@
 #!/bin/bash
-set -euo pipefail
 
 # AIdeator Bootstrap Script
-# Sets up the complete development environment
+# Sets up the development environment for AIdeator
 
-echo "🚀 AIdeator Development Setup"
-echo "=============================="
+set -euo pipefail
 
-# Install nix if not present
-if ! command -v nix &> /dev/null; then
-    echo "📦 Installing Nix..."
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        sh <(curl -L https://nixos.org/nix/install)
-    else
-        # Linux
-        sh <(curl -L https://nixos.org/nix/install) --daemon
-    fi
-    
-    # Source nix
-    if [ -e '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh' ]; then
-        . '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh'
-    elif [ -e "$HOME/.nix-profile/etc/profile.d/nix.sh" ]; then
-        . "$HOME/.nix-profile/etc/profile.d/nix.sh"
-    fi
-    
-    echo "✅ Nix installed"
-else
-    echo "✅ Nix already installed"
-fi
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
-# Install direnv if not present
-if ! command -v direnv &> /dev/null; then
-    echo "📦 Installing direnv..."
-    if command -v nix-env &> /dev/null; then
-        nix-env -iA nixpkgs.direnv
-    elif command -v brew &> /dev/null; then
-        brew install direnv
-    else
-        echo "⚠️  Please install direnv manually: https://direnv.net/docs/installation.html"
-    fi
-    
-    # Add direnv hook to shell (idempotent)
-    SHELL_NAME=$(basename "$SHELL")
-    HOOK_COMMAND=""
-    RC_FILE=""
-    
-    case "$SHELL_NAME" in
-        bash)
-            HOOK_COMMAND='eval "$(direnv hook bash)"'
-            RC_FILE="$HOME/.bashrc"
+# Functions
+log() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Check if command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Check if running on supported platform
+check_platform() {
+    case "$(uname -s)" in
+        Darwin*)
+            PLATFORM="macos"
             ;;
-        zsh)
-            HOOK_COMMAND='eval "$(direnv hook zsh)"'
-            RC_FILE="$HOME/.zshrc"
+        Linux*)
+            PLATFORM="linux"
             ;;
-        fish)
-            HOOK_COMMAND='direnv hook fish | source'
-            RC_FILE="$HOME/.config/fish/config.fish"
+        *)
+            error "Unsupported platform: $(uname -s)"
+            exit 1
             ;;
     esac
+    log "Detected platform: $PLATFORM"
+}
+
+# Check required tools
+check_dependencies() {
+    log "Checking dependencies..."
     
-    # Only add if not already present
-    if [ -n "$RC_FILE" ] && [ -f "$RC_FILE" ]; then
-        if ! grep -q "direnv hook" "$RC_FILE"; then
-            echo "$HOOK_COMMAND" >> "$RC_FILE"
-            echo "✅ direnv hook added to $RC_FILE (restart your shell or source your rc file)"
-        fi
+    local missing_tools=()
+    
+    # Core tools
+    if ! command_exists docker; then
+        missing_tools+=("docker")
     fi
-else
-    echo "✅ direnv already installed"
-fi
-
-# Enable direnv for this project
-if [ -f .envrc ]; then
-    echo "🔧 Enabling direnv for this project..."
-    direnv allow .
-    eval "$(direnv export bash)"
-fi
-
-# Check for required tools
-check_command() {
-    if ! command -v "$1" &> /dev/null; then
-        echo "❌ $1 is not installed. Please install it first."
-        echo "   Visit: $2"
+    
+    if ! command_exists kubectl; then
+        missing_tools+=("kubectl")
+    fi
+    
+    if ! command_exists tilt; then
+        missing_tools+=("tilt")
+    fi
+    
+    if ! command_exists ctlptl; then
+        missing_tools+=("ctlptl")
+    fi
+    
+    if ! command_exists helm; then
+        missing_tools+=("helm")
+    fi
+    
+    if ! command_exists node; then
+        missing_tools+=("node")
+    fi
+    
+    if ! command_exists python3; then
+        missing_tools+=("python3")
+    fi
+    
+    if [[ ${#missing_tools[@]} -gt 0 ]]; then
+        error "Missing required tools: ${missing_tools[*]}"
+        echo
+        echo "Install missing tools:"
+        echo
+        
+        if [[ "$PLATFORM" == "macos" ]]; then
+            echo "Using Homebrew:"
+            for tool in "${missing_tools[@]}"; do
+                case "$tool" in
+                    docker)
+                        echo "  brew install --cask docker"
+                        ;;
+                    kubectl)
+                        echo "  brew install kubectl"
+                        ;;
+                    tilt)
+                        echo "  brew install tilt"
+                        ;;
+                    ctlptl)
+                        echo "  brew install ctlptl"
+                        ;;
+                    helm)
+                        echo "  brew install helm"
+                        ;;
+                    node)
+                        echo "  brew install node"
+                        ;;
+                    python3)
+                        echo "  brew install python3"
+                        ;;
+                esac
+            done
+        else
+            echo "Using standard package managers or official installers"
+            echo "See: https://docs.docker.com/get-docker/"
+            echo "See: https://kubernetes.io/docs/tasks/tools/install-kubectl/"
+            echo "See: https://tilt.dev/getting_started/"
+            echo "See: https://github.com/tilt-dev/ctlptl#installation"
+            echo "See: https://helm.sh/docs/intro/install/"
+            echo "See: https://nodejs.org/en/download/"
+        fi
+        
+        echo
+        echo "Or use Nix (see docs/nix-guide.md for instructions)"
         exit 1
+    fi
+    
+    log "All dependencies are installed"
+}
+
+# Setup environment file
+setup_env() {
+    log "Setting up environment..."
+    
+    if [[ ! -f .env ]]; then
+        if [[ -f .env.example ]]; then
+            cp .env.example .env
+            log "Created .env file from .env.example"
+        else
+            cat > .env << 'EOF'
+# AIdeator Environment Configuration
+# Copy this file to .env and update with your values
+
+# Application settings (required)
+SECRET_KEY=""
+ENCRYPTION_KEY=""
+DEBUG=true
+LOG_LEVEL=INFO
+
+# Database
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/aideator"
+
+# Redis
+REDIS_URL="redis://localhost:6379"
+
+# Frontend
+NEXT_PUBLIC_API_URL="http://localhost:8000"
+
+# AI Provider API Keys (optional - configure via your preferred method)
+# OPENAI_API_KEY=""
+# ANTHROPIC_API_KEY=""
+# GEMINI_API_KEY=""
+EOF
+            log "Created .env file with defaults"
+        fi
+    else
+        log ".env file already exists"
+    fi
+    
+    # Generate secret key if not set
+    if grep -q '^SECRET_KEY=""' .env; then
+        SECRET_KEY=$(openssl rand -hex 32)
+        if [[ "$PLATFORM" == "macos" ]]; then
+            sed -i '' "s/^SECRET_KEY=\"\"/SECRET_KEY=\"$SECRET_KEY\"/" .env
+        else
+            sed -i "s/^SECRET_KEY=\"\"/SECRET_KEY=\"$SECRET_KEY\"/" .env
+        fi
+        log "Generated SECRET_KEY"
+    fi
+    
+    # Generate encryption key if not set
+    if grep -q '^ENCRYPTION_KEY=""' .env; then
+        ENCRYPTION_KEY=$(openssl rand -hex 32)
+        if [[ "$PLATFORM" == "macos" ]]; then
+            sed -i '' "s/^ENCRYPTION_KEY=\"\"/ENCRYPTION_KEY=\"$ENCRYPTION_KEY\"/" .env
+        else
+            sed -i "s/^ENCRYPTION_KEY=\"\"/ENCRYPTION_KEY=\"$ENCRYPTION_KEY\"/" .env
+        fi
+        log "Generated ENCRYPTION_KEY"
     fi
 }
 
-echo "📋 Checking prerequisites..."
-check_command "docker" "https://docs.docker.com/get-docker/"
-check_command "kubectl" "https://kubernetes.io/docs/tasks/tools/"
-check_command "helm" "https://helm.sh/docs/intro/install/"
-check_command "tilt" "https://docs.tilt.dev/install.html"
-check_command "k3d" "https://k3d.io/v5.6.0/#installation"
-check_command "ctlptl" "https://github.com/tilt-dev/ctlptl#installation"
-check_command "npm" "https://nodejs.org/"
-
-# Ensure ctlptl registry exists
-if ! docker ps | grep -q ctlptl-registry; then
-    echo "🔧 Creating ctlptl registry..."
-    ctlptl create registry ctlptl-registry --port 5005
-else
-    echo "✅ ctlptl-registry already exists"
-fi
-
-# Create registry config for k3d
-REGISTRY_CONFIG="/tmp/k3d-registry-config.yaml"
-echo "📝 Creating k3d registry configuration..."
-cat > "$REGISTRY_CONFIG" <<EOF
-mirrors:
-  "localhost:5005":
-    endpoint:
-      - http://ctlptl-registry:5000
-  "ctlptl-registry:5000":
-    endpoint:
-      - http://ctlptl-registry:5000
-  "ctlptl-registry:5005":
-    endpoint:
-      - http://ctlptl-registry:5000
-EOF
-
-# Create k3d cluster if it doesn't exist
-if ! k3d cluster list | grep -q "k3d-aideator"; then
-    echo "🔧 Creating k3d cluster with registry configuration..."
-    k3d cluster create aideator --registry-config "$REGISTRY_CONFIG"
+# Create cluster using ctlptl
+create_cluster() {
+    log "Creating Kubernetes cluster..."
     
-    # Connect registry to k3d network
-    echo "🔗 Connecting registry to k3d network..."
-    docker network connect k3d-aideator ctlptl-registry 2>/dev/null || true
-else
-    echo "✅ k3d cluster already exists"
-    # Ensure registry is connected even if cluster exists
-    docker network connect k3d-aideator ctlptl-registry 2>/dev/null || true
-fi
-
-# Set kubectl context
-echo "🔧 Setting kubectl context..."
-kubectl config use-context k3d-aideator
-
-# Check for .env file or create one
-if [ ! -f .env ]; then
-    echo "📝 Creating .env file from .env.example..."
-    cp .env.example .env
-    echo ""
-    echo "⚠️  Please edit .env and add your OPENAI_API_KEY and ANTHROPIC_API_KEY"
-    echo "   Then run this script again."
-    echo ""
-    exit 1
-fi
-
-# Load .env file
-if [ -f .env ]; then
-    export $(grep -v '^#' .env | xargs)
-fi
-
-# Check for required API keys
-if [ -z "${OPENAI_API_KEY:-}" ] || [ "${OPENAI_API_KEY}" = "your-openai-api-key-here" ]; then
-    echo "❌ OPENAI_API_KEY not set in .env file"
-    echo "   Please edit .env and add your OpenAI API key"
-    exit 1
-fi
-
-if [ -z "${ANTHROPIC_API_KEY:-}" ] || [ "${ANTHROPIC_API_KEY}" = "your-anthropic-api-key-here" ]; then
-    echo "❌ ANTHROPIC_API_KEY not set in .env file"
-    echo "   Please edit .env and add your Anthropic API key"
-    exit 1
-fi
-
-if [ -z "${GEMINI_API_KEY:-}" ] || [ "${GEMINI_API_KEY}" = "your-gemini-api-key-here" ]; then
-    echo "❌ GEMINI_API_KEY not set in .env file"
-    echo "   Please edit .env and add your Gemini API key"
-    exit 1
-fi
-
-# Create namespace if it doesn't exist
-if ! kubectl get namespace aideator &> /dev/null; then
-    echo "🔧 Creating aideator namespace..."
-    kubectl create namespace aideator
-fi
-
-# Create secrets if they don't exist
-if ! kubectl get secret openai-secret -n aideator &> /dev/null; then
-    if [ -n "${OPENAI_API_KEY:-}" ]; then
-        echo "🔧 Creating openai-secret..."
-        kubectl create secret generic openai-secret \
-            --from-literal=api-key="$OPENAI_API_KEY" \
-            -n aideator
+    if ! ctlptl get cluster aideator >/dev/null 2>&1; then
+        log "Creating ctlptl cluster from config..."
+        ctlptl apply -f deploy/k3d/aideator-cluster.yaml
     else
-        echo "⚠️  Skipping openai-secret creation (OPENAI_API_KEY not set)"
+        log "Cluster 'aideator' already exists"
     fi
-else
-    echo "✅ openai-secret already exists"
-fi
+    
+    # Wait for cluster to be ready
+    log "Waiting for cluster to be ready..."
+    kubectl wait --for=condition=Ready nodes --all --timeout=300s
+    
+    log "Cluster is ready"
+}
 
-if ! kubectl get secret anthropic-secret -n aideator &> /dev/null; then
-    if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-        echo "🔧 Creating anthropic-secret..."
-        kubectl create secret generic anthropic-secret \
-            --from-literal=api-key="$ANTHROPIC_API_KEY" \
-            -n aideator
+# Install frontend dependencies
+setup_frontend() {
+    log "Setting up frontend dependencies..."
+    
+    cd frontend
+    
+    if [[ ! -d node_modules ]]; then
+        log "Installing npm dependencies..."
+        npm install
     else
-        echo "⚠️  Skipping anthropic-secret creation (ANTHROPIC_API_KEY not set)"
+        log "npm dependencies already installed"
     fi
-else
-    echo "✅ anthropic-secret already exists"
-fi
+    
+    cd ..
+}
 
-if ! kubectl get secret gemini-secret -n aideator &> /dev/null; then
-    if [ -n "${GEMINI_API_KEY:-}" ]; then
-        echo "🔧 Creating gemini-secret..."
-        kubectl create secret generic gemini-secret \
-            --from-literal=api-key="$GEMINI_API_KEY" \
-            -n aideator
-    else
-        echo "⚠️  Skipping gemini-secret creation (GEMINI_API_KEY not set)"
-    fi
-else
-    echo "✅ gemini-secret already exists"
-fi
+# Install Python dependencies
+setup_python() {
+    log "Setting up Python dependencies..."
+    
+    # Install in editable mode
+    pip3 install -e .
+    
+    log "Python dependencies installed"
+}
 
-# Note: aideator-secret is now created by Helm chart (see deploy/charts/aideator/templates/aideator-secret.yaml)
-# For production, override the values in deploy/charts/aideator/values.yaml:
-# app.secretKey and app.encryptionKey
+# Main setup function
+main() {
+    echo "🚀 AIdeator Bootstrap Script"
+    echo "============================"
+    echo
+    
+    check_platform
+    check_dependencies
+    setup_env
+    create_cluster
+    setup_frontend
+    setup_python
+    
+    echo
+    echo "🎉 Bootstrap complete!"
+    echo
+    echo "Next steps:"
+    echo "1. Update .env with your API keys"
+    echo "2. Run: tilt up"
+    echo "3. Open http://localhost:8000 in your browser"
+    echo
+    echo "For Nix users, see docs/nix-guide.md"
+    echo "Ready to code, you are! 🧘"
+}
 
-# Install frontend dependencies (only if needed)
-echo "📦 Checking frontend dependencies..."
-cd frontend
-if [ ! -d "node_modules" ] || [ "package.json" -nt "node_modules" ]; then
-    echo "📦 Installing frontend dependencies..."
-    npm install
-else
-    echo "✅ Frontend dependencies up to date"
-fi
-cd ..
-
-echo ""
-echo "✅ Setup complete!"
-echo ""
-echo "⚠️  IMPORTANT: You must now run 'tilt up' to build and push images to the registry!"
-echo ""
-echo "To start development, run:"
-echo "   tilt up"
-echo ""
-echo "This will:"
-echo "   ✓ Build Docker images"
-echo "   ✓ Push images to the local registry (localhost:5005)"
-echo "   ✓ Deploy to Kubernetes"
-echo "   ✓ Start FastAPI backend with hot reload"
-echo "   ✓ Start Frontend with hot reload"
-echo "   ✓ Enable agent container orchestration"
-echo ""
-echo "📍 Services will be available at:"
-echo "   Frontend:  http://localhost:3000 (or next available port)"
-echo "   Backend:   http://localhost:8000"
-echo "   API Docs:  http://localhost:8000/docs"
-echo "   Tilt UI:   http://localhost:10350"
-echo ""
-echo "💡 Note: If port 3000 is busy, Tilt will automatically find the next available port"
-echo ""
-echo "🔧 Troubleshooting:"
-echo "   Image not found errors? Make sure you run 'tilt up' to build images!"
-echo "   Module resolution errors? Try:"
-echo "     cd frontend && rm -rf .next node_modules && npm install"
-echo "     tilt up"
+# Run main function
+main "$@"

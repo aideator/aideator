@@ -14,7 +14,6 @@ from app.models.provider import ModelDefinition
 from app.models.provider_key import ProviderAPIKeyDB
 from app.models.user import APIKey, User
 from app.services.model_catalog import model_catalog
-from app.services.provider_key_service import ProviderKeyService
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +40,7 @@ class DatabaseInitService:
                 existing_key = self.db.exec(
                     select(APIKey).where(
                         APIKey.user_id == existing_user.id,
-                        APIKey.name == "Development Test Key"
+                        APIKey.name == "Development Test Key",
                     )
                 ).first()
 
@@ -53,7 +52,7 @@ class DatabaseInitService:
                         "user_id": existing_user.id,
                         "email": existing_user.email,
                         "message": "Test user already exists",
-                        "api_key_exists": True
+                        "api_key_exists": True,
                     }
                 # Create API key for existing user
                 api_key = f"aid_sk_test_{secrets.token_urlsafe(32)}"
@@ -78,7 +77,7 @@ class DatabaseInitService:
                     "user_id": existing_user.id,
                     "email": existing_user.email,
                     "message": "Created API key for existing test user",
-                    "api_key": api_key
+                    "api_key": api_key,
                 }
 
             # Create test user
@@ -89,7 +88,7 @@ class DatabaseInitService:
                 full_name="Test User",
                 company="AIdeator Development",
                 is_active=True,
-                is_superuser=False
+                is_superuser=False,
             )
 
             self.db.add(test_user)
@@ -122,7 +121,7 @@ class DatabaseInitService:
                 "email": test_user.email,
                 "password": "testpass123",
                 "api_key": api_key,
-                "message": "Test user created successfully"
+                "message": "Test user created successfully",
             }
 
         except Exception as e:
@@ -155,12 +154,18 @@ class DatabaseInitService:
                     existing_model.description = catalog_model.description
                     existing_model.context_window = catalog_model.context_window
                     existing_model.max_output_tokens = catalog_model.max_output_tokens
-                    existing_model.input_price_per_1m_tokens = catalog_model.input_price_per_1m_tokens
-                    existing_model.output_price_per_1m_tokens = catalog_model.output_price_per_1m_tokens
+                    existing_model.input_price_per_1m_tokens = (
+                        catalog_model.input_price_per_1m_tokens
+                    )
+                    existing_model.output_price_per_1m_tokens = (
+                        catalog_model.output_price_per_1m_tokens
+                    )
                     existing_model.capabilities = catalog_model.capabilities
                     existing_model.requires_api_key = catalog_model.requires_api_key
                     existing_model.requires_region = catalog_model.requires_region
-                    existing_model.requires_project_id = catalog_model.requires_project_id
+                    existing_model.requires_project_id = (
+                        catalog_model.requires_project_id
+                    )
                     existing_model.default_parameters = catalog_model.default_parameters
                     existing_model.is_active = catalog_model.is_active
 
@@ -180,7 +185,9 @@ class DatabaseInitService:
             # Commit changes
             self.db.commit()
 
-            logger.info(f"Model catalog initialized: {added_count} added, {updated_count} updated")
+            logger.info(
+                f"Model catalog initialized: {added_count} added, {updated_count} updated"
+            )
 
         except Exception as e:
             logger.error(f"Error initializing model catalog: {e}")
@@ -192,7 +199,7 @@ class DatabaseInitService:
         try:
             total_models = self.db.exec(select(ModelDefinition)).all()
             active_models = self.db.exec(
-                select(ModelDefinition).where(ModelDefinition.is_active == True)
+                select(ModelDefinition).where(ModelDefinition.is_active)
             ).all()
 
             # Group by provider
@@ -205,7 +212,7 @@ class DatabaseInitService:
                         "requires_api_key": 0,
                         "free_models": 0,
                         "avg_price": 0,
-                        "prices": []
+                        "prices": [],
                     }
 
                 provider_stats[provider]["count"] += 1
@@ -216,7 +223,9 @@ class DatabaseInitService:
                     provider_stats[provider]["free_models"] += 1
 
                 if model.input_price_per_1m_tokens:
-                    provider_stats[provider]["prices"].append(model.input_price_per_1m_tokens)
+                    provider_stats[provider]["prices"].append(
+                        model.input_price_per_1m_tokens
+                    )
 
             # Calculate average prices
             for provider, stats in provider_stats.items():
@@ -230,7 +239,7 @@ class DatabaseInitService:
                 "total_models": len(total_models),
                 "active_models": len(active_models),
                 "inactive_models": len(total_models) - len(active_models),
-                "provider_stats": provider_stats
+                "provider_stats": provider_stats,
             }
 
         except Exception as e:
@@ -244,37 +253,52 @@ class DatabaseInitService:
             return
 
         try:
-            provider_service = ProviderKeyService()
-            provider_service._db = self.db  # Use same DB session
-
             # Check if OpenAI provider key already exists
             existing_provider_key = self.db.exec(
                 select(ProviderAPIKeyDB).where(
                     ProviderAPIKeyDB.user_id == user_id,
                     ProviderAPIKeyDB.provider == "openai",
-                    ProviderAPIKeyDB.is_active == True
+                    ProviderAPIKeyDB.is_active,
                 )
             ).first()
 
             if not existing_provider_key:
-                provider_key_data = {
-                    "provider": "openai",
-                    "api_key": settings.openai_api_key,
-                    "name": "Development OpenAI Key",
-                    "description": "Auto-created from .env for development"
-                }
+                # Create the provider key manually since we can't use async here
+                from app.services.encryption_service import get_encryption_service
 
-                created_key = provider_service.create_provider_key(
-                    user_id=user_id,
-                    provider_key_data=provider_key_data
+                encryption_service = get_encryption_service()
+                encrypted_key, key_hint = encryption_service.encrypt_api_key(
+                    settings.openai_api_key
                 )
 
-                logger.info(f"Created OpenAI provider key for user {user_id}: {created_key.key_hint}")
+                key_id = f"provkey_{secrets.token_urlsafe(12)}"
+
+                provider_key = ProviderAPIKeyDB(
+                    id=key_id,
+                    user_id=user_id,
+                    provider="openai",
+                    model_name=None,
+                    encrypted_key=encrypted_key,
+                    key_hint=key_hint,
+                    name="Development OpenAI Key",
+                    extra_metadata={
+                        "description": "Auto-created from .env for development"
+                    },
+                )
+
+                self.db.add(provider_key)
+                # Note: commit will be called by the parent method
+
+                logger.info(
+                    f"Created OpenAI provider key for user {user_id}: {key_hint}"
+                )
             else:
                 logger.info(f"OpenAI provider key already exists for user {user_id}")
 
         except Exception as e:
-            logger.warning(f"Failed to create OpenAI provider key for user {user_id}: {e}")
+            logger.warning(
+                f"Failed to create OpenAI provider key for user {user_id}: {e}"
+            )
             # Don't fail the entire test user creation if provider key fails
 
 

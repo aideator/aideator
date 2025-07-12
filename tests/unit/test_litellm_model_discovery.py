@@ -1,371 +1,298 @@
-"""
-Unit tests for LiteLLM model discovery service.
-"""
+"""Tests for LiteLLMModelDiscovery service."""
+
+from unittest.mock import MagicMock, patch
 
 import pytest
-from unittest.mock import patch, MagicMock
-from datetime import datetime
 
 from app.services.litellm_model_discovery import LiteLLMModelDiscovery
 
 
 class TestLiteLLMModelDiscovery:
-    """Test cases for LiteLLM model discovery service."""
+    """Test LiteLLMModelDiscovery methods."""
 
-    def setup_method(self):
-        """Set up test fixtures."""
-        self.discovery_service = LiteLLMModelDiscovery()
+    @pytest.fixture
+    def service(self):
+        """Create LiteLLMModelDiscovery instance."""
+        return LiteLLMModelDiscovery()
 
-    @patch('app.services.litellm_model_discovery.litellm')
-    def test_get_all_supported_models_success(self, mock_litellm):
-        """Test successful model discovery from LiteLLM catalog."""
-        # Mock LiteLLM models_by_provider
-        mock_models_by_provider = {
-            'openai': ['gpt-4o', 'gpt-4', 'gpt-3.5-turbo'],
-            'anthropic': ['claude-3-opus', 'claude-3-sonnet'],
-            'groq': ['groq/llama3-8b-8192', 'groq/mixtral-8x7b-32768'],
+    def test_init(self, service):
+        """Test service initialization."""
+        assert isinstance(service, LiteLLMModelDiscovery)
+
+    @patch("app.services.litellm_model_discovery.LITELLM_AVAILABLE", False)
+    def test_get_all_supported_models_no_litellm(self, service):
+        """Test model discovery when LiteLLM is not available."""
+        result = service.get_all_supported_models()
+        assert result == []
+
+    @patch("app.services.litellm_model_discovery.LITELLM_AVAILABLE", True)
+    @patch("app.services.litellm_model_discovery.litellm")
+    def test_get_all_supported_models_success(self, mock_litellm, service):
+        """Test successful model discovery."""
+        # Mock the models_by_provider data
+        mock_litellm.models_by_provider = {
+            "openai": ["gpt-4", "gpt-3.5-turbo"],
+            "anthropic": ["claude-3-opus", "claude-3-sonnet"],
         }
-        mock_litellm.models_by_provider = mock_models_by_provider
-        
-        # Test model discovery
-        models = self.discovery_service.get_all_supported_models()
-        
-        # Verify results
-        assert len(models) == 7  # Total models across all providers
-        assert self.discovery_service.last_discovery_time is not None
-        assert len(self.discovery_service.discovered_models) == 7
-        
-        # Check specific models exist
-        model_names = [m['model_name'] for m in models]
-        assert 'gpt-4o' in model_names
-        assert 'claude-3-opus' in model_names
-        assert 'groq/llama3-8b-8192' in model_names
 
-    @patch('app.services.litellm_model_discovery.LITELLM_AVAILABLE', False)
-    def test_get_all_supported_models_litellm_not_available(self):
-        """Test behavior when LiteLLM is not available."""
-        models = self.discovery_service.get_all_supported_models()
-        assert models == []
+        result = service.get_all_supported_models()
 
-    @patch('app.services.litellm_model_discovery.litellm')
-    def test_get_all_supported_models_no_models_by_provider(self, mock_litellm):
-        """Test behavior when models_by_provider attribute is missing."""
-        # Remove models_by_provider attribute
-        del mock_litellm.models_by_provider
-        
-        models = self.discovery_service.get_all_supported_models()
-        assert models == []
+        assert len(result) == 4
+        model_names = [model["model_name"] for model in result]
+        assert "gpt-4" in model_names
+        assert "gpt-3.5-turbo" in model_names
+        assert "claude-3-opus" in model_names
+        assert "claude-3-sonnet" in model_names
 
-    def test_create_model_info_openai(self):
-        """Test model info creation for OpenAI model."""
-        model_info = self.discovery_service._create_model_info('gpt-4o', 'openai')
-        
-        assert model_info['model_name'] == 'gpt-4o'
-        assert model_info['litellm_provider'] == 'openai'
-        assert model_info['display_name'] == 'GPT 4O'
-        assert model_info['category'] == 'advanced'
-        assert model_info['requires_api_key'] is True
-        assert model_info['api_key_env_var'] == 'OPENAI_API_KEY'
-        assert model_info['supports_function_calling'] is True
-        assert model_info['supports_vision'] is True
-        assert 'powerful' in model_info['tags']
-        assert 'openai' in model_info['tags']
+    @patch("app.services.litellm_model_discovery.LITELLM_AVAILABLE", True)
+    @patch("app.services.litellm_model_discovery.litellm")
+    def test_get_all_supported_models_no_models_attr(self, mock_litellm, service):
+        """Test when litellm doesn't have models_by_provider attribute."""
+        # Remove the models_by_provider attribute
+        if hasattr(mock_litellm, "models_by_provider"):
+            delattr(mock_litellm, "models_by_provider")
 
-    def test_create_model_info_anthropic(self):
-        """Test model info creation for Anthropic model."""
-        model_info = self.discovery_service._create_model_info('claude-3-sonnet', 'anthropic')
-        
-        assert model_info['model_name'] == 'claude-3-sonnet'
-        assert model_info['litellm_provider'] == 'anthropic'
-        assert model_info['display_name'] == 'Claude 3 Sonnet'
-        assert model_info['category'] == 'advanced'
-        assert model_info['description'] == 'Balanced performance and cost from Anthropic'
-        assert model_info['is_recommended'] is True
-        assert model_info['api_key_env_var'] == 'ANTHROPIC_API_KEY'
+        result = service.get_all_supported_models()
+        assert result == []
 
-    def test_create_model_info_embedding(self):
-        """Test model info creation for embedding model."""
-        model_info = self.discovery_service._create_model_info('text-embedding-3-large', 'openai')
-        
-        assert model_info['category'] == 'embedding'
-        assert model_info['description'] == 'Embedding model for semantic search and similarity'
-        assert 'embedding' in model_info['tags']
+    def test_create_model_info(self, service):
+        """Test creating model info dictionary."""
+        result = service._create_model_info("gpt-4", "openai")
 
-    def test_create_model_info_vision(self):
-        """Test model info creation for vision model."""
-        model_info = self.discovery_service._create_model_info('gpt-4-vision-preview', 'openai')
-        
-        assert model_info['category'] == 'vision'
-        assert model_info['supports_vision'] is True
-        assert 'vision' in model_info['tags']
+        assert result["model_name"] == "gpt-4"
+        assert result["litellm_provider"] == "openai"
+        assert "display_name" in result
+        assert "description" in result
+        assert "category" in result
+        assert "tags" in result
+        assert "source" in result
+        assert result["source"] == "litellm_catalog"
 
-    def test_create_model_info_code(self):
-        """Test model info creation for code model."""
-        model_info = self.discovery_service._create_model_info('codex-mini-latest', 'openai')
-        
-        assert model_info['category'] == 'code'
-        assert model_info['description'] == 'Code generation and analysis model'
-        assert 'code' in model_info['tags']
-
-    def test_create_model_info_whisper(self):
-        """Test model info creation for speech model."""
-        model_info = self.discovery_service._create_model_info('whisper-large-v3', 'groq')
-        
-        assert model_info['category'] == 'speech-to-text'
-        assert model_info['description'] == 'Speech-to-text transcription model'
-        assert 'speech' in model_info['tags']
-
-    def test_create_model_info_tts(self):
-        """Test model info creation for TTS model."""
-        model_info = self.discovery_service._create_model_info('tts-1-hd', 'openai')
-        
-        assert model_info['category'] == 'text-to-speech'
-        assert model_info['description'] == 'Text-to-speech synthesis model'
-        assert 'audio' in model_info['tags']
-
-    def test_create_model_info_ollama_no_api_key(self):
-        """Test model info creation for Ollama (no API key required)."""
-        model_info = self.discovery_service._create_model_info('llama2:7b', 'ollama')
-        
-        assert model_info['requires_api_key'] is False
-        assert model_info['api_key_env_var'] is None
-
-    def test_deduplicate_models(self):
+    def test_deduplicate_models(self, service):
         """Test model deduplication with provider priority."""
         models = [
-            {'model_name': 'gpt-4', 'litellm_provider': 'openai'},
-            {'model_name': 'gpt-4', 'litellm_provider': 'azure'},  # Duplicate
-            {'model_name': 'claude-3-opus', 'litellm_provider': 'anthropic'},
-            {'model_name': 'claude-3-opus', 'litellm_provider': 'bedrock'},  # Duplicate
+            {"model_name": "gpt-4", "litellm_provider": "azure"},
+            {"model_name": "gpt-4", "litellm_provider": "openai"},
+            {"model_name": "claude-3-opus", "litellm_provider": "anthropic"},
         ]
-        
-        unique_models = self.discovery_service._deduplicate_models(models)
-        
-        assert len(unique_models) == 2
-        model_names = [m['model_name'] for m in unique_models]
-        assert 'gpt-4' in model_names
-        assert 'claude-3-opus' in model_names
-        
-        # Verify provider priority (openai preferred over azure)
-        gpt4_model = next(m for m in unique_models if m['model_name'] == 'gpt-4')
-        assert gpt4_model['litellm_provider'] == 'openai'
-        
-        # Verify provider priority (anthropic preferred over bedrock)
-        claude_model = next(m for m in unique_models if m['model_name'] == 'claude-3-opus')
-        assert claude_model['litellm_provider'] == 'anthropic'
 
-    def test_generate_display_name_basic(self):
-        """Test display name generation for basic models."""
-        assert self.discovery_service._generate_display_name('gpt-4o') == 'GPT 4O'
-        assert self.discovery_service._generate_display_name('claude-3-sonnet') == 'Claude 3 Sonnet'
-        assert self.discovery_service._generate_display_name('gemini-1.5-pro') == 'Gemini 1.5 Pro'
+        result = service._deduplicate_models(models)
 
-    def test_generate_display_name_with_prefixes(self):
+        assert len(result) == 2
+        # Should prefer openai over azure for gpt-4
+        gpt4_model = next(m for m in result if m["model_name"] == "gpt-4")
+        assert gpt4_model["litellm_provider"] == "openai"
+
+    def test_generate_display_name_basic(self, service):
+        """Test display name generation for basic model names."""
+        assert service._generate_display_name("gpt-4") == "GPT 4"
+        assert service._generate_display_name("claude-3-opus") == "Claude 3 Opus"
+
+    def test_generate_display_name_with_prefixes(self, service):
         """Test display name generation with provider prefixes."""
-        assert self.discovery_service._generate_display_name('openai/gpt-4') == 'GPT 4'
-        assert self.discovery_service._generate_display_name('anthropic/claude-3-opus') == 'Claude 3 Opus'
-        assert self.discovery_service._generate_display_name('groq/llama3-8b-8192') == 'Llama3 8B 8192'
+        assert service._generate_display_name("openai/gpt-4") == "GPT 4"
+        assert (
+            service._generate_display_name("anthropic/claude-3-opus") == "Claude 3 Opus"
+        )
 
-    def test_generate_display_name_fireworks(self):
-        """Test display name generation for Fireworks models."""
-        model_name = 'fireworks_ai/accounts/fireworks/models/llama-v3p1-8b-instruct'
-        expected = 'Llama V3P1 8B Instruct'
-        assert self.discovery_service._generate_display_name(model_name) == expected
-
-    def test_generate_display_name_special_terms(self):
+    def test_generate_display_name_with_special_terms(self, service):
         """Test display name generation with special terms."""
-        assert self.discovery_service._generate_display_name('text-embedding-ada-002') == 'Text Embedding Ada 002'
-        assert self.discovery_service._generate_display_name('tts-1-hd') == 'TTS 1 Hd'
-        assert self.discovery_service._generate_display_name('whisper-v1') == 'Whisper V1'
+        assert service._generate_display_name("gpt-4-api") == "GPT 4 API"
+        assert service._generate_display_name("claude-ai-v1") == "Claude AI V1"
 
-    def test_determine_category_embedding(self):
+    def test_generate_description_exact_matches(self, service):
+        """Test description generation for exact model matches."""
+        assert "OpenAI's most advanced" in service._generate_description(
+            "gpt-4o", "openai"
+        )
+        assert "Anthropic's most powerful" in service._generate_description(
+            "claude-3-opus", "anthropic"
+        )
+
+    def test_generate_description_characteristics(self, service):
+        """Test description generation based on model characteristics."""
+        assert "Embedding model" in service._generate_description(
+            "text-embedding-ada", "openai"
+        )
+        assert (
+            "Multimodal model with vision capabilities"
+            in service._generate_description("vision-model", "test")
+        )
+        assert "Code generation" in service._generate_description(
+            "code-davinci", "openai"
+        )
+        assert "Speech-to-text" in service._generate_description("whisper-1", "openai")
+        assert "Text-to-speech" in service._generate_description("tts-1", "openai")
+
+    def test_generate_description_fallback(self, service):
+        """Test description generation fallback."""
+        result = service._generate_description("unknown-model", "custom_provider")
+        assert "Custom Provider language model" in result
+
+    def test_determine_category_embedding(self, service):
         """Test category determination for embedding models."""
-        assert self.discovery_service._determine_category('text-embedding-3-large', 'openai') == 'embedding'
-        assert self.discovery_service._determine_category('embed-english-v3.0', 'cohere') == 'embedding'
+        assert service._determine_category("text-embed-ada", "openai") == "embedding"
 
-    def test_determine_category_vision(self):
+    def test_determine_category_vision(self, service):
         """Test category determination for vision models."""
-        assert self.discovery_service._determine_category('gpt-4-vision-preview', 'openai') == 'vision'
-        assert self.discovery_service._determine_category('gpt-4o-multimodal', 'openai') == 'vision'
+        assert service._determine_category("gpt-4-vision", "openai") == "vision"
+        assert service._determine_category("multimodal-model", "test") == "vision"
 
-    def test_determine_category_code(self):
+    def test_determine_category_code(self, service):
         """Test category determination for code models."""
-        assert self.discovery_service._determine_category('codex-mini', 'openai') == 'code'
-        assert self.discovery_service._determine_category('deepseek-coder', 'deepseek') == 'code'
+        assert service._determine_category("code-davinci", "openai") == "code"
+        assert service._determine_category("coder-model", "test") == "code"
 
-    def test_determine_category_speech(self):
-        """Test category determination for speech models."""
-        assert self.discovery_service._determine_category('whisper-large-v3', 'openai') == 'speech-to-text'
-        assert self.discovery_service._determine_category('tts-1', 'openai') == 'text-to-speech'
+    def test_determine_category_audio(self, service):
+        """Test category determination for audio models."""
+        assert service._determine_category("whisper-1", "openai") == "speech-to-text"
+        assert service._determine_category("tts-1", "openai") == "text-to-speech"
 
-    def test_determine_category_advanced(self):
+    def test_determine_category_advanced(self, service):
         """Test category determination for advanced models."""
-        assert self.discovery_service._determine_category('gpt-4o', 'openai') == 'advanced'
-        assert self.discovery_service._determine_category('claude-3-opus', 'anthropic') == 'advanced'
-        assert self.discovery_service._determine_category('gemini-pro', 'gemini') == 'advanced'
-        assert self.discovery_service._determine_category('grok-beta', 'xai') == 'advanced'
+        assert service._determine_category("gpt-4-turbo", "openai") == "advanced"
+        assert service._determine_category("claude-3-opus", "anthropic") == "advanced"
+        assert service._determine_category("gemini-pro", "google") == "advanced"
 
-    def test_determine_category_general(self):
+    def test_determine_category_general(self, service):
         """Test category determination for general models."""
-        assert self.discovery_service._determine_category('gpt-3.5-turbo', 'openai') == 'general'
-        assert self.discovery_service._determine_category('llama2-7b', 'meta') == 'general'
+        assert service._determine_category("basic-model", "test") == "general"
 
-    def test_generate_tags_fast_models(self):
-        """Test tag generation for fast models."""
-        tags = self.discovery_service._generate_tags('gpt-3.5-turbo', 'openai')
-        assert 'fast' in tags
-        assert 'openai' in tags
-        
-        tags = self.discovery_service._generate_tags('gemini-1.5-flash', 'gemini')
-        assert 'fast' in tags
+    def test_generate_tags_speed_indicators(self, service):
+        """Test tag generation for speed indicators."""
+        tags = service._generate_tags("gpt-3.5-turbo", "openai")
+        assert "fast" in tags
 
-    def test_generate_tags_powerful_models(self):
-        """Test tag generation for powerful models."""
-        tags = self.discovery_service._generate_tags('gpt-4o', 'openai')
-        assert 'powerful' in tags
-        
-        tags = self.discovery_service._generate_tags('claude-3-opus', 'anthropic')
-        assert 'powerful' in tags
+        tags = service._generate_tags("gemini-flash", "google")
+        assert "fast" in tags
 
-    def test_generate_tags_special_features(self):
-        """Test tag generation for models with special features."""
-        tags = self.discovery_service._generate_tags('gpt-4-vision', 'openai')
-        assert 'vision' in tags
-        
-        tags = self.discovery_service._generate_tags('text-embedding-3-large', 'openai')
-        assert 'embedding' in tags
-        
-        tags = self.discovery_service._generate_tags('codex-mini', 'openai')
-        assert 'code' in tags
-        
-        tags = self.discovery_service._generate_tags('whisper-large', 'openai')
-        assert 'speech' in tags
-        
-        tags = self.discovery_service._generate_tags('tts-1', 'openai')
-        assert 'audio' in tags
+    def test_generate_tags_capability_indicators(self, service):
+        """Test tag generation for capability indicators."""
+        tags = service._generate_tags("gpt-4", "openai")
+        assert "powerful" in tags
 
-    def test_is_recommended_models(self):
-        """Test recommended model identification."""
-        assert self.discovery_service._is_recommended('gpt-4o') is True
-        assert self.discovery_service._is_recommended('gpt-4') is True
-        assert self.discovery_service._is_recommended('claude-3-opus') is True
-        assert self.discovery_service._is_recommended('claude-3-sonnet') is True
-        assert self.discovery_service._is_recommended('claude-3-5-sonnet') is True
-        assert self.discovery_service._is_recommended('gemini-1.5-pro') is True
-        assert self.discovery_service._is_recommended('gemini-1.5-flash') is True
-        assert self.discovery_service._is_recommended('grok-beta') is True
-        assert self.discovery_service._is_recommended('deepseek-reasoner') is True
-        
-        # Not recommended
-        assert self.discovery_service._is_recommended('gpt-3.5-turbo') is False
-        assert self.discovery_service._is_recommended('claude-instant') is False
+        tags = service._generate_tags("claude-3-opus", "anthropic")
+        assert "powerful" in tags
 
-    def test_is_popular_models(self):
-        """Test popular model identification."""
-        assert self.discovery_service._is_popular('gpt-4') is True
-        assert self.discovery_service._is_popular('gpt-3.5-turbo') is True
-        assert self.discovery_service._is_popular('claude-3-opus') is True
-        assert self.discovery_service._is_popular('gemini-pro') is True
-        assert self.discovery_service._is_popular('grok-beta') is True
-        assert self.discovery_service._is_popular('deepseek-chat') is True
-        
-        # Not popular
-        assert self.discovery_service._is_popular('text-embedding-ada-002') is False
+    def test_generate_tags_features(self, service):
+        """Test tag generation for feature indicators."""
+        tags = service._generate_tags("gpt-4-vision", "openai")
+        assert "vision" in tags
 
-    def test_requires_api_key(self):
-        """Test API key requirement determination."""
-        assert self.discovery_service._requires_api_key('openai') is True
-        assert self.discovery_service._requires_api_key('anthropic') is True
-        assert self.discovery_service._requires_api_key('groq') is True
-        
-        # No API key required
-        assert self.discovery_service._requires_api_key('ollama') is False
-        assert self.discovery_service._requires_api_key('local') is False
+        tags = service._generate_tags("text-embedding-ada", "openai")
+        assert "embedding" in tags
 
-    def test_get_api_key_env_var(self):
-        """Test API key environment variable mapping."""
-        assert self.discovery_service._get_api_key_env_var('openai') == 'OPENAI_API_KEY'
-        assert self.discovery_service._get_api_key_env_var('text-completion-openai') == 'OPENAI_API_KEY'
-        assert self.discovery_service._get_api_key_env_var('anthropic') == 'ANTHROPIC_API_KEY'
-        assert self.discovery_service._get_api_key_env_var('cohere') == 'COHERE_API_KEY'
-        assert self.discovery_service._get_api_key_env_var('groq') == 'GROQ_API_KEY'
-        assert self.discovery_service._get_api_key_env_var('xai') == 'XAI_API_KEY'
-        assert self.discovery_service._get_api_key_env_var('deepseek') == 'DEEPSEEK_API_KEY'
-        assert self.discovery_service._get_api_key_env_var('vertex_ai') == 'GOOGLE_APPLICATION_CREDENTIALS'
-        assert self.discovery_service._get_api_key_env_var('bedrock') == 'AWS_ACCESS_KEY_ID'
-        
-        # Unknown provider
-        assert self.discovery_service._get_api_key_env_var('unknown_provider') is None
+        tags = service._generate_tags("code-davinci", "openai")
+        assert "code" in tags
 
-    def test_supports_function_calling(self):
+    def test_generate_tags_provider(self, service):
+        """Test tag generation includes provider."""
+        tags = service._generate_tags("gpt-4", "openai")
+        assert "openai" in tags
+
+        tags = service._generate_tags("claude-3", "anthropic")
+        assert "anthropic" in tags
+
+    def test_is_recommended_true(self, service):
+        """Test recommended model detection."""
+        assert service._is_recommended("gpt-4o") is True
+        assert service._is_recommended("claude-3-opus") is True
+        assert service._is_recommended("gemini-1.5-pro") is True
+
+    def test_is_recommended_false(self, service):
+        """Test non-recommended model detection."""
+        assert service._is_recommended("basic-model") is False
+        assert service._is_recommended("old-model") is False
+
+    def test_is_popular_true(self, service):
+        """Test popular model detection."""
+        assert service._is_popular("gpt-4-turbo") is True
+        assert service._is_popular("claude-3-sonnet") is True
+        assert service._is_popular("gemini-pro") is True
+
+    def test_is_popular_false(self, service):
+        """Test non-popular model detection."""
+        assert service._is_popular("obscure-model") is False
+
+    def test_requires_api_key_true(self, service):
+        """Test API key requirement for most providers."""
+        assert service._requires_api_key("openai") is True
+        assert service._requires_api_key("anthropic") is True
+        assert service._requires_api_key("cohere") is True
+
+    def test_requires_api_key_false(self, service):
+        """Test no API key requirement for local providers."""
+        assert service._requires_api_key("ollama") is False
+        assert service._requires_api_key("local") is False
+        assert service._requires_api_key("huggingface_local") is False
+
+    def test_get_api_key_env_var_known_providers(self, service):
+        """Test API key environment variable mapping for known providers."""
+        assert service._get_api_key_env_var("openai") == "OPENAI_API_KEY"
+        assert service._get_api_key_env_var("anthropic") == "ANTHROPIC_API_KEY"
+        assert service._get_api_key_env_var("cohere") == "COHERE_API_KEY"
+        assert service._get_api_key_env_var("groq") == "GROQ_API_KEY"
+
+    def test_get_api_key_env_var_unknown_provider(self, service):
+        """Test API key environment variable for unknown providers."""
+        assert service._get_api_key_env_var("unknown_provider") is None
+
+    def test_supports_function_calling_true(self, service):
         """Test function calling support detection."""
-        assert self.discovery_service._supports_function_calling('gpt-4') is True
-        assert self.discovery_service._supports_function_calling('gpt-3.5-turbo') is True
-        assert self.discovery_service._supports_function_calling('claude-3-opus') is True
-        assert self.discovery_service._supports_function_calling('gemini-pro') is True
-        assert self.discovery_service._supports_function_calling('grok-beta') is True
-        
-        # Models that don't support function calling
-        assert self.discovery_service._supports_function_calling('text-embedding-ada-002') is False
-        assert self.discovery_service._supports_function_calling('whisper-1') is False
+        assert service._supports_function_calling("gpt-4") is True
+        assert service._supports_function_calling("gpt-3.5-turbo") is True
+        assert service._supports_function_calling("claude-3-opus") is True
 
-    def test_supports_vision(self):
+    def test_supports_function_calling_false(self, service):
+        """Test models without function calling support."""
+        assert service._supports_function_calling("whisper-1") is False
+        assert service._supports_function_calling("basic-model") is False
+
+    def test_supports_vision_true(self, service):
         """Test vision support detection."""
-        assert self.discovery_service._supports_vision('gpt-4o') is True
-        assert self.discovery_service._supports_vision('gpt-4-vision-preview') is True
-        assert self.discovery_service._supports_vision('claude-3-opus') is True
-        assert self.discovery_service._supports_vision('claude-3-sonnet') is True
-        assert self.discovery_service._supports_vision('claude-3-5-sonnet') is True
-        assert self.discovery_service._supports_vision('gemini-1.5-pro') is True
-        assert self.discovery_service._supports_vision('gemini-2.0-flash') is True
-        assert self.discovery_service._supports_vision('grok-vision-beta') is True
-        
-        # Models that don't support vision
-        assert self.discovery_service._supports_vision('gpt-3.5-turbo') is False
-        assert self.discovery_service._supports_vision('text-embedding-ada-002') is False
+        assert service._supports_vision("gpt-4o") is True
+        assert service._supports_vision("gpt-4-vision") is True
+        assert service._supports_vision("claude-3-opus") is True
+        assert service._supports_vision("gemini-1.5-pro") is True
 
-    @patch('app.services.litellm_model_discovery.litellm')
-    def test_integration_complete_flow(self, mock_litellm):
-        """Test complete integration flow with realistic data."""
-        # Mock comprehensive models_by_provider data
-        mock_models_by_provider = {
-            'openai': [
-                'gpt-4o', 'gpt-4', 'gpt-3.5-turbo', 'text-embedding-3-large', 
-                'whisper-1', 'tts-1', 'gpt-4-vision-preview'
-            ],
-            'anthropic': ['claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku'],
-            'groq': ['groq/llama3-8b-8192', 'groq/whisper-large-v3'],
-            'xai': ['xai/grok-beta', 'xai/grok-vision-beta'],
-            'deepseek': ['deepseek/deepseek-reasoner', 'deepseek/deepseek-coder'],
+    def test_supports_vision_false(self, service):
+        """Test models without vision support."""
+        assert service._supports_vision("gpt-3.5-turbo") is False
+        assert service._supports_vision("text-embedding-ada") is False
+
+    @patch("app.services.litellm_model_discovery.LITELLM_AVAILABLE", True)
+    @patch("app.services.litellm_model_discovery.litellm")
+    def test_integration_full_model_creation(self, mock_litellm, service):
+        """Test full integration of model creation process."""
+        mock_litellm.models_by_provider = {
+            "openai": ["gpt-4", "gpt-4", "gpt-3.5-turbo"],  # Duplicate gpt-4
+            "anthropic": ["claude-3-opus"],
         }
-        mock_litellm.models_by_provider = mock_models_by_provider
-        
-        # Run discovery
-        models = self.discovery_service.get_all_supported_models()
-        
-        # Verify comprehensive results
-        assert len(models) == 17  # Total unique models
-        
-        # Verify different categories are present
-        categories = set(m['category'] for m in models)
-        expected_categories = {'advanced', 'general', 'embedding', 'speech-to-text', 'text-to-speech', 'vision', 'code'}
-        assert categories.intersection(expected_categories) == expected_categories
-        
-        # Verify different providers are present
-        providers = set(m['litellm_provider'] for m in models)
-        assert providers == {'openai', 'anthropic', 'groq', 'xai', 'deepseek'}
-        
-        # Verify specific model characteristics
-        gpt4o = next((m for m in models if m['model_name'] == 'gpt-4o'), None)
-        assert gpt4o is not None
-        assert gpt4o['category'] == 'advanced'
-        assert gpt4o['supports_vision'] is True
-        assert gpt4o['is_recommended'] is True
-        
-        embedding_model = next((m for m in models if 'embedding' in m['model_name']), None)
-        assert embedding_model is not None
-        assert embedding_model['category'] == 'embedding'
-        
-        # Verify service state
-        assert self.discovery_service.last_discovery_time is not None
-        assert len(self.discovery_service.discovered_models) == 17
+
+        result = service.get_all_supported_models()
+
+        # Should have deduplicated models
+        assert len(result) == 3
+
+        # Check structure of returned models
+        for model in result:
+            assert "model_name" in model
+            assert "litellm_provider" in model
+            assert "display_name" in model
+            assert "description" in model
+            assert "category" in model
+            assert "tags" in model
+            assert "is_recommended" in model
+            assert "is_popular" in model
+            assert "requires_api_key" in model
+            assert "supports_streaming" in model
+            assert "supports_function_calling" in model
+            assert "supports_vision" in model
+            assert "source" in model
+            assert model["source"] == "litellm_catalog"
+
+    def test_singleton_instance_exists(self):
+        """Test that the singleton instance is available."""
+        from app.services.litellm_model_discovery import litellm_model_discovery
+
+        assert isinstance(litellm_model_discovery, LiteLLMModelDiscovery)

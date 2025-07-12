@@ -1,89 +1,96 @@
-# Multi-stage Dockerfile for AIdeator
-FROM python:3.11-slim AS base
+# Multi-stage Dockerfile for AIdeator using Wolfi base images
+# Following patterns from manifold build-config
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Build stage for Python dependencies using Wolfi
+FROM cgr.dev/chainguard/wolfi-base:latest AS python-builder
+
+USER root
+
+# Install Python build dependencies
+RUN apk --no-cache --update upgrade && apk --no-cache add \
+    python-3.12 \
+    py3.12-pip \
+    python-3.12-dev \
+    build-base \
     git \
     curl \
-    build-essential \
-    libssl-dev \
-    libffi-dev \
-    python3-dev \
-    && rm -rf /var/lib/apt/lists/*
+    nodejs \
+    npm \
+    ca-certificates \
+    openssl \
+    bash
 
-# Install Node.js
-ARG NODE_MAJOR=22
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends curl gnupg ca-certificates; \
-    curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -; \
-    apt-get install -y --no-install-recommends nodejs; \
-    apt-get clean; \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+# Install uv for faster Python package management
+RUN pip install -Iv "uv==0.7.10"
 
-# Install Claude Code and Gemini CLI globally
-RUN npm install -g @anthropic-ai/claude-code @google/gemini-cli @openai/codex
+# Set Python environment variables
+ENV UV_LINK_MODE=copy
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_PYTHON_DOWNLOADS=never
+ENV UV_PYTHON=python3.12
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 
-# Install kubectl for Kubernetes operations
-RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
-    && chmod +x kubectl \
-    && mv kubectl /usr/local/bin/
+# Create virtual environment
+RUN python3.12 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Set working directory
-WORKDIR /app
-
-# Copy requirements first (for better caching)
-COPY requirements.txt .
-
-# Install Python dependencies
+# Copy Python requirements
+COPY requirements.txt pyproject.toml ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# FastAPI API stage
-FROM base AS api
+# Install Claude Code and AI CLI tools globally
+RUN npm install -g @anthropic-ai/claude-code
+
+# Download kubectl
+FROM cgr.dev/chainguard/wolfi-base:latest AS kubectl-builder
+RUN apk add --no-cache curl && \
+    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
+    chmod +x kubectl
+
+# Final API stage using Wolfi base
+FROM cgr.dev/chainguard/wolfi-base:latest AS api
+
+USER root
+
+# Install runtime dependencies
+RUN apk --no-cache --update upgrade && apk --no-cache add \
+    python-3.12 \
+    bash \
+    git \
+    ca-certificates \
+    openssl
+
+# Create nonroot user and directories (if it doesn't exist)
+RUN adduser -D -u 1000 nonroot || true
+WORKDIR /app
+RUN chown nonroot:nonroot /app
+
+# Copy Python virtual environment
+COPY --from=python-builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONPATH="/app:$PYTHONPATH"
+
+# Copy kubectl
+COPY --from=kubectl-builder /kubectl /usr/local/bin/kubectl
+
+# Copy Node.js tools
+COPY --from=python-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=python-builder /usr/local/bin/claude /usr/local/bin/claude
 
 # Copy application code
-COPY app/ ./app/
-COPY k8s/ ./k8s/
-COPY alembic/ ./alembic/
-COPY alembic.ini ./
-COPY scripts/ ./scripts/
+COPY --chown=nonroot:nonroot app/ ./app/
+COPY --chown=nonroot:nonroot k8s/ ./k8s/
+COPY --chown=nonroot:nonroot alembic/ ./alembic/
+COPY --chown=nonroot:nonroot alembic.ini ./
+COPY --chown=nonroot:nonroot scripts/ ./scripts/
 
-# Create non-root user
-RUN useradd -m -u 1000 apiuser && chown -R apiuser:apiuser /app
-USER apiuser
+# Switch to nonroot user
+USER nonroot
 
 # Expose port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
 # Run FastAPI
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
-# Agent stage
-FROM base AS agent
-
-# Copy agent requirements and install dependencies
-COPY agent/requirements.txt ./agent-requirements.txt
-RUN pip install --no-cache-dir -r agent-requirements.txt
-
-# Copy agent code
-COPY agent/ ./agent/
-
-# Create workspace directory
-RUN mkdir -p /workspace && chmod 777 /workspace
-
-# Create non-root user
-RUN useradd -m -u 1000 agentuser && chown -R agentuser:agentuser /app /workspace
-USER agentuser
-
-# Set working directory to workspace
-WORKDIR /workspace
-
-# Add /app to Python path so agent imports work
-ENV PYTHONPATH="/app:$PYTHONPATH"
-
-# Run agent
-CMD ["python", "-u", "/app/agent/main.py"]
+# API-only Dockerfile - agent uses separate agent/Dockerfile

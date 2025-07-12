@@ -1,3 +1,4 @@
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -13,9 +14,9 @@ from app.core.database import create_db_and_tables
 from app.core.logging import setup_logging
 from app.middleware.logging import LoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
+from app.services.redis_service import redis_service
 from app.tasks.model_sync_task import model_sync_task
 
-from app.services.redis_service import redis_service
 # Using Kubernetes service for container orchestration
 from app.utils.openapi import custom_openapi
 
@@ -24,8 +25,8 @@ logger = setup_logging()
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Manage app lifecycle - database and Redis initialization."""
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Manage app lifecycle - database initialization and background tasks."""
     # Startup
     logger.info(f"Starting {settings.project_name} v{settings.version}")
 
@@ -46,14 +47,16 @@ async def lifespan(app: FastAPI):
         logger.info("Redis connected successfully")
     except Exception as e:
         logger.error(f"Redis connection failed: {e}")
-        raise RuntimeError("Redis connection is required for streaming. Please ensure Redis is available.")
-    
+        raise RuntimeError(
+            "Redis connection is required for streaming. Please ensure Redis is available."
+        )
+
     yield
 
     # Shutdown
     await redis_service.disconnect()
     logger.info("Redis disconnected")
-    
+
     logger.info("Shutting down application")
 
     # Stop model sync task
@@ -76,19 +79,19 @@ def create_application() -> FastAPI:
             {"url": "https://api.aideator.com", "description": "Production"},
         ],
         description="""
-        AIdeator is a Kubernetes-native LLM orchestration platform that runs multiple AI agents in isolated containers, 
+        AIdeator is a Kubernetes-native LLM orchestration platform that runs multiple AI agents in isolated containers,
         streaming their thought processes in real-time.
-        
+
         ## Features
-        
+
         * **Container Isolation** - Each agent runs in its own Kubernetes Job
         * **Real-time Streaming** - Server-Sent Events for live agent output
         * **Parallel Execution** - Run N variations concurrently
         * **Result Persistence** - Save and retrieve winning variations
         * **GitHub Integration** - Clone and analyze any public repository
-        
+
         ## Authentication
-        
+
         Most endpoints require an API key passed in the `X-API-Key` header.
         """,
         contact={
@@ -102,7 +105,7 @@ def create_application() -> FastAPI:
     )
 
     # Set custom OpenAPI schema
-    app.openapi = custom_openapi(app)
+    app.openapi = custom_openapi(app)  # type: ignore[method-assign]
 
     # Add middleware in reverse order (last added = first executed)
     app.add_middleware(
@@ -138,16 +141,18 @@ def create_application() -> FastAPI:
         return {
             "name": settings.project_name,
             "version": settings.version,
-            "docs": "/docs" if settings.debug else None,
+            "docs": "/docs",
+            "redoc": "/redoc",
             "openapi": f"{settings.api_v1_prefix}/openapi.json",
             "health": "/health",
+            "description": "AIdeator - Kubernetes-native LLM orchestration platform",
         }
 
     @app.get("/health", tags=["System"])
     async def health_check() -> dict[str, Any]:
         """Health check endpoint."""
         redis_healthy = await redis_service.health_check()
-        
+
         return {
             "status": "healthy" if redis_healthy else "degraded",
             "version": settings.version,

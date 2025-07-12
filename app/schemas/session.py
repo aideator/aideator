@@ -1,11 +1,12 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class SessionBase(BaseModel):
     """Base schema for session."""
+
     title: str = Field(..., max_length=200)
     description: str | None = Field(None, max_length=1000)
     models_used: list[str] = Field(default_factory=list)
@@ -17,6 +18,7 @@ class SessionCreate(SessionBase):
 
 class SessionUpdate(BaseModel):
     """Schema for updating a session."""
+
     title: str | None = Field(None, max_length=200)
     description: str | None = Field(None, max_length=1000)
     is_active: bool | None = None
@@ -25,6 +27,7 @@ class SessionUpdate(BaseModel):
 
 class SessionResponse(SessionBase):
     """Schema for session response."""
+
     id: str
     user_id: str
     is_active: bool
@@ -37,11 +40,13 @@ class SessionResponse(SessionBase):
 
     class Config:
         """Pydantic config."""
+
         from_attributes = True
 
 
 class SessionListResponse(BaseModel):
     """Schema for session list response."""
+
     sessions: list[SessionResponse]
     total: int
     limit: int
@@ -50,9 +55,10 @@ class SessionListResponse(BaseModel):
 
 class TurnBase(BaseModel):
     """Base schema for turn."""
+
     prompt: str = Field(..., min_length=1)
     context: str | None = None
-    models_requested: list[str] = Field(..., min_items=1)
+    models_requested: list[str] = Field(..., min_length=1)
 
 
 class TurnCreate(TurnBase):
@@ -61,6 +67,7 @@ class TurnCreate(TurnBase):
 
 class TurnResponse(TurnBase):
     """Schema for turn response."""
+
     id: str
     session_id: str
     turn_number: int
@@ -73,21 +80,24 @@ class TurnResponse(TurnBase):
 
     class Config:
         """Pydantic config."""
+
         from_attributes = True
 
 
 class PreferenceBase(BaseModel):
     """Base schema for preference."""
+
     preferred_model: str = Field(..., min_length=1)
     preferred_response_id: str = Field(..., min_length=1)
-    compared_models: list[str] = Field(..., min_items=2)
+    compared_models: list[str] = Field(..., min_length=2)
     response_quality_scores: dict[str, int] = Field(default_factory=dict)
     feedback_text: str | None = None
     confidence_score: int | None = Field(None, ge=1, le=5)
     preference_type: str = Field(default="response")
 
-    @validator("response_quality_scores")
-    def validate_quality_scores(cls, v):
+    @field_validator("response_quality_scores")
+    @classmethod
+    def validate_quality_scores(cls, v: dict[str, int]) -> dict[str, int]:
         """Validate quality scores are between 1-5."""
         for model, score in v.items():
             if not isinstance(score, int) or score < 1 or score > 5:
@@ -101,6 +111,7 @@ class PreferenceCreate(PreferenceBase):
 
 class PreferenceResponse(PreferenceBase):
     """Schema for preference response."""
+
     id: str
     user_id: str
     session_id: str
@@ -109,11 +120,13 @@ class PreferenceResponse(PreferenceBase):
 
     class Config:
         """Pydantic config."""
+
         from_attributes = True
 
 
 class SessionAnalytics(BaseModel):
     """Schema for session analytics."""
+
     total_sessions: int
     active_sessions: int
     archived_sessions: int
@@ -131,6 +144,7 @@ class SessionAnalytics(BaseModel):
 
 class ModelPerformanceMetrics(BaseModel):
     """Schema for model performance metrics."""
+
     model_name: str
     total_requests: int
     total_cost: float
@@ -146,6 +160,7 @@ class ModelPerformanceMetrics(BaseModel):
 
 class SessionExport(BaseModel):
     """Schema for session export."""
+
     session: SessionResponse
     turns: list[TurnResponse]
     preferences: list[PreferenceResponse]

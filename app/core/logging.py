@@ -1,5 +1,6 @@
 import logging
 import sys
+from typing import cast
 
 import structlog
 from structlog.processors import CallsiteParameter
@@ -37,16 +38,18 @@ def setup_logging() -> structlog.BoundLogger:
                 ]
             ),
             structlog.processors.dict_tracebacks,
-            structlog.processors.JSONRenderer() if not settings.debug else structlog.dev.ConsoleRenderer(),
+            structlog.processors.JSONRenderer()
+            if not settings.debug
+            else structlog.dev.ConsoleRenderer(),
         ],
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
 
-    return structlog.get_logger()
+    return cast("structlog.BoundLogger", structlog.get_logger())
 
 
 def get_logger(name: str) -> structlog.BoundLogger:
     """Get a logger instance with the given name."""
-    return structlog.get_logger(name)
+    return cast("structlog.BoundLogger", structlog.get_logger(name))

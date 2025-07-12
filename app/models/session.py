@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import JSON, Column, Text
@@ -46,7 +47,7 @@ class Session(SQLModel, table=True):
                 "created_at": "2024-01-01T00:00:00Z",
                 "models_used": ["gpt-4", "claude-3-sonnet"],
                 "total_turns": 5,
-                "total_cost": 0.25
+                "total_cost": 0.25,
             }
         }
 
@@ -64,11 +65,13 @@ class Turn(SQLModel, table=True):
     # Turn content
     prompt: str = Field(sa_column=Column(Text))
     context: str | None = Field(default=None, sa_column=Column(Text))
-    model: str = Field(default="multi-model")  # For backwards compatibility with original schema
+    model: str = Field(
+        default="multi-model"
+    )  # For backwards compatibility with original schema
 
     # Models and responses
     models_requested: list[str] = Field(default_factory=list, sa_column=Column(JSON))
-    responses: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    responses: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
 
     # Timing and costs
     started_at: datetime = Field(default_factory=datetime.utcnow)
@@ -94,11 +97,14 @@ class Turn(SQLModel, table=True):
                 "models_requested": ["gpt-4", "claude-3-sonnet"],
                 "responses": {
                     "gpt-4": {"content": "Here's my analysis...", "tokens": 150},
-                    "claude-3-sonnet": {"content": "I see several areas...", "tokens": 200}
+                    "claude-3-sonnet": {
+                        "content": "I see several areas...",
+                        "tokens": 200,
+                    },
                 },
                 "status": "completed",
                 "duration_seconds": 12.5,
-                "total_cost": 0.05
+                "total_cost": 0.05,
             }
         }
 
@@ -119,7 +125,9 @@ class Preference(SQLModel, table=True):
 
     # Comparison context
     compared_models: list[str] = Field(default_factory=list, sa_column=Column(JSON))
-    response_quality_scores: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    response_quality_scores: dict[str, int] = Field(
+        default_factory=dict, sa_column=Column(JSON)
+    )
 
     # User feedback
     feedback_text: str | None = Field(default=None, sa_column=Column(Text))
@@ -144,12 +152,9 @@ class Preference(SQLModel, table=True):
                 "preferred_model": "claude-3-sonnet",
                 "preferred_response_id": "response_abc123",
                 "compared_models": ["gpt-4", "claude-3-sonnet"],
-                "response_quality_scores": {
-                    "gpt-4": 4,
-                    "claude-3-sonnet": 5
-                },
+                "response_quality_scores": {"gpt-4": 4, "claude-3-sonnet": 5},
                 "feedback_text": "Claude's response was more detailed and actionable",
                 "confidence_score": 4,
-                "preference_type": "response"
+                "preference_type": "response",
             }
         }

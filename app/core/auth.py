@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import cast
 
 from fastapi import HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -29,8 +30,10 @@ class AuthError(HTTPException):
 async def get_user_from_token(token: str, db: AsyncSession) -> User | None:
     """Get user from JWT token."""
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
-        user_id: str = payload.get("sub")
+        payload = jwt.decode(
+            token, settings.secret_key, algorithms=[settings.algorithm]
+        )
+        user_id: str | None = payload.get("sub")
         if user_id is None:
             # Token missing user ID - authentication failed
             return None
@@ -50,12 +53,10 @@ async def get_user_from_api_key(api_key: str, db: AsyncSession) -> User | None:
         return None
 
     # Hash the provided key to match stored hash
-    key_hash = pwd_context.hash(api_key)
+    pwd_context.hash(api_key)
 
     # Find the API key by trying to verify against stored hashes
-    result = await db.execute(
-        select(APIKey).where(APIKey.is_active == True)
-    )
+    result = await db.execute(select(APIKey).where(APIKey.is_active == True))  # type: ignore[arg-type] # noqa: E712
     api_keys = result.scalars().all()
 
     for stored_key in api_keys:
@@ -76,7 +77,9 @@ async def get_user_from_api_key(api_key: str, db: AsyncSession) -> User | None:
     return None
 
 
-async def authenticate_user(credentials: HTTPAuthorizationCredentials, db: AsyncSession) -> User:
+async def authenticate_user(
+    credentials: HTTPAuthorizationCredentials, db: AsyncSession
+) -> User:
     """Authenticate user from JWT token or API key."""
     token = credentials.credentials
 
@@ -95,9 +98,9 @@ async def authenticate_user(credentials: HTTPAuthorizationCredentials, db: Async
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify password against hash."""
-    return pwd_context.verify(plain_password, hashed_password)
+    return cast("bool", pwd_context.verify(plain_password, hashed_password))
 
 
 def get_password_hash(password: str) -> str:
     """Hash password."""
-    return pwd_context.hash(password)
+    return cast("str", pwd_context.hash(password))

@@ -17,15 +17,13 @@ async def get_current_user(api_key: str = Depends(api_key_header)) -> User:
     """Get current user from API key."""
     if not api_key:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="API key required"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="API key required"
         )
 
     user = await auth_service.validate_api_key(api_key)
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
         )
 
     return user
@@ -37,8 +35,7 @@ async def require_admin(user: User = Depends(get_current_user)) -> User:
     # In production, you'd have a proper role system
     if user.email not in ["admin@aideator.com", "support@aideator.com"]:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin privileges required"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required"
         )
 
     return user

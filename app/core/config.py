@@ -17,20 +17,19 @@ class Settings(BaseSettings):
     # Server Configuration
     host: str = "0.0.0.0"
     port: int = 8000
-    workers: int = 4
     reload: bool = False
     log_level: str = "info"
 
     # Security
-    secret_key: str
+    secret_key: str = Field(
+        default="dev-secret-key-32-chars-minimum-length-for-development"
+    )
+    encryption_key: str = Field(default="dev-encryption-key-32-chars-minimum-for-aes")
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     openai_api_key: str | None = None  # Required for LiteLLM
-    openai_api_key_env_var: str = "OPENAI_API_KEY"  # Environment variable name for containers
     anthropic_api_key: str | None = None  # Required for Claude Code CLI
-    anthropic_api_key_env_var: str = "ANTHROPIC_API_KEY"  # Environment variable name for containers
     gemini_api_key: str | None = None  # Required for Gemini CLI
-    gemini_api_key_env_var: str = "GEMINI_API_KEY"  # Environment variable name for containers
     api_key_header: str = "X-API-Key"
     allowed_origins: list[str] = ["*"]
     allowed_hosts: list[str] = ["*"]
@@ -43,39 +42,37 @@ class Settings(BaseSettings):
 
     # Kubernetes Configuration
     kubernetes_namespace: str = "aideator"
-    kubernetes_job_ttl: int = 3600  # 1 hour
     kubernetes_workdir: str = "/workspace"
 
     # Agent Configuration
     max_variations: int = Field(default=5, ge=1, le=10)
     max_prompt_length: int = Field(default=2000, ge=10, le=5000)
-    agent_container_image: str = "python:3.11-slim"
-    agent_memory_limit: str = "512m"
-    agent_cpu_limit: float = Field(default=0.5, ge=0.1, le=2.0)
-    agent_timeout: int = 300  # 5 minutes
     default_agent_model: str = "gpt-4o-mini"
     debug_agent_container: bool = False  # Enable debug logs for agent containers
-    
+
     # Concurrency limits
     max_concurrent_runs: int = Field(default=10, ge=1, le=50)
-    max_concurrent_jobs: int = Field(default=20, ge=1, le=100)  # Total jobs across all runs
+    max_concurrent_jobs: int = Field(
+        default=20, ge=1, le=100
+    )  # Total jobs across all runs
 
     # Repository Configuration
-    clone_timeout: int = 300  # 5 minutes
-    max_repo_size_mb: int = Field(default=100, ge=1, le=500)
     allowed_git_hosts: list[str] = ["github.com", "gitlab.com"]
 
-    # Redis Configuration (required)
-    redis_url: str  # Required for streaming
+    # Redis Configuration (for LiteLLM Gateway caching only)
+    redis_url: str | None = None  # Optional for LiteLLM Gateway caching
     redis_password: str | None = None
     redis_db: int = 0
     redis_decode_responses: bool = True
     redis_ttl_seconds: int = 3600  # 1 hour TTL for messages
     redis_max_connections: int = 100
 
+    # SSE Configuration
+    sse_ping_interval: int = 30
+    sse_retry_timeout: int = 3000
+
     # Monitoring
     enable_metrics: bool = True
-    metrics_port: int = 9090
     enable_tracing: bool = False
     jaeger_agent_host: str | None = None
     jaeger_agent_port: int | None = None
@@ -85,15 +82,9 @@ class Settings(BaseSettings):
     rate_limit_requests: int = 100
     rate_limit_period: int = 60
 
-    # Storage
-    upload_max_size_mb: int = Field(default=50, ge=1, le=200)
-    temp_dir: str = "/tmp/aideator"
-    results_retention_days: int = Field(default=30, ge=1, le=365)
-
     # LiteLLM Proxy Configuration
     LITELLM_PROXY_URL: str = "http://localhost:4000"
     LITELLM_MASTER_KEY: str | None = None
-    model_sync_interval_minutes: int = Field(default=60, ge=5, le=1440)  # 5 min to 24 hours
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -109,10 +100,15 @@ class Settings(BaseSettings):
             import json
 
             try:
-                return json.loads(v)
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return parsed
+                return [parsed] if isinstance(parsed, str) else []
             except json.JSONDecodeError:
                 return [item.strip() for item in v.split(",")]
-        return v
+        if isinstance(v, list):
+            return v
+        return []
 
     @field_validator("secret_key")
     @classmethod
@@ -120,6 +116,14 @@ class Settings(BaseSettings):
         """Ensure secret key is strong enough."""
         if len(v) < 32:
             raise ValueError("Secret key must be at least 32 characters long")
+        return v
+
+    @field_validator("encryption_key")
+    @classmethod
+    def validate_encryption_key(cls, v: str) -> str:
+        """Ensure encryption key is strong enough."""
+        if len(v) < 32:
+            raise ValueError("Encryption key must be at least 32 characters long")
         return v
 
     @field_validator("openai_api_key")
@@ -144,31 +148,42 @@ class Settings(BaseSettings):
         """Validate Gemini API key format."""
         if v is not None and not v.startswith("AIza"):
             raise ValueError("Invalid Gemini API key format")
+        return v
+
     @field_validator("redis_url")
     @classmethod
-    def validate_redis_url(cls, v: str) -> str:
+    def validate_redis_url(cls, v: str | None) -> str | None:
         """Validate Redis URL format."""
-        if not (v.startswith("redis://") or v.startswith("rediss://")):
+        if v is not None and not v.startswith(("redis://", "rediss://")):
             raise ValueError("Redis URL must start with redis:// or rediss://")
         return v
 
     @model_validator(mode="after")
     def validate_settings(self) -> "Settings":
-        """Validate settings combinations."""
-        if self.enable_tracing and not (
-            self.jaeger_agent_host and self.jaeger_agent_port
-        ):
+        """Validate settings for production readiness."""
+        if self.debug:
+            # In debug mode, allow weaker settings
+            return self
+
+        # Production validations
+        if self.secret_key == "dev-secret-key-32-chars-minimum-length-for-development":
             raise ValueError(
-                "Jaeger agent host and port must be set when tracing is enabled"
+                "Default secret key detected. Set a secure SECRET_KEY in production."
             )
+
+        if self.encryption_key == "dev-encryption-key-32-chars-minimum-for-aes":
+            raise ValueError(
+                "Default encryption key detected. Set a secure ENCRYPTION_KEY in production."
+            )
+
         return self
 
     def get_kubernetes_secrets(self) -> dict[str, str]:
         """Get secrets to mount in Kubernetes containers."""
         return {
-            "openai-api-key": self.openai_api_key,
-            "anthropic-api-key": self.anthropic_api_key,
-            "gemini-api-key": self.gemini_api_key,
+            "openai-api-key": self.openai_api_key or "",
+            "anthropic-api-key": self.anthropic_api_key or "",
+            "gemini-api-key": self.gemini_api_key or "",
         }
 
     @property
