@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
+import { AutoResizeTextarea } from "@/components/auto-resize-textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { GitBranch, Layers, Mic, Github } from "lucide-react"
@@ -13,10 +13,10 @@ export default function Home() {
         <h1 className="text-4xl font-medium text-center mb-8">What are we coding next?</h1>
 
         <div className="bg-gray-900/80 border border-gray-800 rounded-xl p-4 space-y-4">
-          <Textarea
+          <AutoResizeTextarea
             placeholder="Describe a task"
-            className="bg-transparent border-0 text-base resize-none focus-visible:ring-0"
-            rows={4}
+            minRows={5}
+            maxRows={20}
           />
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
