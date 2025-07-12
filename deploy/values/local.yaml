@@ -68,6 +68,8 @@ env:
     value: "DEBUG"
   - name: DATABASE_URL
     value: "postgresql+asyncpg://aideator:aideator123@chart-aideator-postgresql:5432/aideator"
+  - name: REDIS_URL
+    value: "redis://chart-redis-master:6379/0"
 
 # Enable PostgreSQL for local development
 postgresql:
