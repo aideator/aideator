@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { GitBranch, MessageSquare, Mic, Github } from "lucide-react"
+import { GitBranch, Layers, Mic, Github } from "lucide-react"
 import Link from "next/link"
 import { sessions } from "@/lib/data"
 
@@ -44,7 +44,8 @@ export default function Home() {
               </Select>
               <Select defaultValue="3">
                 <SelectTrigger className="bg-gray-800/60 border-gray-700 w-auto gap-2">
-                  <SelectValue />x
+                  <Layers className="w-4 h-4 text-gray-400" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="1">1x</SelectItem>
@@ -88,7 +89,7 @@ export default function Home() {
                     {session.status === "Completed" && (
                       <>
                         <div className="flex items-center gap-1 text-sm text-gray-400">
-                          <MessageSquare className="w-4 h-4" />
+                          <Layers className="w-4 h-4" />
                           <span>{session.versions}</span>
                         </div>
                         <div className="font-mono text-sm">
