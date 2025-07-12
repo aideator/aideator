@@ -1,7 +1,7 @@
 """add_github_oauth_fields
 
-Revision ID: 010
-Revises: 009
+Revision ID: 011
+Revises: 010
 Create Date: 2025-07-12 07:40:00.000000
 
 """
@@ -13,8 +13,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "010"
-down_revision: str | None = "009"
+revision: str = "011"
+down_revision: str | None = "010"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
