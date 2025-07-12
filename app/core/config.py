@@ -59,6 +59,15 @@ class Settings(BaseSettings):
     # Repository Configuration
     allowed_git_hosts: list[str] = ["github.com", "gitlab.com"]
 
+    # GitHub OAuth Configuration
+    github_client_id: str | None = None
+    github_client_secret: str | None = None
+    github_oauth_scopes: str = "read:user,user:email"  # Only basic user info for auth
+    # Note: OAuth redirect URI will be dynamically constructed based on request origin
+
+    # Frontend URL
+    frontend_url: str = "http://localhost:3000"
+
     # Redis Configuration (for LiteLLM Gateway caching only)
     redis_url: str | None = None  # Optional for LiteLLM Gateway caching
     redis_password: str | None = None

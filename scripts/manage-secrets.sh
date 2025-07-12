@@ -165,15 +165,20 @@ create_all_secrets() {
     create_secret "litellm-secret" \
         "master-key" "${LITELLM_MASTER_KEY}"
     
+    # Create GitHub OAuth secret
+    create_secret "github-oauth-secret" \
+        "client-id" "${GITHUB_CLIENT_ID:-not-configured}" \
+        "client-secret" "${GITHUB_CLIENT_SECRET:-not-configured}"
+    
     # Create AI provider secrets with placeholders (optional - configured via other means)
     create_secret "openai-secret" \
-        "api-key" "placeholder"
+        "api-key" "${OPENAI_API_KEY:-sk-placeholder-for-development-00000000000000000000}"
     
     create_secret "anthropic-secret" \
-        "api-key" "placeholder"
+        "api-key" "${ANTHROPIC_API_KEY:-sk-ant-placeholder-for-development-000000000000000}"
     
     create_secret "gemini-secret" \
-        "api-key" "placeholder"
+        "api-key" "${GEMINI_API_KEY:-AIzaPlaceholderForDevelopment00000000000}"
     
     log "All secrets created/updated successfully"
     log "AI provider API keys set to placeholder - configure via your preferred method"

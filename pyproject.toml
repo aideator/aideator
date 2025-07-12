@@ -36,6 +36,7 @@ dependencies = [
     "types-python-jose>=3.5.0.20250531",
     "ty>=0.0.1a14",
     "redis>=6.2.0",
+    "greenlet>=3.2.3",
 ]
 
 [project.scripts]

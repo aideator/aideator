@@ -4,6 +4,7 @@ import { Inter } from "next/font/google"
 import "./globals.css"
 import { cn } from "@/lib/utils"
 import { PageHeader } from "@/components/page-header"
+import { AuthProvider } from "@/lib/auth-context"
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
 
@@ -20,10 +21,12 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={cn("min-h-screen bg-background font-sans antialiased flex flex-col", inter.variable)}>
-        <PageHeader />
-        <main className="flex-1 flex flex-col">
-          {children}
-        </main>
+        <AuthProvider>
+          <PageHeader />
+          <main className="flex-1 flex flex-col">
+            {children}
+          </main>
+        </AuthProvider>
       </body>
     </html>
   )

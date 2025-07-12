@@ -57,11 +57,27 @@ spec:
           env:
             - name: DATABASE_URL
               value: {{ .Values.database.url }}
+            - name: DEBUG
+              value: "{{ .Values.config.debug }}"
             - name: SECRET_KEY
               valueFrom:
                 secretKeyRef:
                   name: aideator-secret
                   key: secret-key
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aideator-secret
+                  key: encryption-key
+            - name: REDIS_URL
+              value: "redis://localhost:6379/0"
+            # Use placeholder API keys to satisfy validation during migration
+            - name: OPENAI_API_KEY
+              value: "sk-placeholder-for-migrations-only-00000000000000000000"
+            - name: ANTHROPIC_API_KEY
+              value: "sk-ant-placeholder-for-migrations-only-000000000000000"
+            - name: GEMINI_API_KEY
+              value: "AIzaPlaceholderForMigrationsOnly00000000000"
           resources:
             requests:
               memory: "128Mi"
@@ -103,7 +119,7 @@ spec:
             # SECURITY TRADEOFF: Using hardcoded Redis URL for development simplicity
             # In production, use ConfigMap or Secret for Redis credentials
             - name: REDIS_URL
-              value: "redis://chart-redis-master:6379/0"
+              value: "redis://localhost:6379/0"
             - name: KUBERNETES_NAMESPACE
               valueFrom:
                 fieldRef:
@@ -121,6 +137,36 @@ spec:
                 secretKeyRef:
                   name: aideator-secret
                   key: encryption-key
+            # GitHub OAuth configuration (required)
+            - name: GITHUB_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: github-oauth-secret
+                  key: client-id
+            - name: GITHUB_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: github-oauth-secret
+                  key: client-secret
+            # Provide API keys from secrets if they exist
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openai-secret
+                  key: api-key
+                  optional: true
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: anthropic-secret
+                  key: api-key
+                  optional: true
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gemini-secret
+                  key: api-key
+                  optional: true
             {{- if .Values.env }}
             {{- range .Values.env }}
             - name: {{ .name }}
