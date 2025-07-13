@@ -417,7 +417,7 @@ export default function RunPage() {
 
   return (
     <>
-      <div className="bg-gray-950 text-gray-50 min-h-screen">
+      <div className="bg-gray-950 text-gray-50 min-h-screen pb-32">
         <div className="container mx-auto max-w-6xl py-8">
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
@@ -596,6 +596,24 @@ export default function RunPage() {
         onClose={() => setShowSystemDebug(false)} 
       />
     )}
+    
+    {/* Floating Input Area */}
+    <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-gray-950/95 backdrop-blur-sm border-t border-gray-800">
+      <div className="container mx-auto max-w-4xl">
+        <input
+          type="text"
+          placeholder="Request changes or ask a question"
+          className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+              // TODO: Handle submit
+              console.log('Submit:', e.currentTarget.value);
+              e.currentTarget.value = '';
+            }
+          }}
+        />
+      </div>
+    </div>
     </>
   )
 }
