@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { X, Terminal, Download, Trash2, Pause, Play } from "lucide-react"
 import { useAuthenticatedWebSocket } from "@/lib/api"
+import { useAuth } from "@/lib/auth-context"
 import { cn } from "@/lib/utils"
 
 interface DebugMessage {
@@ -32,15 +33,16 @@ export function DebugWindow({ runId, variations, isOpen, onClose }: DebugWindowP
   const [activeTab, setActiveTab] = useState("all")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { createWebSocketClient } = useAuthenticatedWebSocket('ws://localhost:8000')
+  const { apiKey } = useAuth()
   const wsClientRef = useRef<any>(null)
   const messageCounterRef = useRef(0)
   const seenMessageIds = useRef<Set<string>>(new Set())
 
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen || !apiKey) return
 
-    // Connect to system debug stream
-    const wsUrl = `ws://localhost:8000/ws/runs/${runId}/system-debug`
+    // Connect to debug stream
+    const wsUrl = `ws://localhost:8000/ws/runs/${runId}/debug`
     const client = createWebSocketClient(wsUrl)
     
     client.connect({
@@ -96,7 +98,7 @@ export function DebugWindow({ runId, variations, isOpen, onClose }: DebugWindowP
         wsClientRef.current = null
       }
     }
-  }, [isOpen, runId, createWebSocketClient, isPaused])
+  }, [isOpen, runId, createWebSocketClient, isPaused, apiKey])
 
   // Auto-scroll to bottom
   useEffect(() => {

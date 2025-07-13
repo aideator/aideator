@@ -313,6 +313,22 @@ class APIClient {
     return this.request<AgentOutput[]>(`/api/v1/runs/${runId}/outputs${query ? `?${query}` : ''}`)
   }
 
+  async getRunDiffs(
+    runId: string,
+    params: {
+      variation_id?: number
+    } = {}
+  ): Promise<Array<{ oldFile: { name: string; content: string }; newFile: { name: string; content: string } }>> {
+    const searchParams = new URLSearchParams()
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined) {
+        searchParams.append(key, value.toString())
+      }
+    })
+    const query = searchParams.toString()
+    return this.request<Array<{ oldFile: { name: string; content: string }; newFile: { name: string; content: string } }>>(`/api/v1/runs/${runId}/diffs${query ? `?${query}` : ''}`)
+  }
+
   async selectWinner(runId: string, winningVariationId: number): Promise<Run> {
     return this.request<Run>(`/api/v1/runs/${runId}/select`, {
       method: 'POST',
@@ -460,11 +476,21 @@ export class WebSocketClient {
 
       this.ws.onerror = (error) => {
         console.error('WebSocket error:', error)
+        console.error('WebSocket readyState:', this.ws?.readyState)
+        console.error('WebSocket URL:', this.url)
         this.onError?.(error)
       }
 
       this.ws.onclose = (event) => {
         console.log('WebSocket closed:', event.code, event.reason)
+        // Log more details about close event
+        if (event.code === 1006) {
+          console.error('WebSocket closed abnormally (1006) - possible authentication issue')
+        } else if (event.code === 1000) {
+          console.log('WebSocket closed normally')
+        } else {
+          console.warn(`WebSocket closed with code: ${event.code}, reason: ${event.reason || 'No reason provided'}`)
+        }
         this.onClose?.()
 
         // Auto-reconnect logic
@@ -533,6 +559,8 @@ export function useAuthenticatedWebSocket(baseUrl: string) {
   const createWebSocketClient = (url: string) => {
     // Append API key to URL if available
     const wsUrl = apiKey ? `${url}?api_key=${apiKey}` : url
+    console.log('Creating WebSocket client with URL:', wsUrl)
+    console.log('API key available:', !!apiKey)
     return new WebSocketClient(wsUrl)
   }
   
