@@ -462,7 +462,7 @@ export default function Home() {
                         <span>{session.total_turns}</span>
                       </div>
                       <div className="font-mono text-sm text-gray-400">
-                        ${session.total_cost.toFixed(3)}
+                        ${(session.total_cost || 0).toFixed(2)}
                       </div>
                       {session.is_active ? (
                         <span className="text-sm text-green-400 bg-green-900/50 px-2 py-1 rounded-md">Active</span>

@@ -122,7 +122,7 @@ export default function SessionPage() {
               <DollarSign className="w-4 h-4 text-gray-400" />
               <div className="text-sm">
                 <div className="text-gray-400">Total Cost</div>
-                <div>${session.total_cost.toFixed(3)}</div>
+                <div>${(session.total_cost || 0).toFixed(2)}</div>
               </div>
             </div>
             <div className="text-sm">
@@ -207,7 +207,7 @@ export default function SessionPage() {
                     </div>
                     <div className="text-right text-sm">
                       <div className="text-gray-400">Models: {turn.models_requested.length}</div>
-                      <div className="text-gray-400">Cost: ${turn.total_cost.toFixed(3)}</div>
+                      <div className="text-gray-400">Cost: ${(turn.total_cost || 0).toFixed(2)}</div>
                       {turn.duration_seconds && (
                         <div className="text-gray-400">
                           Duration: {Math.round(turn.duration_seconds)}s
@@ -253,7 +253,7 @@ export default function SessionPage() {
                 </div>
                 <div className="text-center p-4 bg-gray-800/50 rounded-lg">
                   <div className="text-2xl font-bold">
-                    ${session.total_cost.toFixed(2)}
+                    ${(session.total_cost || 0).toFixed(2)}
                   </div>
                   <div className="text-sm text-gray-400">Total Spent</div>
                 </div>
