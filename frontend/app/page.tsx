@@ -330,22 +330,9 @@ export default function Home() {
           </div>
         </div>
 
-        <Tabs defaultValue="sessions" className="mt-10">
-          <TabsList className="border-b border-gray-800 rounded-none w-full justify-start bg-transparent p-0">
-            <TabsTrigger
-              value="sessions"
-              className="rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 border-white"
-            >
-              Sessions
-            </TabsTrigger>
-            <TabsTrigger
-              value="archive"
-              className="rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 border-white"
-            >
-              Archive
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="sessions" className="mt-6 space-y-1">
+        <div className="mt-10">
+          <h2 className="text-lg font-semibold mb-6">Sessions</h2>
+          <div className="space-y-1">
             {isLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-6 h-6 animate-spin" />
@@ -390,11 +377,8 @@ export default function Home() {
                 </Link>
               ))
             )}
-          </TabsContent>
-          <TabsContent value="archive" className="mt-6">
-            <p className="text-center text-gray-500">Archived sessions will appear here.</p>
-          </TabsContent>
-        </Tabs>
+          </div>
+        </div>
       </div>
     </div>
   )

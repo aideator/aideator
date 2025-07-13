@@ -38,6 +38,80 @@ MAX_FILE_PREVIEW_CHARS = 2000
 CHUNK_READ_SIZE = 1024
 
 
+class DatabaseStreamWriter:
+    """Intercepts stdout/stderr and writes to database."""
+    
+    def __init__(self, original_stream, stream_type: str, agent: 'AIdeatorAgent'):
+        self.original_stream = original_stream
+        self.stream_type = stream_type  # 'stdout' or 'stderr'
+        self.agent = agent
+        self.buffer = ""
+        
+    def write(self, text: str) -> int:
+        """Write to both original stream and database."""
+        # Write to original stream first
+        result = self.original_stream.write(text)
+        
+        # Buffer text and write complete lines to database
+        self.buffer += text
+        while '\n' in self.buffer:
+            line, self.buffer = self.buffer.split('\n', 1)
+            if line.strip() and self.agent.db_service:
+                # Schedule async write in background
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        task = loop.create_task(
+                            self.agent.db_service.write_agent_output(
+                                run_id=self.agent.run_id,
+                                variation_id=int(self.agent.variation_id),
+                                content=line,
+                                output_type=self.stream_type,
+                                metadata={"source": "python_print"}
+                            )
+                        )
+                        # Add to background tasks
+                        if not hasattr(self.agent, '_bg_tasks'):
+                            self.agent._bg_tasks = set()
+                        self.agent._bg_tasks.add(task)
+                        task.add_done_callback(self.agent._bg_tasks.discard)
+                except Exception:
+                    # Silently ignore if no event loop
+                    pass
+                    
+        return result
+        
+    def flush(self):
+        """Flush the stream."""
+        # Flush any remaining buffer
+        if self.buffer.strip() and self.agent.db_service:
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    task = loop.create_task(
+                        self.agent.db_service.write_agent_output(
+                            run_id=self.agent.run_id,
+                            variation_id=int(self.agent.variation_id),
+                            content=self.buffer,
+                            output_type=self.stream_type,
+                            metadata={"source": "python_print", "partial": True}
+                        )
+                    )
+                    if not hasattr(self.agent, '_bg_tasks'):
+                        self.agent._bg_tasks = set()
+                    self.agent._bg_tasks.add(task)
+                    task.add_done_callback(self.agent._bg_tasks.discard)
+            except Exception:
+                pass
+            self.buffer = ""
+            
+        return self.original_stream.flush()
+        
+    def __getattr__(self, name):
+        """Delegate all other attributes to original stream."""
+        return getattr(self.original_stream, name)
+
+
 class AIdeatorAgent:
     """Main agent class for repository analysis and code generation."""
 
@@ -542,7 +616,7 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
         await self.log_async(f"⚡ {message}", "INFO", detail=detail)
 
     async def log_async(self, message: str, level: str = "INFO", **kwargs):
-        """Async structured logging with Redis Streams publish."""
+        """Async structured logging with dual write to Redis Streams and PostgreSQL."""
         log_entry = {
             "timestamp": datetime.now(UTC).isoformat(),
             "run_id": self.run_id,
@@ -558,6 +632,10 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             f"{message} | {json.dumps(kwargs) if kwargs else ''}",
         )
 
+        # Dual write: Redis + Database
+        redis_success = False
+        db_success = False
+
         # Publish to Redis Streams
         try:
             if self.redis_client:
@@ -569,8 +647,34 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                     "timestamp": log_entry["timestamp"],
                 }
                 await self.redis_client.xadd(stream_name, fields)
+                redis_success = True
         except Exception as e:
             self.file_logger.error(f"Failed to publish log to Redis Streams: {e}")
+
+        # Write to database
+        try:
+            if self.db_service:
+                await self.db_service.write_agent_output(
+                    run_id=self.run_id,
+                    variation_id=int(self.variation_id),
+                    content=message,
+                    output_type="logging",
+                    metadata={"level": level, **kwargs}
+                )
+                db_success = True
+        except Exception as e:
+            self.file_logger.error(f"Failed to write log to database: {e}")
+
+        # Log dual write status in debug mode
+        if os.getenv("DEBUG") == "true":
+            if redis_success and db_success:
+                self.file_logger.debug("[DUAL-WRITE] Log written to both Redis and DB")
+            elif redis_success:
+                self.file_logger.debug("[DUAL-WRITE] Log written to Redis only (DB failed)")
+            elif db_success:
+                self.file_logger.debug("[DUAL-WRITE] Log written to DB only (Redis failed)")
+            else:
+                self.file_logger.debug("[DUAL-WRITE] Failed to write log to both Redis and DB")
 
         # Also print to stdout in debug mode
         if os.getenv("DEBUG") == "true":
@@ -753,6 +857,12 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             "message": "🔧 About to initialize Database"
         }), flush=True)
         await self._init_database()
+        
+        # Install stdout/stderr interceptors to capture all output
+        if self.db_service:
+            sys.stdout = DatabaseStreamWriter(sys.stdout, "stdout", self)
+            sys.stderr = DatabaseStreamWriter(sys.stderr, "stderr", self)
+            self.log("📝 Installed stdout/stderr interceptors for database persistence", "INFO")
 
         # Fetch API keys from orchestrator
         print(json.dumps({
@@ -1147,10 +1257,28 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                                             print(text_content, end="", flush=True)
                                             # Stream to Redis immediately
                                             await self.publish_output(text_content)
+                                            # Also persist stdout to database
+                                            if self.db_service:
+                                                await self.db_service.write_agent_output(
+                                                    run_id=self.run_id,
+                                                    variation_id=int(self.variation_id),
+                                                    content=text_content,
+                                                    output_type="stdout",
+                                                    metadata={"source": "claude_cli", "message_type": "assistant"}
+                                                )
                                             collected_output.append(text_content)
                                         elif content_item.get("type") == "tool_use":
                                             tool_info = f"🔧 Using tool: {content_item.get('name', 'unknown')}"
                                             print(tool_info, flush=True)
+                                            # Persist tool use to database
+                                            if self.db_service:
+                                                await self.db_service.write_agent_output(
+                                                    run_id=self.run_id,
+                                                    variation_id=int(self.variation_id),
+                                                    content=tool_info,
+                                                    output_type="stdout",
+                                                    metadata={"source": "claude_cli", "message_type": "tool_use", "tool_name": content_item.get('name', 'unknown')}
+                                                )
                                             collected_output.append(tool_info + "\n")
 
                             except json.JSONDecodeError:
@@ -1187,6 +1315,15 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                         "Claude CLI process failed",
                         f"Exit code: {process.returncode}, Error: {error_msg}",
                     )
+                    # Persist stderr to database
+                    if self.db_service and error_msg:
+                        await self.db_service.write_agent_output(
+                            run_id=self.run_id,
+                            variation_id=int(self.variation_id),
+                            content=error_msg,
+                            output_type="stderr",
+                            metadata={"source": "claude_cli", "exit_code": process.returncode}
+                        )
 
                     # Still return collected output if we got some
                     if collected_output:
@@ -1270,6 +1407,16 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                     response_length=len(response),
                 )
 
+                # Persist stdout to database
+                if self.db_service and response:
+                    await self.db_service.write_agent_output(
+                        run_id=self.run_id,
+                        variation_id=int(self.variation_id),
+                        content=response,
+                        output_type="stdout",
+                        metadata={"source": "gemini_cli"}
+                    )
+
                 # Stream the response line by line
                 for line in response.split("\n"):
                     if line.strip():
@@ -1277,6 +1424,17 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
 
                 return response
             error_msg = stderr.decode() if stderr else "Unknown error"
+            
+            # Persist stderr to database
+            if self.db_service and error_msg:
+                await self.db_service.write_agent_output(
+                    run_id=self.run_id,
+                    variation_id=int(self.variation_id),
+                    content=error_msg,
+                    output_type="stderr",
+                    metadata={"source": "gemini_cli", "exit_code": result.returncode}
+                )
+            
             raise RuntimeError(
                 f"Gemini CLI failed with exit code {result.returncode}: {error_msg}"
             )
@@ -1718,6 +1876,14 @@ async def main():
         agent.log("🏁 Exiting agent container", "INFO")
         sys.exit(1)
     finally:
+        # Restore original stdout/stderr
+        if isinstance(sys.stdout, DatabaseStreamWriter):
+            sys.stdout.flush()
+            sys.stdout = sys.stdout.original_stream
+        if isinstance(sys.stderr, DatabaseStreamWriter):
+            sys.stderr.flush()
+            sys.stderr = sys.stderr.original_stream
+            
         # Clean up temp directory
         if hasattr(agent, "work_dir") and agent.work_dir.exists():
             try:

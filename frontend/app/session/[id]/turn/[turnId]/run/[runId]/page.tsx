@@ -32,10 +32,8 @@ export default function RunPage() {
   const [isStreaming, setIsStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [wsClient, setWsClient] = useState<WebSocketClient | null>(null)
-  const [debugWsClient, setDebugWsClient] = useState<WebSocketClient | null>(null)
-  const [showDebugView, setShowDebugView] = useState(false)
-  const [debugOutputs, setDebugOutputs] = useState<AgentOutput[]>([])
   const [showSystemDebug, setShowSystemDebug] = useState(false)
+  const messageIdCounter = useRef(0)
   
   // Ref for auto-scrolling
   const outputsEndRef = useRef<HTMLDivElement>(null)
@@ -87,10 +85,10 @@ export default function RunPage() {
       const client = createWebSocketClient(wsUrl)
       client.connect({
         onMessage: (message) => {
-          // Handle incoming WebSocket messages for parsed/clean output
+          // Handle incoming WebSocket messages
           if (message.type === "llm" || message.type === "stdout" || message.type === "stderr") {
             const newOutput: AgentOutput = {
-              id: Date.now() + Math.random(), // Temporary ID
+              id: message.message_id || `${Date.now()}-${messageIdCounter.current++}`,
               run_id: runId,
               variation_id: parseInt(message.data.variation_id) || 1,
               content: message.data.content || "",
@@ -115,47 +113,12 @@ export default function RunPage() {
     }
   }
 
-  const startDebugWebSocketConnection = () => {
-    try {
-      const debugWsUrl = `ws://localhost:8000/api/v1/ws/runs/${runId}/debug`
-      const debugClient = createWebSocketClient(debugWsUrl)
-      debugClient.connect({
-        onMessage: (message) => {
-          // Handle debug messages (raw logs)
-          if (message.type === "stdout") {
-            const newOutput: AgentOutput = {
-              id: Date.now() + Math.random(), // Temporary ID
-              run_id: runId,
-              variation_id: parseInt(message.data.variation_id) || 1,
-              content: message.data.content || "",
-              timestamp: message.data.timestamp,
-              output_type: "stdout",
-            }
-            setDebugOutputs(prev => [...prev, newOutput])
-          }
-        },
-        onError: (error) => {
-          console.error('Debug WebSocket error:', error)
-        },
-        onClose: () => {
-          console.log('Debug WebSocket closed')
-        }
-      })
-      setDebugWsClient(debugClient)
-    } catch (err) {
-      console.error('Failed to start debug WebSocket connection:', err)
-    }
-  }
 
   const stopWebSocketConnection = () => {
     if (wsClient) {
       wsClient.close()
       setWsClient(null)
       setIsStreaming(false)
-    }
-    if (debugWsClient) {
-      debugWsClient.close()
-      setDebugWsClient(null)
     }
   }
 
@@ -306,15 +269,6 @@ export default function RunPage() {
             </TabsList>
             
             <div className="flex items-center gap-2">
-              <Button
-                variant={showDebugView ? "default" : "outline"}
-                size="sm"
-                onClick={() => setShowDebugView(!showDebugView)}
-                className="gap-2"
-              >
-                <Bug className="w-4 h-4" />
-                Debug {showDebugView ? 'On' : 'Off'}
-              </Button>
               {process.env.NODE_ENV === 'development' && (
                 <Button
                   variant="outline"
@@ -342,38 +296,54 @@ export default function RunPage() {
                       </div>
                     )}
                     <Badge variant="outline" className="text-xs">
-                      {(showDebugView ? debugOutputs : outputs).filter(o => o.variation_id === variation).length} messages
+                      {outputs.filter(o => o.variation_id === variation).length} messages
                     </Badge>
                   </div>
                 </div>
                 
-                <div className="max-h-96 overflow-y-auto p-4 space-y-2">
-                  {(showDebugView ? debugOutputs : outputs).filter(o => o.variation_id === variation).length === 0 ? (
+                <div className="max-h-[600px] overflow-y-auto p-4 bg-gray-950 rounded font-mono text-sm">
+                  {outputs.filter(o => o.variation_id === variation).length === 0 ? (
                     <div className="text-center py-8 text-gray-400">
                       {run.status === "pending" ? "Waiting for run to start..." : "No output yet"}
                     </div>
                   ) : (
-                    (showDebugView ? debugOutputs : outputs)
-                      .filter(o => o.variation_id === variation)
-                      .map((output) => (
-                        <div
-                          key={output.id}
-                          className={`p-3 rounded border ${getOutputBgColor(output.output_type)}`}
-                        >
-                          <div className="flex items-center gap-2 mb-2">
-                            {getOutputIcon(output.output_type)}
-                            <Badge variant="outline" className="text-xs">
-                              {output.output_type}
-                            </Badge>
-                            <span className="text-xs text-gray-400">
-                              {new Date(output.timestamp).toLocaleTimeString()}
-                            </span>
-                          </div>
-                          <pre className="text-sm whitespace-pre-wrap font-mono">
-                            {output.content}
-                          </pre>
-                        </div>
-                      ))
+                    <div className="space-y-0.5">
+                      {outputs
+                        .filter(o => o.variation_id === variation)
+                        .map((output) => {
+                          // Format content based on type
+                          let displayContent = output.content;
+                          let contentClass = "text-gray-300";
+                          
+                          if (output.output_type === "stdout" && output.content.startsWith("{")) {
+                            try {
+                              const parsed = JSON.parse(output.content);
+                              const emoji = {
+                                'DEBUG': '🔧',
+                                'INFO': 'ℹ️',
+                                'WARNING': '⚠️',
+                                'ERROR': '❌'
+                              }[parsed.level] || '📝';
+                              
+                              displayContent = `${emoji} [${parsed.level}] ${parsed.message}`;
+                              
+                              if (parsed.level === 'ERROR') contentClass = "text-red-400";
+                              else if (parsed.level === 'WARNING') contentClass = "text-yellow-400";
+                              else if (parsed.level === 'DEBUG') contentClass = "text-gray-500";
+                            } catch {
+                              // If not JSON, display as-is
+                            }
+                          } else if (output.output_type === "llm") {
+                            contentClass = "text-green-400";
+                          }
+                          
+                          return (
+                            <div key={output.id} className={contentClass}>
+                              {displayContent}
+                            </div>
+                          );
+                        })}
+                    </div>
                   )}
                   <div ref={outputsEndRef} />
                 </div>

@@ -21,11 +21,16 @@ class AgentDatabaseService:
         if not self.database_url:
             raise RuntimeError("DATABASE_URL_ASYNC environment variable not set")
 
-        # Create async engine
+        # Create async engine with proper pool configuration
+        # Agent should use minimal connections since it's a single process
         self.engine = create_async_engine(
             self.database_url,
             echo=False,
             pool_pre_ping=True,
+            pool_size=1,  # Single connection for agent
+            max_overflow=0,  # No overflow connections
+            pool_timeout=30,  # Match backend timeout
+            pool_recycle=3600,  # Recycle connections after 1 hour
         )
 
         # Create session factory
@@ -36,32 +41,20 @@ class AgentDatabaseService:
             autoflush=False,
         )
 
-        self._session: AsyncSession | None = None
-
     async def connect(self) -> None:
-        """Connect to database and create session."""
-        try:
-            self._session = self.async_session_maker()
-            # Test connection
-            await self._session.execute(select(1))
-            logger.info("Connected to database successfully")
-        except Exception as e:
-            logger.error(f"Failed to connect to database: {e}")
-            raise RuntimeError(f"Database connection failed: {e}")
+        """Connect to database and test connection."""
+        # Test connection using a temporary session
+        async with self.async_session_maker() as session:
+            try:
+                await session.execute(select(1))
+                logger.info("Connected to database successfully")
+            except Exception as e:
+                logger.error(f"Failed to connect to database: {e}")
+                raise RuntimeError(f"Database connection failed: {e}")
 
     async def disconnect(self) -> None:
         """Disconnect from database."""
-        if self._session:
-            await self._session.close()
-            self._session = None
         await self.engine.dispose()
-
-    @property
-    def session(self) -> AsyncSession:
-        """Get database session."""
-        if not self._session:
-            raise RuntimeError("Database not connected. Call connect() first.")
-        return self._session
 
     async def write_agent_output(
         self,
@@ -123,50 +116,52 @@ class AgentDatabaseService:
             status: New status (running, completed, failed, etc.)
             metadata: Optional metadata
         """
-        try:
-            # Import here to avoid circular imports
-            from app.models.run import Run, RunStatus
+        # Create a new session for this operation to avoid concurrency issues
+        async with self.async_session_maker() as session:
+            try:
+                # Import here to avoid circular imports
+                from app.models.run import Run, RunStatus
 
-            # Get the run
-            result = await self.session.execute(select(Run).where(Run.id == run_id))
-            run = result.scalar_one_or_none()
+                # Get the run
+                result = await session.execute(select(Run).where(Run.id == run_id))
+                run = result.scalar_one_or_none()
 
-            if run:
-                # Update status
-                if status == "running":
-                    run.status = RunStatus.RUNNING
-                    if not run.started_at:
-                        run.started_at = datetime.utcnow()
-                elif status == "completed":
-                    run.status = RunStatus.COMPLETED
-                    run.completed_at = datetime.utcnow()
-                elif status == "failed":
-                    run.status = RunStatus.FAILED
-                    run.completed_at = datetime.utcnow()
-                elif status == "cancelled":
-                    run.status = RunStatus.CANCELLED
-                    run.completed_at = datetime.utcnow()
+                if run:
+                    # Update status
+                    if status == "running":
+                        run.status = RunStatus.RUNNING
+                        if not run.started_at:
+                            run.started_at = datetime.utcnow()
+                    elif status == "completed":
+                        run.status = RunStatus.COMPLETED
+                        run.completed_at = datetime.utcnow()
+                    elif status == "failed":
+                        run.status = RunStatus.FAILED
+                        run.completed_at = datetime.utcnow()
+                    elif status == "cancelled":
+                        run.status = RunStatus.CANCELLED
+                        run.completed_at = datetime.utcnow()
 
-                # Update metadata if provided
-                if metadata:
-                    if not run.results:
-                        run.results = {}
-                    run.results.update(metadata)
+                    # Update metadata if provided
+                    if metadata:
+                        if not run.results:
+                            run.results = {}
+                        run.results.update(metadata)
 
-                await self.session.commit()
+                    await session.commit()
 
-                logger.info(
-                    f"[DB-WRITE] Updated run status: run_id={run_id}, status={status}"
-                )
-            else:
-                logger.warning(
-                    f"[DB-WRITE] Run not found for status update: run_id={run_id}"
-                )
+                    logger.info(
+                        f"[DB-WRITE] Updated run status: run_id={run_id}, status={status}"
+                    )
+                else:
+                    logger.warning(
+                        f"[DB-WRITE] Run not found for status update: run_id={run_id}"
+                    )
 
-        except Exception as e:
-            logger.error(f"[DB-WRITE] Failed to update run status: {e}")
-            await self.session.rollback()
-            # Don't raise - agent should continue even if DB write fails
+            except Exception as e:
+                logger.error(f"[DB-WRITE] Failed to update run status: {e}")
+                await session.rollback()
+                # Don't raise - agent should continue even if DB write fails
 
     async def health_check(self) -> bool:
         """Check if database is healthy.
@@ -174,14 +169,14 @@ class AgentDatabaseService:
         Returns:
             True if healthy, False otherwise
         """
-        try:
-            if not self._session:
+        # Create a new session for health check to avoid interfering with other operations
+        async with self.async_session_maker() as session:
+            try:
+                await session.execute(select(1))
+                return True
+            except Exception as e:
+                logger.error(f"Database health check failed: {e}")
                 return False
-            await self.session.execute(select(1))
-            return True
-        except Exception as e:
-            logger.error(f"Database health check failed: {e}")
-            return False
 
     async def publish_log(
         self, message: str, level: str, **kwargs
@@ -218,55 +213,57 @@ class AgentDatabaseService:
             model: Model name used
             provider: Provider name (openai, anthropic, etc.)
         """
-        try:
-            # Import here to avoid circular imports
-            from app.models.run import Run
+        # Create a new session for this operation to avoid concurrency issues
+        async with self.async_session_maker() as session:
+            try:
+                # Import here to avoid circular imports
+                from app.models.run import Run
 
-            # Get the run
-            result = await self.session.execute(select(Run).where(Run.id == run_id))
-            run = result.scalar_one_or_none()
+                # Get the run
+                result = await session.execute(select(Run).where(Run.id == run_id))
+                run = result.scalar_one_or_none()
 
-            if run:
-                # Update token usage
-                if tokens_used is not None:
-                    if run.total_tokens_used is None:
-                        run.total_tokens_used = 0
-                    run.total_tokens_used += tokens_used
+                if run:
+                    # Update token usage
+                    if tokens_used is not None:
+                        if run.total_tokens_used is None:
+                            run.total_tokens_used = 0
+                        run.total_tokens_used += tokens_used
 
-                # Update cost
-                if cost_usd is not None:
-                    if run.total_cost_usd is None:
-                        run.total_cost_usd = 0.0
-                    run.total_cost_usd += cost_usd
+                    # Update cost
+                    if cost_usd is not None:
+                        if run.total_cost_usd is None:
+                            run.total_cost_usd = 0.0
+                        run.total_cost_usd += cost_usd
 
-                # Store model and provider info in results
-                if model or provider:
-                    if not run.results:
-                        run.results = {}
-                    if "llm_stats" not in run.results:
-                        run.results["llm_stats"] = []
+                    # Store model and provider info in results
+                    if model or provider:
+                        if not run.results:
+                            run.results = {}
+                        if "llm_stats" not in run.results:
+                            run.results["llm_stats"] = []
 
-                    stat_entry = {
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "tokens_used": tokens_used,
-                        "cost_usd": cost_usd,
-                        "model": model,
-                        "provider": provider
-                    }
-                    run.results["llm_stats"].append(stat_entry)
+                        stat_entry = {
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "tokens_used": tokens_used,
+                            "cost_usd": cost_usd,
+                            "model": model,
+                            "provider": provider
+                        }
+                        run.results["llm_stats"].append(stat_entry)
 
-                await self.session.commit()
+                    await session.commit()
 
-                logger.info(
-                    f"[DB-WRITE] Updated run stats: run_id={run_id}, "
-                    f"tokens={tokens_used}, cost={cost_usd}, model={model}"
-                )
-            else:
-                logger.warning(
-                    f"[DB-WRITE] Run not found for stats update: run_id={run_id}"
-                )
+                    logger.info(
+                        f"[DB-WRITE] Updated run stats: run_id={run_id}, "
+                        f"tokens={tokens_used}, cost={cost_usd}, model={model}"
+                    )
+                else:
+                    logger.warning(
+                        f"[DB-WRITE] Run not found for stats update: run_id={run_id}"
+                    )
 
-        except Exception as e:
-            logger.error(f"[DB-WRITE] Failed to update run stats: {e}")
-            await self.session.rollback()
-            # Don't raise - agent should continue even if DB write fails
+            except Exception as e:
+                logger.error(f"[DB-WRITE] Failed to update run stats: {e}")
+                await session.rollback()
+                # Don't raise - agent should continue even if DB write fails
