@@ -1363,6 +1363,42 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                     f"Total chunks: {data_chunks}, Total bytes: {total_bytes}, Response length: {len(response)} characters",
                 )
 
+                # Write analytics data for Claude CLI
+                if self.db_service:
+                    try:
+                        request_end_time = datetime.now(UTC)
+                        analytics_data = {
+                            "model": "claude-cli",
+                            "provider": "anthropic",
+                            "stream": True,
+                            "status": "success",
+                            "request_end_time": request_end_time,
+                            "response_time_ms": int((request_end_time - datetime.now(UTC)).total_seconds() * 1000),
+                            "metadata": {
+                                "agent_mode": "claude-cli",
+                                "chunks_received": data_chunks,
+                                "total_bytes": total_bytes,
+                                "response_length": len(response),
+                                "working_directory": str(self.repo_dir),
+                            }
+                        }
+                        
+                        await self.db_service.write_litellm_analytics(
+                            run_id=self.run_id,
+                            variation_id=int(self.variation_id),
+                            analytics_data=analytics_data
+                        )
+                        self.log(
+                            "Wrote Claude CLI analytics to database",
+                            "INFO",
+                            analytics_summary=analytics_data
+                        )
+                    except Exception as analytics_error:
+                        self.log(
+                            f"Failed to write Claude CLI analytics: {analytics_error}",
+                            "ERROR"
+                        )
+
                 return response if response else "No output received from Claude CLI"
 
             except Exception as stream_error:
@@ -1441,6 +1477,40 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                 for line in response.split("\n"):
                     if line.strip():
                         print(f"🔸 {line}", flush=True)
+
+                # Write analytics data for Gemini CLI
+                if self.db_service:
+                    try:
+                        request_end_time = datetime.now(UTC)
+                        analytics_data = {
+                            "model": "gemini-cli",
+                            "provider": "google",
+                            "stream": False,
+                            "status": "success",
+                            "request_end_time": request_end_time,
+                            "response_time_ms": int((request_end_time - datetime.now(UTC)).total_seconds() * 1000),
+                            "metadata": {
+                                "agent_mode": "gemini-cli",
+                                "response_length": len(response),
+                                "working_directory": str(self.repo_dir),
+                            }
+                        }
+                        
+                        await self.db_service.write_litellm_analytics(
+                            run_id=self.run_id,
+                            variation_id=int(self.variation_id),
+                            analytics_data=analytics_data
+                        )
+                        self.log(
+                            "Wrote Gemini CLI analytics to database",
+                            "INFO",
+                            analytics_summary=analytics_data
+                        )
+                    except Exception as analytics_error:
+                        self.log(
+                            f"Failed to write Gemini CLI analytics: {analytics_error}",
+                            "ERROR"
+                        )
 
                 return response
             error_msg = stderr.decode() if stderr else "Unknown error"
@@ -1626,10 +1696,28 @@ Be thorough but concise in your response.
                 # Stream to Redis only (database handled by DatabaseStreamWriter)
                 await self._publish_to_redis_only(buffer)
 
-            # Extract usage data from collected chunks
+            # Extract usage data from collected chunks and collect analytics
             tokens_used = None
             cost_usd = None
             provider = self._get_model_provider(self.config["model"])
+            request_start_time = datetime.now(UTC)
+            
+            # Prepare analytics data
+            analytics_data = {
+                "model": self.config["model"],
+                "provider": provider,
+                "temperature": self.config.get("temperature"),
+                "max_tokens": self.config.get("max_tokens"),
+                "stream": True,
+                "status": "success",
+                "request_start_time": request_start_time,
+                "metadata": {
+                    "litellm_version": "proxy",
+                    "gateway_url": self.gateway_url,
+                    "agent_mode": "litellm",
+                    "chunks_received": chunk_count,
+                }
+            }
 
             try:
                 # Try to build complete response from chunks to get usage data
@@ -1638,12 +1726,22 @@ Be thorough but concise in your response.
                     last_chunk = collected_chunks[-1] if collected_chunks else None
                     if last_chunk and hasattr(last_chunk, "usage") and last_chunk.usage:
                         tokens_used = last_chunk.usage.total_tokens
+                        prompt_tokens = getattr(last_chunk.usage, "prompt_tokens", None)
+                        completion_tokens = getattr(last_chunk.usage, "completion_tokens", None)
+                        
+                        # Update analytics data with token usage
+                        analytics_data.update({
+                            "total_tokens": tokens_used,
+                            "prompt_tokens": prompt_tokens,
+                            "completion_tokens": completion_tokens,
+                        })
+                        
                         self.log(
                             "Extracted token usage from stream",
                             "INFO",
                             tokens_used=tokens_used,
-                            prompt_tokens=getattr(last_chunk.usage, "prompt_tokens", None),
-                            completion_tokens=getattr(last_chunk.usage, "completion_tokens", None)
+                            prompt_tokens=prompt_tokens,
+                            completion_tokens=completion_tokens
                         )
 
                         # Try to calculate cost
@@ -1654,6 +1752,8 @@ Be thorough but concise in your response.
                                 "usage": last_chunk.usage
                             })()
                             cost_usd = completion_cost(completion_response=mock_response)
+                            analytics_data["cost_usd"] = cost_usd
+                            
                             self.log(
                                 "Calculated completion cost",
                                 "INFO",
@@ -1675,8 +1775,20 @@ Be thorough but concise in your response.
                             )
                             if hasattr(complete_response, "usage") and complete_response.usage:
                                 tokens_used = complete_response.usage.total_tokens
+                                prompt_tokens = getattr(complete_response.usage, "prompt_tokens", None)
+                                completion_tokens = getattr(complete_response.usage, "completion_tokens", None)
+                                
                                 # Calculate cost from complete response
                                 cost_usd = completion_cost(completion_response=complete_response)
+                                
+                                # Update analytics data
+                                analytics_data.update({
+                                    "total_tokens": tokens_used,
+                                    "prompt_tokens": prompt_tokens,
+                                    "completion_tokens": completion_tokens,
+                                    "cost_usd": cost_usd,
+                                })
+                                
                                 self.log(
                                     "Extracted usage from rebuilt response",
                                     "INFO",
@@ -1694,6 +1806,22 @@ Be thorough but concise in your response.
                     f"Failed to extract usage data: {usage_error}",
                     "WARNING"
                 )
+                analytics_data["status"] = "error"
+                analytics_data["error_type"] = type(usage_error).__name__
+                analytics_data["error_message"] = str(usage_error)
+
+            # Calculate response time and performance metrics
+            request_end_time = datetime.now(UTC)
+            response_time_ms = int((request_end_time - request_start_time).total_seconds() * 1000)
+            analytics_data.update({
+                "request_end_time": request_end_time,
+                "response_time_ms": response_time_ms,
+            })
+            
+            # Calculate tokens per second if we have token data
+            if tokens_used and response_time_ms > 0:
+                tokens_per_second = (tokens_used / response_time_ms) * 1000
+                analytics_data["tokens_per_second"] = tokens_per_second
 
             # Update run statistics if we have usage data
             if self.db_service and (tokens_used is not None or cost_usd is not None):
@@ -1714,6 +1842,30 @@ Be thorough but concise in your response.
                 except Exception as stats_error:
                     self.log(
                         f"Failed to update run statistics: {stats_error}",
+                        "ERROR"
+                    )
+            
+            # Write detailed LiteLLM analytics data
+            if self.db_service:
+                try:
+                    await self.db_service.write_litellm_analytics(
+                        run_id=self.run_id,
+                        variation_id=int(self.variation_id),
+                        analytics_data=analytics_data
+                    )
+                    self.log(
+                        "Wrote LiteLLM analytics to database",
+                        "INFO",
+                        analytics_summary={
+                            "model": analytics_data.get("model"),
+                            "tokens": analytics_data.get("total_tokens"),
+                            "cost": analytics_data.get("cost_usd"),
+                            "response_time_ms": analytics_data.get("response_time_ms"),
+                        }
+                    )
+                except Exception as analytics_error:
+                    self.log(
+                        f"Failed to write LiteLLM analytics: {analytics_error}",
                         "ERROR"
                     )
 

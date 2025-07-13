@@ -135,14 +135,24 @@ export default function Home() {
   }
 
   const handleChatSubmit = async () => {
-    if (!taskText.trim()) return
+    console.log('🚀 handleChatSubmit called')
+    console.log('📝 Task text:', taskText)
+    console.log('🔐 Auth state:', { user: !!user, authLoading })
+    console.log('🎯 Selected models:', selectedModels)
+    
+    if (!taskText.trim()) {
+      console.warn('❌ No task text provided')
+      return
+    }
     
     if (!user) {
+      console.error('❌ User not authenticated')
       alert('Please sign in to use this feature')
       return
     }
     
     if (selectedModels.length === 0) {
+      console.error('❌ No models selected')
       alert('Please select at least one model')
       return
     }
@@ -150,17 +160,52 @@ export default function Home() {
     try {
       setIsCreatingRun(true)
       
-      // Create session for chat
+      // Create session first
+      console.log('📋 Creating session...')
       const newSession = await apiClient.createSession({
         title: taskText.slice(0, 50) + (taskText.length > 50 ? '...' : ''),
         description: `Chat session: ${taskText}`,
         models_used: selectedModels.map(v => v.model_definition_id)
       })
+      console.log('✅ Session created:', newSession.id)
       
-      router.push(`/session/${newSession.id}`)
-    } catch (err) {
-      console.error('Failed to create chat session:', err)
-      alert('Failed to create chat session. Please try again.')
+      // Create turn
+      console.log('🔄 Creating turn...')
+      const newTurn = await apiClient.createTurn(newSession.id, {
+        prompt: taskText,
+        context: 'Chat conversation',
+        models_requested: selectedModels.map(v => v.model_definition_id)
+      })
+      console.log('✅ Turn created:', newTurn.id)
+      
+      // Execute chat with model variants
+      const chatRequest: CodeRequest = {
+        prompt: taskText,
+        context: 'Chat conversation',
+        models: selectedModels.map(v => v.model_definition_id),
+        max_models: selectedModels.length
+      }
+      
+      console.log('💬 Executing chat request:', chatRequest)
+      const response = await apiClient.executeCode(newSession.id, newTurn.id, chatRequest)
+      console.log('✅ Chat execution started, run ID:', response.run_id)
+      
+      // Navigate to the streaming page
+      console.log('🔗 Navigating to run page...')
+      router.push(`/session/${newSession.id}/turn/${newTurn.id}/run/${response.run_id}`)
+    } catch (err: any) {
+      console.error('❌ Failed to create chat session:', err)
+      console.error('Error details:', err.detail || err.message || err)
+      
+      // More specific error messages
+      if (err.detail?.includes('401') || err.detail?.includes('Unauthorized')) {
+        alert('Authentication error. Please sign in again.')
+        router.push('/signin')
+      } else if (err.detail?.includes('404')) {
+        alert('API endpoint not found. Please check your configuration.')
+      } else {
+        alert(`Failed to create chat session: ${err.detail || err.message || 'Unknown error'}`)
+      }
     } finally {
       setIsCreatingRun(false)
     }
@@ -270,7 +315,7 @@ export default function Home() {
   
   const getPlaceholder = () => {
     return mode === "chat" 
-      ? "What are we chatting about today?"
+      ? "What are we chatting about today?\n\nTry: \"Write a short story about a robot who discovers they can dream\""
       : "Describe a coding task"
   }
   

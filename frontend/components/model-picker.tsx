@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { X, Search, Settings, Plus, ChevronDown, ChevronRight } from "lucide-react"
+import { X, Search, Settings, Plus, ChevronDown, ChevronRight, AlertCircle, ExternalLink } from "lucide-react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -60,8 +61,18 @@ const PROVIDER_EMOJIS = {
   ollama: '🟠',
 }
 
+interface ProviderSummary {
+  provider: string
+  display_name: string
+  description: string
+  requires_api_key: boolean
+  model_count: number
+  user_has_credentials: boolean
+}
+
 export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 5, className }: ModelPickerProps) {
   const [models, setModels] = useState<ModelDefinition[]>([])
+  const [providers, setProviders] = useState<ProviderSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
@@ -85,6 +96,7 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
           setLoading(true)
           const data = await apiClient.getModelCatalog()
           setModels(data.models || [])
+          setProviders(data.providers || [])
           setError(null)
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Failed to load models')
@@ -121,7 +133,7 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
     return model.is_active
   })
 
-  const providers = [...new Set(models.map(m => m.provider))]
+  const providerNames = [...new Set(models.map(m => m.provider))]
 
   // Group models by provider for hierarchical display
   const groupedModels = filteredModels.reduce((acc, model) => {
@@ -131,6 +143,35 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
     acc[model.provider].push(model)
     return acc
   }, {} as Record<string, ModelDefinition[]>)
+
+  // Helper functions
+  const getProviderInfo = (providerName: string) => {
+    return providers.find(p => p.provider === providerName)
+  }
+
+  const isModelAvailable = (model: ModelDefinition) => {
+    if (!model.requires_api_key) return true
+    const providerInfo = getProviderInfo(model.provider)
+    return providerInfo?.user_has_credentials || false
+  }
+
+  const getUnavailableModelsCount = () => {
+    return selectedVariants.filter(variant => {
+      const model = getModelById(variant.model_definition_id)
+      return model && !isModelAvailable(model)
+    }).length
+  }
+
+  const getMissingProviders = () => {
+    const missingProviders = new Set<string>()
+    selectedVariants.forEach(variant => {
+      const model = getModelById(variant.model_definition_id)
+      if (model && !isModelAvailable(model)) {
+        missingProviders.add(model.provider)
+      }
+    })
+    return Array.from(missingProviders)
+  }
 
   const toggleProvider = (provider: string) => {
     const newExpanded = new Set(expandedProviders)
@@ -147,18 +188,23 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
       return
     }
     
+    // Create variant with slightly randomized parameters to differentiate multiple instances
+    const existingModelCount = selectedVariants.filter(v => v.model_definition_id === model.id).length
+    const baseTemp = 0.7
+    const tempVariation = existingModelCount * 0.1 // Vary temperature for multiple instances
+    
     const newVariant: ModelVariant = {
       id: `variant_${Date.now()}_${Math.random()}`,
       model_definition_id: model.id,
       model_parameters: {
-        temperature: 0.7,
+        temperature: Math.min(2.0, baseTemp + tempVariation),
         max_tokens: 1000,
         top_p: 1.0,
       },
     }
     
     onVariantsChange([...selectedVariants, newVariant])
-    setShowModelList(false)
+    // Don't auto-close the list to allow adding multiple variants
   }
 
   const removeModelVariant = (variantId: string) => {
@@ -237,11 +283,25 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
               if (!model) return null
               
               const providerEmoji = PROVIDER_EMOJIS[model.provider as keyof typeof PROVIDER_EMOJIS] || '⚪'
+              const isAvailable = isModelAvailable(model)
               
               return (
-                <div key={variant.id} className="flex items-center gap-2 bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2 group">
+                <div key={variant.id} className={cn(
+                  "flex items-center gap-2 rounded-lg px-3 py-2 group",
+                  isAvailable 
+                    ? "bg-gray-800/60 border border-gray-700"
+                    : "bg-amber-900/20 border border-amber-800/60"
+                )}>
                   <span className="text-sm">{providerEmoji}</span>
-                  <span className="text-sm font-medium text-gray-200">{model.display_name}</span>
+                  <span className={cn(
+                    "text-sm font-medium",
+                    isAvailable ? "text-gray-200" : "text-amber-200"
+                  )}>
+                    {model.display_name}
+                  </span>
+                  {!isAvailable && (
+                    <AlertCircle className="w-3 h-3 text-amber-400" />
+                  )}
                   <span className="text-xs text-gray-400">
                     T:{variant.model_parameters.temperature || 0.7}
                   </span>
@@ -272,6 +332,38 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
             No models selected. Click "Add Model" to get started.
           </div>
         )}
+
+        {/* API Key Warning */}
+        {getUnavailableModelsCount() > 0 && (
+          <div className="bg-amber-900/20 border border-amber-800/60 rounded-lg p-3">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <div className="text-sm font-medium text-amber-200">
+                  {getUnavailableModelsCount()} model{getUnavailableModelsCount() > 1 ? 's' : ''} require{getUnavailableModelsCount() === 1 ? 's' : ''} API keys
+                </div>
+                <div className="text-xs text-amber-300 mt-1">
+                  Missing credentials for: {getMissingProviders().map(provider => {
+                    const emoji = PROVIDER_EMOJIS[provider as keyof typeof PROVIDER_EMOJIS] || '⚪'
+                    return `${emoji} ${provider}`
+                  }).join(', ')}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 mt-3">
+                  <Link 
+                    href="/settings" 
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium rounded-md transition-colors"
+                  >
+                    <Settings className="w-3 h-3" />
+                    Add API Keys
+                  </Link>
+                  <span className="text-xs text-amber-400">
+                    or continue with available models only
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Model Selection List (Collapsible) */}
@@ -294,7 +386,7 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Providers</SelectItem>
-                {providers.map(provider => (
+                {providerNames.map(provider => (
                   <SelectItem key={provider} value={provider}>
                     {PROVIDER_EMOJIS[provider as keyof typeof PROVIDER_EMOJIS] || '⚪'} {provider}
                   </SelectItem>
@@ -313,9 +405,16 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
               Object.entries(groupedModels).map(([provider, providerModels]) => {
                 const isExpanded = expandedProviders.has(provider)
                 const providerEmoji = PROVIDER_EMOJIS[provider as keyof typeof PROVIDER_EMOJIS] || '⚪'
+                const providerInfo = getProviderInfo(provider)
+                const needsApiKey = providerInfo?.requires_api_key && !providerInfo?.user_has_credentials
                 
                 return (
-                  <div key={provider} className="border border-gray-700 rounded-lg bg-gray-800/20">
+                  <div key={provider} className={cn(
+                    "border rounded-lg",
+                    needsApiKey 
+                      ? "border-amber-800/60 bg-amber-900/10"
+                      : "border-gray-700 bg-gray-800/20"
+                  )}>
                     {/* Provider Header */}
                     <button
                       onClick={() => toggleProvider(provider)}
@@ -323,10 +422,27 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
                     >
                       <div className="flex items-center gap-2 flex-1">
                         <span className="text-base">{providerEmoji}</span>
-                        <span className="font-medium text-gray-200 capitalize">{provider}</span>
+                        <span className={cn(
+                          "font-medium capitalize",
+                          needsApiKey ? "text-amber-200" : "text-gray-200"
+                        )}>
+                          {provider}
+                        </span>
                         <Badge variant="outline" className="text-xs">
                           {providerModels.length} models
                         </Badge>
+                        {needsApiKey && (
+                          <div className="flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3 text-amber-400" />
+                            <Link 
+                              href="/settings" 
+                              className="text-xs text-amber-400 hover:text-amber-300 underline"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              Add Key
+                            </Link>
+                          </div>
+                        )}
                       </div>
                       <ChevronRight 
                         className={cn("w-4 h-4 text-gray-400 transition-transform", 
@@ -340,25 +456,37 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
                       <div className="border-t border-gray-700 space-y-1 p-2">
                         {providerModels.map(model => {
                           const isSelected = selectedVariants.some(v => v.model_definition_id === model.id)
+                          const isAvailable = isModelAvailable(model)
+                          const isDisabled = isSelected || selectedVariants.length >= maxVariants || !isAvailable
                           
                           return (
                             <button
                               key={model.id}
-                              onClick={() => addModelVariant(model)}
-                              disabled={isSelected || selectedVariants.length >= maxVariants}
+                              onClick={() => isAvailable && addModelVariant(model)}
+                              disabled={isDisabled}
                               className={cn(
                                 "w-full flex items-center gap-3 p-2 text-left rounded border transition-all",
                                 isSelected 
                                   ? "bg-green-900/20 border-green-800 text-green-300 cursor-not-allowed"
+                                  : !isAvailable
+                                  ? "bg-amber-900/20 border-amber-800/60 text-amber-200 cursor-not-allowed"
                                   : selectedVariants.length >= maxVariants
                                   ? "bg-gray-800/30 border-gray-600 text-gray-500 cursor-not-allowed"
                                   : "bg-gray-800/40 border-gray-600 hover:bg-gray-700/50 text-gray-200"
                               )}
                             >
                               <div className="flex-1 min-w-0">
-                                <div className="font-medium text-sm">{model.display_name}</div>
+                                <div className="font-medium text-sm flex items-center gap-2">
+                                  {model.display_name}
+                                  {!isAvailable && (
+                                    <AlertCircle className="w-3 h-3 text-amber-400" />
+                                  )}
+                                </div>
                                 {model.description && (
                                   <div className="text-xs text-gray-400 truncate">{model.description}</div>
+                                )}
+                                {!isAvailable && (
+                                  <div className="text-xs text-amber-400">Requires API key</div>
                                 )}
                               </div>
                               <div className="text-xs text-gray-400">

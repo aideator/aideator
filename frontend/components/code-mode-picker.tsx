@@ -1,12 +1,15 @@
 "use client"
 
-import { useState } from "react"
-import { Github, GitBranch, Layers } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Github, GitBranch, Layers, AlertCircle, Settings } from "lucide-react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
+import { apiClient } from "@/lib/api"
+import { useAuth } from "@/lib/auth-context"
 
 interface CodeModePickerProps {
   selectedModel: string
@@ -31,21 +34,31 @@ const CODE_MODELS = [
     id: "claude-code",
     name: "Claude Code",
     description: "Anthropic's Claude with code analysis capabilities",
-    icon: "🤖"
+    icon: "🤖",
+    provider: "anthropic"
   },
   {
     id: "gpt-4-codex",
     name: "GPT-4 Codex",
     description: "OpenAI's code-specialized model",
-    icon: "🔥"
+    icon: "🔥",
+    provider: "openai"
   },
   {
     id: "gemini-code",
     name: "Gemini Code",
     description: "Google's Gemini with code understanding",
-    icon: "💎"
+    icon: "💎",
+    provider: "gemini"
   }
 ]
+
+interface ProviderInfo {
+  provider: string
+  display_name: string
+  requires_api_key: boolean
+  user_has_credentials: boolean
+}
 
 export function CodeModePicker({
   selectedModel,
@@ -65,6 +78,58 @@ export function CodeModePicker({
   className
 }: CodeModePickerProps) {
   const [useCustomRepo, setUseCustomRepo] = useState(false)
+  const [providers, setProviders] = useState<ProviderInfo[]>([])
+  const [loading, setLoading] = useState(true)
+  
+  const { user, loading: authLoading } = useAuth()
+
+  // Load provider credentials
+  useEffect(() => {
+    if (!authLoading && user) {
+      const loadProviders = async () => {
+        try {
+          setLoading(true)
+          const data = await apiClient.getModelCatalog()
+          setProviders(data.providers || [])
+        } catch (err) {
+          console.error('Failed to load provider credentials:', err)
+        } finally {
+          setLoading(false)
+        }
+      }
+
+      loadProviders()
+    } else if (!authLoading && !user) {
+      setProviders([])
+      setLoading(false)
+    }
+  }, [authLoading, user])
+
+  // Helper functions
+  const getProviderInfo = (providerName: string) => {
+    return providers.find(p => p.provider === providerName)
+  }
+
+  const isModelAvailable = (model: typeof CODE_MODELS[0]) => {
+    const providerInfo = getProviderInfo(model.provider)
+    return providerInfo?.user_has_credentials || false
+  }
+
+  const getSelectedModelInfo = () => {
+    return CODE_MODELS.find(model => model.id === selectedModel)
+  }
+
+  const getMissingProviders = () => {
+    const requiredProviders = CODE_MODELS.map(model => model.provider)
+    return requiredProviders.filter(provider => {
+      const providerInfo = getProviderInfo(provider)
+      return !providerInfo?.user_has_credentials
+    })
+  }
+
+  const getUnavailableModelsCount = () => {
+    return CODE_MODELS.filter(model => !isModelAvailable(model)).length
+  }
 
   return (
     <div className={cn("space-y-4", className)}>
@@ -72,31 +137,103 @@ export function CodeModePicker({
       <div className="space-y-2">
         <Label className="text-sm text-gray-400">Code Model</Label>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-          {CODE_MODELS.map((model) => (
-            <button
-              key={model.id}
-              onClick={() => onModelChange(model.id)}
-              className={cn(
-                "flex items-center gap-3 p-3 rounded-lg border transition-all text-left",
-                selectedModel === model.id
-                  ? "bg-white text-black border-white"
-                  : "bg-gray-800/60 border-gray-700 hover:bg-gray-700/60 text-gray-200"
-              )}
-            >
-              <span className="text-lg">{model.icon}</span>
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm">{model.name}</div>
-                <div className={cn(
-                  "text-xs truncate",
-                  selectedModel === model.id ? "text-gray-700" : "text-gray-400"
-                )}>
-                  {model.description}
+          {CODE_MODELS.map((model) => {
+            const isAvailable = isModelAvailable(model)
+            const isSelected = selectedModel === model.id
+            
+            return (
+              <button
+                key={model.id}
+                onClick={() => onModelChange(model.id)}
+                className={cn(
+                  "flex items-center gap-3 p-3 rounded-lg border transition-all text-left relative",
+                  isSelected
+                    ? isAvailable
+                      ? "bg-white text-black border-white"
+                      : "bg-amber-100 text-amber-900 border-amber-400"
+                    : isAvailable
+                    ? "bg-gray-800/60 border-gray-700 hover:bg-gray-700/60 text-gray-200"
+                    : "bg-amber-900/20 border-amber-800/60 text-amber-200 hover:bg-amber-900/30"
+                )}
+              >
+                <span className="text-lg">{model.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm flex items-center gap-2">
+                    {model.name}
+                    {!isAvailable && (
+                      <AlertCircle className="w-3 h-3 text-amber-400" />
+                    )}
+                  </div>
+                  <div className={cn(
+                    "text-xs truncate",
+                    isSelected
+                      ? isAvailable ? "text-gray-700" : "text-amber-700"
+                      : isAvailable ? "text-gray-400" : "text-amber-400"
+                  )}>
+                    {model.description}
+                  </div>
+                  {!isAvailable && (
+                    <div className="text-xs text-amber-400 mt-1">
+                      Requires API key
+                    </div>
+                  )}
                 </div>
-              </div>
-            </button>
-          ))}
+              </button>
+            )
+          })}
         </div>
       </div>
+
+      {/* API Key Warning for Code Models */}
+      {getUnavailableModelsCount() > 0 && (
+        <div className="bg-amber-900/20 border border-amber-800/60 rounded-lg p-3">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <div className="text-sm font-medium text-amber-200">
+                {getUnavailableModelsCount()} code model{getUnavailableModelsCount() > 1 ? 's' : ''} require{getUnavailableModelsCount() === 1 ? 's' : ''} API keys
+              </div>
+              <div className="text-xs text-amber-300 mt-1">
+                Missing credentials for: {getMissingProviders().map(provider => {
+                  const providerNames = {
+                    'anthropic': '🤖 Anthropic',
+                    'openai': '🔥 OpenAI', 
+                    'gemini': '💎 Google'
+                  }
+                  return providerNames[provider as keyof typeof providerNames] || provider
+                }).join(', ')}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                <Link 
+                  href="/settings" 
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium rounded-md transition-colors"
+                >
+                  <Settings className="w-3 h-3" />
+                  Add API Keys
+                </Link>
+                <span className="text-xs text-amber-400">
+                  to enable all code models
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Selected Model Warning */}
+      {selectedModel && !isModelAvailable(getSelectedModelInfo()!) && (
+        <div className="bg-amber-900/20 border border-amber-800/60 rounded-lg p-2">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+            <div className="text-xs text-amber-300">
+              <strong>{getSelectedModelInfo()?.name}</strong> requires an API key to function.{' '}
+              <Link href="/settings" className="underline hover:text-amber-200">
+                Add credentials
+              </Link> or select a different model.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Repository Selection */}
       <div className="space-y-2">

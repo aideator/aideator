@@ -338,3 +338,61 @@ class AgentDatabaseService:
                 logger.error(f"[DB-WRITE] Failed to update run stats: {e}")
                 await session.rollback()
                 # Don't raise - agent should continue even if DB write fails
+
+    async def write_litellm_analytics(
+        self,
+        run_id: str,
+        variation_id: int,
+        analytics_data: dict[str, Any],
+    ) -> None:
+        """Write LiteLLM analytics data to database.
+
+        Args:
+            run_id: The run ID
+            variation_id: The variation ID
+            analytics_data: Dictionary containing LiteLLM analytics data
+        """
+        async with self.async_session_maker() as session:
+            try:
+                # Import here to avoid circular imports
+                from app.models.run import LiteLLMAnalytics
+
+                # Create analytics record
+                analytics_record = LiteLLMAnalytics(
+                    run_id=run_id,
+                    variation_id=variation_id,
+                    request_id=analytics_data.get("request_id"),
+                    model=analytics_data.get("model", "unknown"),
+                    provider=analytics_data.get("provider", "unknown"),
+                    prompt_tokens=analytics_data.get("prompt_tokens"),
+                    completion_tokens=analytics_data.get("completion_tokens"),
+                    total_tokens=analytics_data.get("total_tokens"),
+                    cost_usd=analytics_data.get("cost_usd"),
+                    input_cost_per_token=analytics_data.get("input_cost_per_token"),
+                    output_cost_per_token=analytics_data.get("output_cost_per_token"),
+                    response_time_ms=analytics_data.get("response_time_ms"),
+                    time_to_first_token_ms=analytics_data.get("time_to_first_token_ms"),
+                    tokens_per_second=analytics_data.get("tokens_per_second"),
+                    temperature=analytics_data.get("temperature"),
+                    max_tokens=analytics_data.get("max_tokens"),
+                    stream=analytics_data.get("stream", False),
+                    status=analytics_data.get("status", "success"),
+                    error_type=analytics_data.get("error_type"),
+                    error_message=analytics_data.get("error_message"),
+                    request_start_time=analytics_data.get("request_start_time"),
+                    request_end_time=analytics_data.get("request_end_time"),
+                    litellm_metadata=analytics_data.get("metadata", {}),
+                )
+
+                session.add(analytics_record)
+                await session.commit()
+
+                logger.info(
+                    f"[DB-WRITE] Wrote LiteLLM analytics: run_id={run_id}, "
+                    f"variation_id={variation_id}, model={analytics_data.get('model')}"
+                )
+
+            except Exception as e:
+                logger.error(f"[DB-WRITE] Failed to write LiteLLM analytics: {e}")
+                await session.rollback()
+                # Don't raise - agent should continue even if DB write fails
