@@ -78,35 +78,35 @@ export default function Home() {
   }
 
   const loadPopularRepositories = async () => {
-    // Default to hello-world-octocat repo instead of API calls
+    // Default to astral-sh/uv repo instead of API calls
     setIsLoadingRepos(true)
     const defaultRepos: GitHubRepository[] = [
       { 
         id: 1, 
-        name: 'Hello-World',
-        full_name: 'octocat/Hello-World', 
+        name: 'uv',
+        full_name: 'astral-sh/uv', 
         private: false,
-        html_url: 'https://github.com/octocat/Hello-World',
-        description: 'My first repository on GitHub!', 
+        html_url: 'https://github.com/astral-sh/uv',
+        description: 'An extremely fast Python package and project manager, written in Rust.', 
         default_branch: 'main'
       }
     ]
     setRepositories(defaultRepos)
-    setSelectedRepo('octocat/Hello-World')
+    setSelectedRepo('astral-sh/uv')
     setIsLoadingRepos(false)
   }
 
   const loadBranches = useCallback(async () => {
     if (!selectedRepo) return
     
-    // Default to main branch for octocat/Hello-World
+    // Default to main branch for astral-sh/uv
     setIsLoadingBranches(true)
     const defaultBranches: GitHubBranch[] = [
       { 
         name: 'main', 
         commit: {
           sha: 'abc123def456',
-          url: 'https://api.github.com/repos/octocat/Hello-World/commits/abc123def456'
+          url: 'https://api.github.com/repos/astral-sh/uv/commits/abc123def456'
         },
         protected: false 
       }

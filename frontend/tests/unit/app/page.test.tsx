@@ -222,7 +222,7 @@ describe('Home Page', () => {
       user_id: 'user-1',
       turn_number: 1,
       prompt: 'Test task',
-      context: 'https://github.com/octocat/Hello-World',
+      context: 'https://github.com/astral-sh/uv',
       model: 'gpt-4',
       models_requested: ['gpt-4', 'claude-3-sonnet'],
       responses: {},

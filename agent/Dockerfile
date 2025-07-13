@@ -3,7 +3,7 @@ FROM cgr.dev/chainguard/wolfi-base:latest AS agent
 
 USER root
 
-# Install runtime dependencies (including Node.js for CLI tools)
+# Install runtime dependencies (including Node.js for CLI tools and debugging tools)
 RUN apk --no-cache --update upgrade && apk --no-cache add \
     python-3.12 \
     bash \
@@ -11,7 +11,18 @@ RUN apk --no-cache --update upgrade && apk --no-cache add \
     ca-certificates \
     openssl \
     nodejs \
-    npm
+    npm \
+    curl \
+    wget \
+    jq \
+    vim \
+    grep \
+    less \
+    file \
+    gzip \
+    coreutils \
+    findutils \
+    ripgrep
 
 # Create nonroot user and directories
 RUN adduser -D -u 1000 agentuser
@@ -20,7 +31,7 @@ RUN chown agentuser:agentuser /app
 
 # Create virtual environment
 RUN python3.12 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+ENV PATH="/opt/venv/bin:/usr/bin:/bin:/usr/local/bin:$PATH"
 
 # Copy and install minimal Python requirements for agent
 COPY agent/requirements.txt ./

@@ -531,6 +531,20 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
 
         return True, ""
 
+    def _validate_cli_credentials(self, agent_mode: str) -> None:
+        """Validate credentials for CLI-based coding agents."""
+        if agent_mode == "claude-cli":
+            if not os.getenv("ANTHROPIC_API_KEY"):
+                raise RuntimeError("Missing ANTHROPIC_API_KEY for Claude CLI")
+        elif agent_mode == "gemini-cli":
+            if not os.getenv("GEMINI_API_KEY"):
+                raise RuntimeError("Missing GEMINI_API_KEY for Gemini CLI")
+        elif agent_mode == "openai-codex":
+            if not os.getenv("OPENAI_API_KEY"):
+                raise RuntimeError("Missing OPENAI_API_KEY for OpenAI Codex CLI")
+        
+        self.log(f"✅ CLI credentials validated for {agent_mode}", "INFO")
+
     def _get_available_models_suggestion(self) -> str:
         """Get a helpful suggestion of available models based on configured API keys."""
         available_providers = [
@@ -916,28 +930,95 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
         }), flush=True)
 
         # Log available API keys for debugging
-        await self.log_async(
-            "🔑 API Key availability check",
-            "INFO",
-            available_keys=self.available_api_keys,
-        )
-
-        # Validate model credentials before proceeding
-        is_valid, error_msg = self._validate_model_credentials(self.config["model"])
-        if not is_valid:
-            # Output the user-friendly error message
-            print(error_msg, flush=True)
-            self.log_error(f"Missing API key for model {self.config['model']}", None)
-            raise RuntimeError(f"Missing API key for model {self.config['model']}")
+        try:
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG", 
+                "message": "🔧 About to call log_async with available_keys"
+            }), flush=True)
+            
+            await self.log_async(
+                "🔑 API Key availability check",
+                "INFO",
+                available_keys=self.available_api_keys,
+            )
+            
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 log_async completed successfully"
+            }), flush=True)
+            
+        except Exception as e:
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "ERROR",
+                "message": f"🔧 log_async failed: {str(e)}",
+                "exception_type": type(e).__name__
+            }), flush=True)
 
         # Log agent mode
         agent_mode = os.getenv("AGENT_MODE", "litellm")
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": f"🔧 About to log agent mode: {agent_mode}"
+        }), flush=True)
+        
         self.log(f"🎯 Agent mode: {agent_mode}", "INFO", agent_mode=agent_mode)
+        
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 Agent mode logged, about to validate credentials"
+        }), flush=True)
+
+        # Validate model credentials (skip for CLI-based coding agents)
+        if agent_mode not in ["claude-cli", "gemini-cli", "openai-codex"]:
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 Using LiteLLM credential validation"
+            }), flush=True)
+            
+            is_valid, error_msg = self._validate_model_credentials(self.config["model"])
+            if not is_valid:
+                # Output the user-friendly error message
+                print(error_msg, flush=True)
+                self.log_error(f"Missing API key for model {self.config['model']}", None)
+                raise RuntimeError(f"Missing API key for model {self.config['model']}")
+        else:
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": f"🔧 Using CLI credential validation for {agent_mode}"
+            }), flush=True)
+            
+            # For CLI-based agents, validate CLI-specific credentials
+            self._validate_cli_credentials(agent_mode)
+            
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 Credential validation completed"
+        }), flush=True)
 
         # Check if this is a code mode that requires repository
         is_code_mode = agent_mode in ["claude-cli", "gemini-cli", "openai-codex"]
+        
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": f"🔧 is_code_mode: {is_code_mode}, agent_mode: {agent_mode}"
+        }), flush=True)
 
         if is_code_mode:
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": f"🔧 About to check CLI tool version for {agent_mode}"
+            }), flush=True)
+            
             # Log CLI tool versions for code modes
             if agent_mode == "claude-cli":
                 claude_version = self._get_cli_version("claude")
@@ -960,8 +1041,20 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                     "INFO",
                     codex_version=codex_version,
                 )
+                
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 CLI tool version check completed"
+            }), flush=True)
 
-        # Log LiteLLM Gateway configuration
+        # Log LiteLLM Gateway configuration  
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 About to log LiteLLM Gateway configuration"
+        }), flush=True)
+        
         self.log(
             "🔧 Using LiteLLM Gateway",
             "INFO",
@@ -970,21 +1063,64 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             note="Routing through LiteLLM Gateway for unified API access",
         )
 
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 LiteLLM Gateway logged, about to log debug file location"
+        }), flush=True)
+
         # Log file location to file only, not stdout
         self.log(f"Debug logs location: {self.log_file}", "INFO")
+        
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 About to enter main execution try block"
+        }), flush=True)
 
         try:
             if is_code_mode:
+                print(json.dumps({
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "level": "DEBUG",
+                    "message": "🔧 Entering code mode execution"
+                }), flush=True)
+                
                 # Code mode: Clone repository and analyze codebase
                 self.log("📁 Code mode detected - cloning repository", "INFO")
+                
+                print(json.dumps({
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "level": "DEBUG",
+                    "message": "🔧 About to clone repository"
+                }), flush=True)
+                
                 await self._clone_repository()
+                
+                print(json.dumps({
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "level": "DEBUG",
+                    "message": "🔧 Repository cloned, about to analyze codebase"
+                }), flush=True)
 
                 # Analyze codebase
                 codebase_summary = await self._analyze_codebase()
+                
+                print(json.dumps({
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "level": "DEBUG",
+                    "message": "🔧 Codebase analyzed, about to generate LLM response"
+                }), flush=True)
 
                 # Generate response with LLM
                 response = await self._generate_llm_response(codebase_summary)
             else:
+                print(json.dumps({
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "level": "DEBUG",
+                    "message": "🔧 Entering chat mode execution"
+                }), flush=True)
+                
                 # Chat mode: Skip repository cloning, just pass prompt directly
                 self.log("💬 Chat mode detected - skipping repository clone", "INFO")
                 response = await self._generate_llm_response(None)
@@ -1545,48 +1681,223 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
 
     async def _generate_openai_codex_response(self) -> str:
         """Generate response using OpenAI Codex CLI."""
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 Entered _generate_openai_codex_response()"
+        }), flush=True)
+        
         self.log_progress(
             "Generating response using OpenAI Codex CLI",
             "Executing codex in full-auto quiet mode for one-shot execution",
         )
+        
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 About to start OpenAI Codex execution try block"
+        }), flush=True)
 
         try:
             # Track start time for analytics
             request_start_time = datetime.now(UTC)
-            
-            # Change to repository directory for context
-            original_dir = os.getcwd()
-            os.chdir(self.repo_dir)
 
             # Execute OpenAI Codex CLI
             self.log_progress(
                 "Executing OpenAI Codex CLI", f"Working directory: {self.repo_dir}"
             )
 
-            # Use codex in full-auto quiet mode for containerized CI/CD environment
+            # Use codex exec with verified flags for containerized non-interactive execution
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": f"🔧 About to execute: codex exec --dangerously-bypass-approvals-and-sandbox --model gpt-4o-mini '{self.prompt}'"
+            }), flush=True)
+            
+            # Set up environment for containerized CI/CD with comprehensive debugging
+            codex_env = os.environ.copy()
+            codex_env.update({
+                "DEBUG": "true",  # Enable verbose logging for debugging
+                "RUST_LOG": "debug",  # Enable Rust debug logging
+                "CODEX_LOG": "debug",  # Enable all Codex logging
+                # Ensure critical paths are available
+                "PATH": "/opt/venv/bin:/usr/bin:/bin:/usr/local/bin:/sbin:/usr/sbin",
+                "HOME": str(Path.home()),  # Use actual home directory
+                "USER": "agentuser",
+                "SHELL": "/bin/bash",
+                "TERM": "xterm",  # Ensure terminal type is set
+            })
+            
+            # Create Codex config for containerized environment
+            config_dir = Path.home() / ".codex"
+            config_dir.mkdir(exist_ok=True)
+            config_file = config_dir / "config.toml"
+            
+            # Write config to allow full environment inheritance in container
+            config_content = """
+[shell_environment_policy]
+inherit = "all"  # Inherit all environment variables for containerized execution
+ignore_default_excludes = true  # Don't filter any environment variables
+
+[sandbox]
+mode = "danger-full-access"  # Already using --dangerously-bypass-approvals-and-sandbox
+
+approval_policy = "never"  # Never prompt for approval in automation mode
+
+# Debug settings for containerized execution
+[debug]
+log_level = "debug"
+verbose = true
+"""
+            with open(config_file, "w") as f:
+                f.write(config_content.strip())
+            
+            # Create an execpolicy rules file to help Codex understand available commands
+            rules_file = config_dir / "exec_rules.star"
+            rules_content = """
+# Define common commands available in the container
+define_program(
+    program="ls",
+    system_path=["/bin/ls", "/usr/bin/ls"],
+)
+
+define_program(
+    program="cat",
+    system_path=["/bin/cat", "/usr/bin/cat"],
+)
+
+define_program(
+    program="rg",
+    options=[flag("--files"), flag("--type"), flag("-l")],
+    system_path=["/usr/bin/rg"],
+)
+
+define_program(
+    program="git",
+    args=["status", "log", "diff", "show"],
+    system_path=["/usr/bin/git"],
+)
+
+define_program(
+    program="find",
+    system_path=["/usr/bin/find"],
+)
+
+define_program(
+    program="grep",
+    system_path=["/bin/grep", "/usr/bin/grep"],
+)
+"""
+            with open(rules_file, "w") as f:
+                f.write(rules_content.strip())
+            
+            # Update config to reference the rules file
+            config_content = """
+[shell_environment_policy]
+inherit = "all"  # Inherit all environment variables for containerized execution
+ignore_default_excludes = true  # Don't filter any environment variables
+
+[sandbox]
+mode = "danger-full-access"  # Already using --dangerously-bypass-approvals-and-sandbox
+
+approval_policy = "never"  # Never prompt for approval in automation mode
+
+# Point to our custom exec policy rules
+[exec_policy]
+rules_file = "{rules_file}"
+
+# Debug settings for containerized execution
+[debug]
+log_level = "debug"
+verbose = true
+""".format(rules_file=str(rules_file))
+            
+            with open(config_file, "w") as f:
+                f.write(config_content.strip())
+            
             result = await asyncio.create_subprocess_exec(
                 "codex",
-                "--full-auto",
-                "--quiet",
+                "exec",
+                "--dangerously-bypass-approvals-and-sandbox",
+                "--model", "gpt-4o-mini",  # Use standard model that doesn't require org verification
+                "--cd", self.repo_dir,  # Use Codex's working directory flag
                 self.prompt,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env=os.environ,  # Includes OPENAI_API_KEY
+                env=codex_env,
             )
+            
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 Codex subprocess created, streaming output in real-time"
+            }), flush=True)
 
-            # Wait for completion with timeout (increased for code analysis)
+            # Stream output in real-time instead of waiting for completion
             try:
-                stdout, stderr = await asyncio.wait_for(
-                    result.communicate(), timeout=120.0
-                )
+                async def stream_output():
+                    stdout_chunks = []
+                    stderr_chunks = []
+                    
+                    # Read stdout and stderr streams in real-time
+                    async def read_stdout():
+                        if result.stdout:
+                            async for line in result.stdout:
+                                line_text = line.decode('utf-8').rstrip()
+                                if line_text:
+                                    stdout_chunks.append(line_text)
+                                    # Stream to stdout with fire emoji prefix
+                                    print(f"🔥 {line_text}", flush=True)
+                                    
+                                    # Also write to database/Redis for frontend streaming
+                                    if self.db_service:
+                                        await self.db_service.write_agent_output(
+                                            run_id=self.run_id,
+                                            variation_id=int(self.variation_id),
+                                            content=line_text,
+                                            output_type="llm",
+                                            metadata={"source": "openai_codex_cli_stream"}
+                                        )
+                                    
+                                    # CRITICAL: Also publish to Redis for real-time WebSocket streaming
+                                    await self._publish_to_redis_only(line_text)
+
+                    async def read_stderr():
+                        if result.stderr:
+                            async for line in result.stderr:
+                                line_text = line.decode('utf-8').rstrip()
+                                if line_text:
+                                    stderr_chunks.append(line_text)
+                                    # Log stderr for debugging
+                                    print(json.dumps({
+                                        "timestamp": datetime.now(UTC).isoformat(),
+                                        "level": "ERROR",
+                                        "message": f"🔧 Codex stderr: {line_text}"
+                                    }), flush=True)
+
+                    # Run both readers concurrently
+                    await asyncio.gather(read_stdout(), read_stderr())
+                    
+                    # Wait for process to complete
+                    await result.wait()
+                    
+                    return b'\n'.join(chunk.encode('utf-8') for chunk in stdout_chunks), \
+                           b'\n'.join(chunk.encode('utf-8') for chunk in stderr_chunks)
+
+                # Run with timeout
+                stdout, stderr = await asyncio.wait_for(stream_output(), timeout=120.0)
+                
+                print(json.dumps({
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "level": "DEBUG",
+                    "message": f"🔧 Codex completed: exit_code={result.returncode}, stdout_len={len(stdout)}, stderr_len={len(stderr)}"
+                }), flush=True)
+                
             except TimeoutError:
                 result.terminate()
                 await result.wait()
                 self.log_error("OpenAI Codex CLI execution timed out after 120 seconds", None)
                 raise RuntimeError("OpenAI Codex CLI execution timed out after 120 seconds")
-
-            # Change back to original directory
-            os.chdir(original_dir)
 
             # Handle output
             if result.returncode == 0:
@@ -1627,7 +1938,7 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                                 "agent_mode": "openai-codex",
                                 "response_length": len(response_text),
                                 "working_directory": str(self.repo_dir),
-                                "codex_flags": ["--full-auto", "--quiet"]
+                                "codex_flags": ["exec", "--dangerously-bypass-approvals-and-sandbox"]
                             }
                         }
                         
