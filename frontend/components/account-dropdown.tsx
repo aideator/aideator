@@ -2,6 +2,7 @@
 
 import { User, LogOut, Settings } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
+import { useRouter } from "next/navigation"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,6 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 export function AccountDropdown() {
   const { user, signOut } = useAuth()
+  const router = useRouter()
 
   if (!user) return null
 
@@ -47,7 +49,7 @@ export function AccountDropdown() {
         <DropdownMenuSeparator className="bg-gray-800" />
         <DropdownMenuItem 
           className="text-gray-200 hover:bg-gray-800 hover:text-gray-100 cursor-pointer"
-          disabled
+          onClick={() => router.push('/settings')}
         >
           <Settings className="mr-2 h-4 w-4" />
           <span>Account Settings</span>

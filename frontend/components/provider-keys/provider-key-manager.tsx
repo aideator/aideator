@@ -101,10 +101,6 @@ export function ProviderKeyManager() {
           <p className="mt-2 text-sm text-muted-foreground">
             Add your provider API keys to start using AI models
           </p>
-          <Button className="mt-4" onClick={() => setShowForm(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add your first API key
-          </Button>
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

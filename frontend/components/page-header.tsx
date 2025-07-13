@@ -19,6 +19,9 @@ export function PageHeader() {
   const sessionMatch = pathname.match(/^\/session\/([^/]+)$/)
   const sessionId = sessionMatch?.[1]
   
+  // Check if we're on the settings page
+  const isSettingsPage = pathname === '/settings'
+  
   // Load session data and reset PR state
   useEffect(() => {
     if (sessionId) {
@@ -76,6 +79,27 @@ export function PageHeader() {
             {isPrCreated ? "View PR" : "Create PR"}
           </Button>
           <AccountDropdown />
+        </div>
+      </header>
+    )
+  }
+  
+  if (isSettingsPage) {
+    // Settings page header
+    return (
+      <header className="border-b border-gray-800 bg-gray-950">
+        <div className="container mx-auto px-4 py-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Link href="/">
+                <Button variant="ghost" size="icon">
+                  <ArrowLeft className="w-5 h-5" />
+                </Button>
+              </Link>
+              <h1 className="text-lg font-medium text-gray-50">Settings</h1>
+            </div>
+            <AccountDropdown />
+          </div>
         </div>
       </header>
     )

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { AutoResizeTextarea } from "@/components/auto-resize-textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { GitBranch, Layers, Mic, Github, Loader2, Settings } from "lucide-react"
+import { GitBranch, Layers, Mic, Github, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { apiClient } from "@/lib/api"
@@ -176,16 +176,8 @@ export default function Home() {
   return (
     <div className="bg-gray-950 text-gray-50 min-h-screen">
       <div className="container mx-auto max-w-3xl py-16">
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex-1" />
+        <div className="flex items-center justify-center mb-8">
           <h1 className="text-4xl font-medium text-center">What are we coding next?</h1>
-          <div className="flex-1 flex justify-end">
-            <Link href="/settings">
-              <Button variant="ghost" size="icon" className="text-gray-400 hover:text-gray-200">
-                <Settings className="w-5 h-5" />
-              </Button>
-            </Link>
-          </div>
         </div>
 
         <div className="bg-gray-900/80 border border-gray-800 rounded-xl p-4 space-y-4">
