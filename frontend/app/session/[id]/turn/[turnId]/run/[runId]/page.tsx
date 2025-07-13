@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { ArrowLeft, Play, Square, Clock, DollarSign, Users, Terminal, FileText, Zap, Bug } from "lucide-react"
+import { ArrowLeft, Play, Square, Clock, DollarSign, Users, Terminal, FileText, Zap, Bug, GitPullRequest } from "lucide-react"
 import Link from "next/link"
 import { apiClient, WebSocketClient, useAuthenticatedApiClient } from "@/lib/api"
 import { Session, Turn, Run, AgentOutput } from "@/lib/types"
@@ -527,8 +527,18 @@ export default function RunPage() {
               {/* Diff Viewer Section */}
               {diffsReady[variation] && (
                 <div className="bg-gray-900/30 border border-gray-800 rounded-lg mt-4">
-                  <div className="p-4 border-b border-gray-800">
+                  <div className="p-4 border-b border-gray-800 flex items-center justify-between">
                     <h3 className="font-medium">Code Changes</h3>
+                    <button
+                      onClick={() => {
+                        // TODO: Implement PR creation logic
+                        console.log('Create PR clicked for variation:', variation);
+                      }}
+                      className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/80 rounded-md transition-colors"
+                    >
+                      <GitPullRequest className="h-4 w-4" />
+                      Create Pull Request
+                    </button>
                   </div>
                   <div className="p-4">
                     {diffDataByVariation.get(variation) && diffDataByVariation.get(variation)!.length > 0 ? (
