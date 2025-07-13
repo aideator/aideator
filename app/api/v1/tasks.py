@@ -35,11 +35,11 @@ def parse_agent_output_content(content: str) -> Dict[str, Any]:
         return {}
 
 
-async def get_task_metrics(session: AsyncSession, run_id: str) -> Dict[str, int]:
+async def get_task_metrics(session: AsyncSession, task_id: int) -> Dict[str, int]:
     """Get aggregated metrics across all variations for a task."""
     result = await session.execute(
         select(AgentOutput).where(
-            AgentOutput.run_id == run_id,
+            AgentOutput.task_id == task_id,
             AgentOutput.output_type == "metrics"
         )
     )
@@ -81,7 +81,7 @@ async def list_tasks(
     runs = result.scalars().all()
     
     # Get total count for pagination
-    count_query = select(func.count(Run.id)).where(Run.user_id == current_user.id)
+    count_query = select(func.count(Run.task_id)).where(Run.user_id == current_user.id)
     count_result = await db.execute(count_query)
     total = count_result.scalar() or 0
     
@@ -117,12 +117,12 @@ async def list_tasks(
         additions = None
         deletions = None
         if run.task_status == "completed":
-            metrics = await get_task_metrics(db, run.id)
+            metrics = await get_task_metrics(db, run.task_id)
             additions = metrics["additions"]
             deletions = metrics["deletions"]
         
         task_item = TaskListItem(
-            id=run.id,
+            id=str(run.task_id),  # Convert to string for frontend compatibility
             title=title,
             details=details,
             status=frontend_status,
@@ -141,7 +141,7 @@ async def list_tasks(
 
 @router.get("/{task_id}")
 async def get_task_details(
-    task_id: str,
+    task_id: int,  # Now takes integer task_id
     current_user: CurrentUserAPIKey,
     db: AsyncSession = Depends(get_session),
 ):
@@ -150,7 +150,7 @@ async def get_task_details(
     Returns data in frontend-expected format with taskDetails structure.
     """
     # Get the run
-    query = select(Run).where(Run.id == task_id).where(Run.user_id == current_user.id)
+    query = select(Run).where(Run.task_id == task_id).where(Run.user_id == current_user.id)
     result = await db.execute(query)
     run = result.scalar_one_or_none()
 
@@ -162,7 +162,7 @@ async def get_task_details(
 
     # Get all outputs for this task
     outputs_result = await db.execute(
-        select(AgentOutput).where(AgentOutput.run_id == task_id)
+        select(AgentOutput).where(AgentOutput.task_id == task_id)
         .order_by(AgentOutput.variation_id, AgentOutput.timestamp)
     )
     outputs = outputs_result.scalars().all()
@@ -217,7 +217,7 @@ async def get_task_details(
     frontend_status = status_mapping.get(run.task_status, "Open")
     
     return {
-        "id": run.id,
+        "id": run.task_id,
         "title": run.prompt,
         "details": details,
         "status": frontend_status,
@@ -230,7 +230,7 @@ async def get_task_details(
 
 @router.get("/{task_id}/outputs")
 async def get_task_outputs(
-    task_id: str,
+    task_id: int,  # Now takes integer task_id
     current_user: CurrentUserAPIKey,
     since: datetime | None = Query(
         None, description="ISO timestamp to get outputs after"
@@ -247,7 +247,7 @@ async def get_task_outputs(
     Frontend should poll this every 0.5 seconds with the last received timestamp.
     """
     # Verify task exists and user has access
-    query = select(Run).where(Run.id == task_id)
+    query = select(Run).where(Run.task_id == task_id)
     if current_user:
         query = query.where(Run.user_id == current_user.id)
 
@@ -261,7 +261,7 @@ async def get_task_outputs(
         )
 
     # Build query for outputs
-    outputs_query = select(AgentOutput).where(AgentOutput.run_id == task_id)
+    outputs_query = select(AgentOutput).where(AgentOutput.task_id == task_id)
 
     # Apply filters
     if since:
@@ -282,7 +282,7 @@ async def get_task_outputs(
     return [
         {
             "id": output.id,
-            "run_id": output.run_id,
+            "task_id": output.task_id,  # Changed from run_id to task_id
             "variation_id": output.variation_id,
             "content": output.content,
             "timestamp": output.timestamp.isoformat(),
@@ -294,7 +294,7 @@ async def get_task_outputs(
 
 @router.get("/{task_id}/variations/{variation_id}/outputs")
 async def get_variation_outputs(
-    task_id: str,
+    task_id: int,  # Now takes integer task_id
     variation_id: int,
     current_user: CurrentUserAPIKey,
     since: datetime | None = Query(
@@ -310,7 +310,7 @@ async def get_variation_outputs(
     Useful for variation comparison in the task detail page.
     """
     # Verify task exists and user has access
-    query = select(Run).where(Run.id == task_id)
+    query = select(Run).where(Run.task_id == task_id)
     if current_user:
         query = query.where(Run.user_id == current_user.id)
 
@@ -332,7 +332,7 @@ async def get_variation_outputs(
 
     # Build query for outputs
     outputs_query = select(AgentOutput).where(
-        AgentOutput.run_id == task_id,
+        AgentOutput.task_id == task_id,
         AgentOutput.variation_id == variation_id
     )
 
@@ -353,7 +353,7 @@ async def get_variation_outputs(
     return [
         {
             "id": output.id,
-            "run_id": output.run_id,
+            "task_id": output.task_id,  # Changed from run_id to task_id
             "variation_id": output.variation_id,
             "content": output.content,
             "timestamp": output.timestamp.isoformat(),

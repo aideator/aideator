@@ -11,24 +11,24 @@ class ProviderType(str, Enum):
     """Provider type enumeration."""
 
     # Main providers
-    OPENAI = "openai"
-    ANTHROPIC = "anthropic"
-    GEMINI = "gemini"
-    VERTEX_AI = "vertex_ai"
-    BEDROCK = "bedrock"
-    MISTRAL = "mistral"
-    COHERE = "cohere"
+    OPENAI = "OPENAI"
+    ANTHROPIC = "ANTHROPIC"
+    GEMINI = "GEMINI"
+    VERTEX_AI = "VERTEX_AI"
+    BEDROCK = "BEDROCK"
+    MISTRAL = "MISTRAL"
+    COHERE = "COHERE"
 
     # Cloud providers
-    AZURE = "azure"
+    AZURE = "AZURE"
 
     # Specialized providers (only ones actually used in the codebase)
-    HUGGINGFACE = "huggingface"
-    TOGETHER = "together"
-    GROQ = "groq"
-    DEEPSEEK = "deepseek"
-    PERPLEXITY = "perplexity"
-    OLLAMA = "ollama"
+    HUGGINGFACE = "HUGGINGFACE"
+    TOGETHER = "TOGETHER"
+    GROQ = "GROQ"
+    DEEPSEEK = "DEEPSEEK"
+    PERPLEXITY = "PERPLEXITY"
+    OLLAMA = "OLLAMA"
 
 
 class ModelCapability(str, Enum):
@@ -159,7 +159,7 @@ class ModelVariant(SQLModel, table=True):
     __tablename__ = "model_variants"
 
     id: str = Field(primary_key=True)
-    run_id: str = Field(foreign_key="runs.id", index=True)
+    task_id: int = Field(foreign_key="runs.task_id", index=True)
     variation_id: int = Field(index=True)
     model_definition_id: str = Field(
         foreign_key="model_definitions.model_name", index=True
@@ -195,7 +195,7 @@ class ModelVariant(SQLModel, table=True):
         json_schema_extra = {
             "example": {
                 "id": "variant_123abc",
-                "run_id": "run_123abc",
+                "task_id": 1,
                 "variation_id": 0,
                 "model_definition_id": "model_gpt4",
                 "provider_credential_id": "cred_123abc",

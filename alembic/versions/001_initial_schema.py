@@ -92,12 +92,6 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(),
-            nullable=False,
-            server_default=sa.text("CURRENT_TIMESTAMP"),
-        ),
         sa.Column("completed_at", sa.DateTime(), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
         sa.Column("metadata", sa.JSON(), nullable=True),

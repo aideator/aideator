@@ -54,7 +54,7 @@ async def get_run_outputs(
         )
     
     # Build outputs query with filters
-    outputs_query = select(AgentOutput).where(AgentOutput.run_id == run_id)
+    outputs_query = select(AgentOutput).where(AgentOutput.task_id == run.task_id)
     
     if variation_id is not None:
         outputs_query = outputs_query.where(AgentOutput.variation_id == variation_id)
@@ -66,7 +66,7 @@ async def get_run_outputs(
     outputs_query = outputs_query.order_by(AgentOutput.timestamp.desc())
     
     # Get total count for pagination
-    count_query = select(AgentOutput).where(AgentOutput.run_id == run_id)
+    count_query = select(AgentOutput).where(AgentOutput.task_id == run.task_id)
     if variation_id is not None:
         count_query = count_query.where(AgentOutput.variation_id == variation_id)
     if output_type is not None:
@@ -145,7 +145,7 @@ async def get_run_outputs_summary(
         func.min(AgentOutput.timestamp).label('first_output'),
         func.max(AgentOutput.timestamp).label('last_output')
     ).where(
-        AgentOutput.run_id == run_id
+        AgentOutput.task_id == run.task_id
     ).group_by(
         AgentOutput.output_type, AgentOutput.variation_id
     ).order_by(
@@ -156,12 +156,12 @@ async def get_run_outputs_summary(
     summary_data = result.all()
     
     # Total outputs count
-    total_query = select(func.count(AgentOutput.id)).where(AgentOutput.run_id == run_id)
+    total_query = select(func.count(AgentOutput.id)).where(AgentOutput.task_id == run.task_id)
     total_result = await db.execute(total_query)
     total_outputs = total_result.scalar() or 0
     
     # Variation count
-    variations_query = select(func.count(func.distinct(AgentOutput.variation_id))).where(AgentOutput.run_id == run_id)
+    variations_query = select(func.count(func.distinct(AgentOutput.variation_id))).where(AgentOutput.task_id == run.task_id)
     variations_result = await db.execute(variations_query)
     total_variations = variations_result.scalar() or 0
     
@@ -226,13 +226,13 @@ async def get_latest_outputs(
             SELECT *,
                    ROW_NUMBER() OVER (PARTITION BY variation_id ORDER BY timestamp DESC) as rn
             FROM agent_outputs
-            WHERE run_id = :run_id
+            WHERE task_id = :task_id
         ) ranked
         WHERE rn <= :per_variation
         ORDER BY variation_id, timestamp DESC
     """)
     
-    result = await db.execute(query, {"run_id": run_id, "per_variation": per_variation})
+    result = await db.execute(query, {"task_id": run.task_id, "per_variation": per_variation})
     rows = result.fetchall()
     
     # Convert to AgentOutput objects

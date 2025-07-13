@@ -49,16 +49,19 @@ async def get_runs(
     result = await db.execute(paginated_query)
     runs = result.scalars().all()
     
-    # Get message counts for each run
-    run_ids = [run.id for run in runs]
-    message_count_dict = {}
-    if run_ids:
-        count_query = select(AgentOutput.run_id, func.count(AgentOutput.id).label('count')).where(
-            AgentOutput.run_id.in_(run_ids)
-        ).group_by(AgentOutput.run_id)
+    # Get message counts for each run (use task_id FK)
+    task_ids = [run.task_id for run in runs]
+    message_count_dict: dict[int, int] = {}
+    if task_ids:
+        count_query = select(
+            AgentOutput.task_id,
+            func.count(AgentOutput.id).label('count'),
+        ).where(
+            AgentOutput.task_id.in_(task_ids)
+        ).group_by(AgentOutput.task_id)
         count_result = await db.execute(count_query)
         for row in count_result.fetchall():
-            message_count_dict[row.run_id] = row.count
+            message_count_dict[row.task_id] = row.count
     
     # Format response
     runs_data = []
@@ -72,7 +75,7 @@ async def get_runs(
             "prompt": run.prompt,
             "model_variants": run.variations,
             "agent_mode": getattr(run, 'agent_mode', 'unknown'),
-            "message_count": message_count_dict.get(run.id, 0)
+            "message_count": message_count_dict.get(run.task_id, 0)
         }
         runs_data.append(run_data)
     
@@ -89,7 +92,7 @@ async def get_agent_outputs(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     output_type: Optional[str] = Query(None),
-    run_id: Optional[str] = Query(None),
+    task_id: Optional[int] = Query(None),
     variation_id: Optional[int] = Query(None),
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
@@ -104,8 +107,8 @@ async def get_agent_outputs(
     if output_type:
         query = query.where(AgentOutput.output_type == output_type)
     
-    if run_id:
-        query = query.where(AgentOutput.run_id == run_id)
+    if task_id is not None:
+        query = query.where(AgentOutput.task_id == task_id)
     
     if variation_id is not None:
         query = query.where(AgentOutput.variation_id == variation_id)
@@ -134,7 +137,7 @@ async def get_agent_outputs(
     for output in outputs:
         output_data = {
             "id": output.id,
-            "run_id": output.run_id,
+            "task_id": output.task_id,
             "variation_id": output.variation_id,
             "output_type": output.output_type,
             "content": output.content,
@@ -150,15 +153,15 @@ async def get_agent_outputs(
     }
 
 
-@router.get("/variations/{run_id}")
+@router.get("/variations/{task_id}")
 async def get_variations_for_run(
-    run_id: str,
+    task_id: int,
     db: AsyncSession = Depends(get_session),
 ):
     """Get all variation IDs for a specific run."""
     
     query = select(AgentOutput.variation_id).where(
-        AgentOutput.run_id == run_id
+        AgentOutput.task_id == task_id
     ).distinct().order_by(AgentOutput.variation_id)
     
     result = await db.execute(query)
@@ -186,9 +189,9 @@ async def get_run_ids(
 ):
     """Get all run IDs for dropdown selection."""
     
-    query = select(AgentOutput.run_id).distinct().order_by(desc(AgentOutput.run_id)).limit(limit)
+    query = select(AgentOutput.task_id).distinct().order_by(desc(AgentOutput.task_id)).limit(limit)
     
     result = await db.execute(query)
     run_ids = result.scalars().all()
     
-    return {"run_ids": run_ids}
+    return {"task_ids": run_ids}

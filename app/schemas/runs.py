@@ -157,7 +157,8 @@ class CreateRunRequest(BaseModel):
 class CreateRunResponse(BaseModel):
     """Response after creating a run."""
 
-    run_id: str = Field(..., description="Unique identifier for the run")
+    task_id: int = Field(..., description="User-facing task identifier")
+    run_id: str = Field(..., description="Kubernetes job identifier")
     websocket_url: str = Field(..., description="WebSocket URL for real-time streaming")
     stream_url: str = Field(
         ..., description="Stream URL for real-time streaming (alias for websocket_url)"
@@ -174,10 +175,11 @@ class CreateRunResponse(BaseModel):
         "protected_namespaces": (),  # Allow model_ prefixed fields
         "json_schema_extra": {
             "example": {
+                "task_id": 1,
                 "run_id": "run_1234567890abcdef",
-                "websocket_url": "ws://localhost:8000/ws/runs/run_1234567890abcdef",
-                "stream_url": "ws://localhost:8000/ws/runs/run_1234567890abcdef",
-                "polling_url": "/api/v1/runs/run_1234567890abcdef/outputs",
+                "websocket_url": "ws://localhost:8000/ws/tasks/1",
+                "stream_url": "ws://localhost:8000/ws/tasks/1",
+                "polling_url": "/api/v1/runs/1/outputs",
                 "status": "accepted",
                 "estimated_duration_seconds": 120,
                 "session_id": "session_abc123",

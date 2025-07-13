@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **ALWAYS preserve original attempts in comments when simplifying broken code**
 - **NEVER git rm, git restore, or git commit without explicit permission**
 - **NEVER modify database schema directly - always use migrations**
-- **ALWAYS run migrations after database schema changes: `uv run alembic upgrade head`**
+
 
 ## Tailwind
 We use Tailwind v3.4.17 for everything. The project strictly enforces complete class names (no dynamic interpolation). All components use shadcn/ui patterns with class-variance-authority (CVA) for variants.

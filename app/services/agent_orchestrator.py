@@ -71,6 +71,7 @@ class AgentOrchestrator:
 
     async def execute_variations(
         self,
+        task_id: int,
         run_id: str,
         repo_url: str,
         prompt: str,
@@ -82,6 +83,7 @@ class AgentOrchestrator:
         """Execute N agent variations using Kubernetes jobs."""
         logger.info(
             "starting_agent_orchestration",
+            task_id=task_id,
             run_id=run_id,
             variations=variations,
             repo_url=repo_url,
@@ -89,7 +91,7 @@ class AgentOrchestrator:
 
         # Log that we're starting - this will help debug if the task is running
         logger.info(
-            f"🚀 ORCHESTRATOR STARTING: run_id={run_id}, variations={variations}"
+            f"🚀 ORCHESTRATOR STARTING: task_id={task_id}, run_id={run_id}, variations={variations}"
         )
 
         # Store run metadata and increment job count
@@ -109,14 +111,14 @@ class AgentOrchestrator:
 
         # Update run status
         if db_session:
-            await self._update_run_status(db_session, run_id, RunStatus.RUNNING)
+            await self._update_run_status(db_session, task_id, RunStatus.RUNNING)
 
         try:
             # Increment job count
             await self._increment_job_count(variations)
 
             await self._execute_individual_jobs(
-                run_id, repo_url, prompt, variations, agent_mode, db_session
+                task_id, run_id, repo_url, prompt, variations, agent_mode, db_session
             )
 
         except Exception as e:
@@ -131,7 +133,7 @@ class AgentOrchestrator:
 
             # Update database status
             if db_session:
-                await self._update_run_status(db_session, run_id, RunStatus.FAILED)
+                await self._update_run_status(db_session, task_id, RunStatus.FAILED)
 
         finally:
             # Clean up run metadata after some time
@@ -139,6 +141,7 @@ class AgentOrchestrator:
 
     async def _execute_individual_jobs(
         self,
+        task_id: int,
         run_id: str,
         repo_url: str,
         prompt: str,
@@ -175,7 +178,7 @@ class AgentOrchestrator:
 
         # Update database status
         if db_session:
-            await self._update_run_status(db_session, run_id, RunStatus.COMPLETED)
+            await self._update_run_status(db_session, task_id, RunStatus.COMPLETED)
 
     async def _wait_for_jobs_completion(
         self, run_id: str, job_names: list[str]
@@ -279,11 +282,11 @@ class AgentOrchestrator:
         return dict(self.active_runs)
 
     async def _update_run_status(
-        self, db_session: AsyncSession, run_id: str, status: RunStatus
+        self, db_session: AsyncSession, task_id: int, status: RunStatus
     ) -> None:
         """Update run status in database."""
         try:
-            run = await db_session.get(Run, run_id)
+            run = await db_session.get(Run, task_id)
             if run:
                 run.status = status
                 await db_session.commit()

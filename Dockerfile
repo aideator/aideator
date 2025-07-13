@@ -37,6 +37,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Copy Python requirements
 COPY requirements.txt pyproject.toml ./
 RUN pip install --no-cache-dir -r requirements.txt
+RUN touch /tmp/myfile 
 
 # Install Claude Code and AI CLI tools globally
 RUN npm install -g @anthropic-ai/claude-code

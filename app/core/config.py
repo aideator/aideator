@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     simple_dev_mode: bool = False  # Skip complex setup
     auto_create_test_user: bool = False  # Auto-create test user on startup
     
+    # Redis Features (off by default)
+    enable_redis: bool = False  # Enable Redis connection and streaming features
+    require_redis: bool = False  # Make Redis mandatory (fail if can't connect)
+    
     # Security
     secret_key: str = Field(
         default="dev-secret-key-32-chars-minimum-length-for-development"

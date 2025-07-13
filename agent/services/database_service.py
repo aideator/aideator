@@ -1,176 +1,272 @@
-"""Database service for agent output persistence."""
+"""
+Database service for agent containers.
 
-import asyncio
+This service provides database connectivity for agents to write outputs
+to the same PostgreSQL database that the frontend reads from.
+"""
+
 import os
-from datetime import datetime
-from typing import Optional
-
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-from sqlmodel import Session, SQLModel
-
 import logging
+from datetime import datetime
+from typing import Any, Optional
+
+import asyncpg
+from sqlalchemy import create_engine, text
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+from sqlmodel import Session, select
+
+# Import the shared models from the main app
+import sys
+sys.path.append('/app')
+from app.models.run import Run, AgentOutput, RunStatus
 
 logger = logging.getLogger(__name__)
 
 
 class DatabaseService:
-    """Service for writing agent outputs to database."""
+    """Database service for agent containers."""
     
-    def __init__(self, run_id: str, variation_id: int):
-        """Initialize database service."""
-        self.run_id = run_id
-        self.variation_id = variation_id
-        self.engine = None
-        self.session_maker = None
-        self._connected = False
+    def __init__(self):
+        """Initialize database service with connection from environment."""
+        self.database_url = os.getenv("DATABASE_URL")
+        if not self.database_url:
+            raise ValueError("DATABASE_URL environment variable is required")
         
-    def _sync_connect(self) -> bool:
-        """Synchronous database connection (called from async context)."""
+        # Convert postgres:// to postgresql+asyncpg:// for async operations
+        if self.database_url.startswith("postgres://"):
+            self.database_url = self.database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif self.database_url.startswith("postgresql://"):
+            self.database_url = self.database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            
+        self.engine = create_async_engine(
+            self.database_url,
+            echo=False,  # Set to True for SQL debugging
+            pool_size=5,
+            max_overflow=10,
+        )
+        
+        self.async_session_factory = sessionmaker(
+            self.engine, class_=AsyncSession, expire_on_commit=False
+        )
+        
+        logger.info("DatabaseService initialized")
+    
+    async def health_check(self) -> bool:
+        """Check if database connection is healthy."""
         try:
-            database_url = os.environ.get("DATABASE_URL")
-            if not database_url:
-                logger.warning("DATABASE_URL not set, database writes disabled")
-                return False
-                
-            # Create synchronous engine for agent use
-            self.engine = create_engine(database_url)
-            self.session_maker = sessionmaker(self.engine, class_=Session, expire_on_commit=False)
-            
-            # Test connection
-            with self.session_maker() as session:
-                session.exec(text("SELECT 1"))
-                
-            self._connected = True
-            logger.info(f"Connected to database for run {self.run_id}, variation {self.variation_id}")
-            return True
-            
+            async with self.async_session_factory() as session:
+                await session.execute(text("SELECT 1"))
+                return True
         except Exception as e:
-            logger.error(f"Failed to connect to database: {e}")
+            logger.error(f"Database health check failed: {e}")
             return False
     
-    async def connect(self) -> bool:
-        """Connect to database (async wrapper)."""
-        return await asyncio.to_thread(self._sync_connect)
-            
-    def _sync_write_output(
-        self, 
-        content: str, 
+    async def get_run_by_run_id(self, run_id: str) -> Optional[Run]:
+        """Get run by run_id (Kubernetes job identifier)."""
+        try:
+            async with self.async_session_factory() as session:
+                query = select(Run).where(Run.run_id == run_id)
+                result = await session.execute(query)
+                return result.scalar_one_or_none()
+        except Exception as e:
+            logger.error(f"Failed to get run by run_id {run_id}: {e}")
+            return None
+    
+    async def get_run_by_task_id(self, task_id: int) -> Optional[Run]:
+        """Get run by task_id (primary key)."""
+        try:
+            async with self.async_session_factory() as session:
+                query = select(Run).where(Run.task_id == task_id)
+                result = await session.execute(query)
+                return result.scalar_one_or_none()
+        except Exception as e:
+            logger.error(f"Failed to get run by task_id {task_id}: {e}")
+            return None
+    
+    async def write_agent_output(
+        self,
+        task_id: int,
+        variation_id: int,
+        content: str,
         output_type: str = "stdout",
         timestamp: Optional[datetime] = None
     ) -> bool:
-        """Synchronous database write (called from async context)."""
-        if not self._connected:
-            return False
+        """
+        Write agent output to the database.
+        
+        Args:
+            task_id: The task ID (primary key of runs table)
+            variation_id: The variation/agent number (0, 1, 2, etc.)
+            content: The output content
+            output_type: Type of output (stdout, stderr, status, summary, diffs, logging, addinfo)
+            timestamp: Optional timestamp (defaults to current time)
             
+        Returns:
+            True if successful, False otherwise
+        """
         try:
-            # Import here to avoid circular imports
-            from app.models.run import AgentOutput
-            
-            with self.session_maker() as session:
+            async with self.async_session_factory() as session:
                 output = AgentOutput(
-                    run_id=self.run_id,
-                    variation_id=self.variation_id,
+                    task_id=task_id,
+                    variation_id=variation_id,
                     content=content,
                     output_type=output_type,
                     timestamp=timestamp or datetime.utcnow()
                 )
+                
                 session.add(output)
-                session.commit()
-            return True
-            
+                await session.commit()
+                
+                logger.debug(f"Wrote {output_type} output for task {task_id}, variation {variation_id}")
+                return True
+                
         except Exception as e:
-            logger.error(f"Failed to write to database: {e}")
+            logger.error(f"Failed to write agent output: {e}")
+            try:
+                await session.rollback()
+            except:
+                pass
             return False
     
-    async def write_output(
-        self, 
-        content: str, 
-        output_type: str = "stdout",
-        timestamp: Optional[datetime] = None
+    async def write_status_update(
+        self,
+        task_id: int,
+        status: RunStatus,
+        error_message: Optional[str] = None
     ) -> bool:
-        """Write output to database (async wrapper)."""
-        return await asyncio.to_thread(self._sync_write_output, content, output_type, timestamp)
+        """
+        Update run status in the database.
+        
+        Args:
+            task_id: The task ID (primary key)
+            status: New status
+            error_message: Optional error message
             
-    async def publish_output(self, content: str) -> bool:
-        """Write standard output to database."""
-        return await self.write_output(content, output_type="stdout")
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            async with self.async_session_factory() as session:
+                query = select(Run).where(Run.task_id == task_id)
+                result = await session.execute(query)
+                run = result.scalar_one_or_none()
+                
+                if not run:
+                    logger.error(f"Run with task_id {task_id} not found")
+                    return False
+                
+                run.status = status
+                if error_message:
+                    run.error_message = error_message
+                
+                if status == RunStatus.RUNNING and not run.started_at:
+                    run.started_at = datetime.utcnow()
+                elif status in [RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED]:
+                    run.completed_at = datetime.utcnow()
+                
+                await session.commit()
+                
+                logger.info(f"Updated run {task_id} status to {status}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Failed to update run status: {e}")
+            try:
+                await session.rollback()
+            except:
+                pass
+            return False
+    
+    async def write_error(
+        self,
+        task_id: int,
+        variation_id: int,
+        error_message: str,
+        error_type: str = "error"
+    ) -> bool:
+        """
+        Write error message to database.
         
-    async def publish_status(self, status: str, metadata: Optional[dict] = None) -> bool:
-        """Write status update to database."""
-        import json
-        status_content = {
-            "status": status,
-            "variation_id": self.variation_id,
-            "metadata": metadata or {}
-        }
-        return await self.write_output(
-            json.dumps(status_content), 
-            output_type="status"
+        Args:
+            task_id: The task ID
+            variation_id: The variation number
+            error_message: Error message content
+            error_type: Type of error (error, exception, etc.)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        return await self.write_agent_output(
+            task_id=task_id,
+            variation_id=variation_id,
+            content=error_message,
+            output_type=error_type
         )
+    
+    async def write_log(
+        self,
+        task_id: int,
+        variation_id: int,
+        log_message: str,
+        log_level: str = "INFO"
+    ) -> bool:
+        """
+        Write log message to database.
         
-    async def publish_log(self, message: str, level: str = "INFO", **kwargs) -> bool:
-        """Write log entry to database."""
-        import json
-        log_content = {
-            "level": level,
-            "message": message,
-            "variation_id": self.variation_id,
-            **kwargs
+        Args:
+            task_id: The task ID
+            variation_id: The variation number
+            log_message: Log message content
+            log_level: Log level (DEBUG, INFO, WARNING, ERROR)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        log_data = {
+            "level": log_level,
+            "message": log_message,
+            "timestamp": datetime.utcnow().isoformat()
         }
-        return await self.write_output(
-            json.dumps(log_content),
+        
+        return await self.write_agent_output(
+            task_id=task_id,
+            variation_id=variation_id,
+            content=str(log_data),
             output_type="logging"
         )
     
-    async def publish_job_summary(self, summary: str, success: bool = True, **metadata) -> bool:
-        """Write job completion summary to database."""
-        import json
-        summary_content = {
-            "summary": summary,
-            "success": success,
-            "variation_id": self.variation_id,
-            "metadata": metadata
-        }
-        return await self.write_output(
-            json.dumps(summary_content),
-            output_type="job_summary"
-        )
+    async def close(self):
+        """Close database connections."""
+        try:
+            await self.engine.dispose()
+            logger.info("Database connections closed")
+        except Exception as e:
+            logger.error(f"Error closing database connections: {e}")
     
-    async def publish_metrics(self, additions: int = 0, deletions: int = 0, files_changed: int = 0, **other_metrics) -> bool:
-        """Write code change metrics to database."""
-        import json
-        metrics_content = {
-            "additions": additions,
-            "deletions": deletions, 
-            "files_changed": files_changed,
-            "variation_id": self.variation_id,
-            **other_metrics
-        }
-        return await self.write_output(
-            json.dumps(metrics_content),
-            output_type="metrics"
-        )
+    async def __aenter__(self):
+        """Async context manager entry."""
+        return self
     
-    async def publish_diffs(self, file_changes: list, **metadata) -> bool:
-        """Write file diff information to database."""
-        import json
-        diffs_content = {
-            "file_changes": file_changes,
-            "variation_id": self.variation_id,
-            "metadata": metadata
-        }
-        return await self.write_output(
-            json.dumps(diffs_content),
-            output_type="diffs"
-        )
-        
-    def _sync_disconnect(self) -> None:
-        """Synchronous database disconnect (called from async context)."""
-        if self.engine:
-            self.engine.dispose()
-        self._connected = False
-    
-    async def disconnect(self) -> None:
-        """Disconnect from database (async wrapper)."""
-        await asyncio.to_thread(self._sync_disconnect)
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        await self.close()
+
+
+# Convenience functions for common operations
+async def write_startup_message(task_id: int, variation_id: int, message: str) -> bool:
+    """Write a startup message to the database."""
+    db_service = DatabaseService()
+    return await db_service.write_log(task_id, variation_id, f"[Variation {variation_id}] {message}")
+
+
+async def write_error_message(task_id: int, variation_id: int, error: str) -> bool:
+    """Write an error message to the database."""
+    db_service = DatabaseService()
+    return await db_service.write_error(task_id, variation_id, f"[Variation {variation_id}] ERROR: {error}")
+
+
+async def write_completion_message(task_id: int, variation_id: int, message: str) -> bool:
+    """Write a completion message to the database."""
+    db_service = DatabaseService()
+    return await db_service.write_log(task_id, variation_id, f"[Variation {variation_id}] COMPLETED: {message}")

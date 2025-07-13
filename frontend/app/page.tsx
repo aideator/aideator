@@ -17,8 +17,38 @@ export default function Home() {
     alert("Ask button clicked!")
   }
 
-  const handleCode = () => {
-    alert("Code button clicked!")
+  const handleCode = async () => {
+    if (!taskText.trim()) return
+
+    try {
+      const response = await fetch('/api/v1/runs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          github_url: "https://github.com/fastapi/fastapi",
+          prompt: taskText.trim(),
+          model_variants: [
+            { model_definition_id: "gpt-4o-mini" }
+          ],
+          agent_mode: "litellm"
+        })
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        setTaskText("")
+        refetch() // Refresh tasks list
+        // Navigate to task page
+        window.location.href = `/task/${result.run_id}`
+      } else {
+        const error = await response.json()
+        alert(`Error creating task: ${error.detail || 'Unknown error'}`)
+      }
+    } catch (err) {
+      alert(`Network error: ${err}`)
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

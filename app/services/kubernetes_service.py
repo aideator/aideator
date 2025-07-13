@@ -49,10 +49,20 @@ class KubernetesService:
         """Create a Kubernetes job for an agent variation."""
         job_name = f"agent-{run_id}-{variation_id}"
 
-        # Load job template
-        template_path = self.job_templates_dir / "agent-job-template.yaml"
-        with open(template_path) as f:
-            job_yaml = f.read()
+        # Load job template from ConfigMap
+        try:
+            result = subprocess.run([
+                "kubectl", "get", "configmap", "agent-job-template", 
+                "-n", self.namespace, 
+                "-o", "jsonpath={.data.template}"
+            ], capture_output=True, text=True, check=True)
+            job_yaml = result.stdout
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to read job template from ConfigMap: {e}")
+            # Fallback to file-based template
+            template_path = self.job_templates_dir / "agent-job-template.yaml"
+            with open(template_path) as f:
+                job_yaml = f.read()
 
         # Replace placeholders
         job_yaml = job_yaml.format(

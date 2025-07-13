@@ -1,28 +1,50 @@
-# Tiltfile for AIdeator development - Student-Friendly Version
+# Tiltfile for AIdeator development - Student-Friendly Version (One Command!)
 load('ext://namespace', 'namespace_create')
 load('ext://dotenv', 'dotenv')
 
 # Load environment variables
 dotenv(fn='.env')
 
-# Configuration
-update_settings(max_parallel_updates=3)
-allow_k8s_contexts(['k3d-aideator', 'docker-desktop', 'kind-aideator'])
+# Create k3d cluster automatically (Student-Friendly: One Command!)
+# Docker Desktop compatible configuration
+local_resource(
+    'k3d-cluster',
+    cmd='''
+    if ! k3d cluster list | grep -q aideator; then
+        echo "🚀 Creating k3d cluster 'aideator' (Docker Desktop mode)..."
+        k3d cluster create aideator \
+            --api-port 6550 \
+            --port "8000:8000@loadbalancer" \
+            --port "5432:5432@loadbalancer" \
+            --wait \
+            --timeout 120s \
+            --agents 1
+        echo "✅ k3d cluster 'aideator' created successfully!"
+    else
+        echo "✅ k3d cluster 'aideator' already exists"
+    fi
+    ''',
+    labels=['infrastructure'],
+)
 
-# Set up registry
-default_registry('localhost:5005', host_from_cluster='ctlptl-registry:5000')
+# Configuration
+update_settings(max_parallel_updates=3, suppress_unused_image_warnings=["aideator-agent"])
+allow_k8s_contexts(['k3d-aideator'])
+
+# Configure default registry to use k3d's built-in registry
+default_registry('k3d-registry.localhost:5001')
 
 # Create namespace
 namespace_create('aideator')
 
-# Build container images
+# Build container images (push to k3d registry)
 docker_build(
     'aideator-api',
     context='.',
     dockerfile='Dockerfile',
     only=[
         'app/',
-        'pyproject.toml',
+        'pyproject.toml', 
         'requirements.txt',
         'scripts/',
         'prompts/',
@@ -30,18 +52,27 @@ docker_build(
         'alembic.ini',
         'k8s/',
     ],
-    live_update=[
-        sync('app/', '/app/app/'),
-        sync('prompts/', '/app/prompts/'),
-        run('cd /app && pip install -e .', trigger=['pyproject.toml', 'requirements.txt']),
+)
+
+# Build agent container image (push to k3d registry)
+docker_build(
+    'aideator-agent',
+    context='.',
+    dockerfile='agent/Dockerfile',
+    only=[
+        'agent/',
+        'app/models/',
+        'app/core/config.py',
+        'pyproject.toml',
     ],
 )
 
-# Ensure cluster is ready
+# Ensure cluster is ready (k3d cluster created automatically above)
 local_resource(
     'cluster-ready',
     cmd='kubectl cluster-info',
     labels=['infrastructure'],
+    resource_deps=[],  # No dependencies - cluster created by k3d_cluster()
 )
 
 # Ensure persistent data directory exists
@@ -52,13 +83,11 @@ local_resource(
 )
 
 # Deploy simple Kubernetes resources - No Helm!
-k8s_yaml(['k8s/database.yaml', 'k8s/redis.yaml', 'k8s/litellm.yaml', 'k8s/api.yaml', 'k8s/rbac.yaml', 'k8s/pvc.yaml'])
+k8s_yaml(['k8s/database.yaml', 'k8s/api.yaml', 'k8s/rbac.yaml', 'k8s/pvc.yaml', 'k8s/agent-job-configmap.yaml'])
 
 # Configure port forwards - Simple and Predictable
 k8s_resource('aideator-api', port_forwards='8000:8000', labels=['backend'])
 k8s_resource('aideator-database', port_forwards='5432:5432', labels=['database'], resource_deps=['setup-persistence'])
-k8s_resource('aideator-redis', port_forwards='6379:6379', labels=['cache'])
-k8s_resource('aideator-litellm', port_forwards='4000:4000', labels=['ai-gateway'])
 
 # Frontend development (runs locally)
 local_resource(
@@ -107,8 +136,6 @@ print("""
   Frontend:  http://localhost:3000
   API:       http://localhost:8000
   API Docs:  http://localhost:8000/docs
-  Redis:     localhost:6379
-  LiteLLM:   http://localhost:4000
   Database:  localhost:5432
 
 💾 Persistence:

@@ -51,7 +51,7 @@ async def get_or_create_test_user() -> str:
 
 
 async def insert_agent_output(
-    run_id: str, 
+    task_id: int, 
     variation_id: int, 
     output_type: str, 
     content_data: dict
@@ -59,7 +59,7 @@ async def insert_agent_output(
     """Insert a structured agent output entry."""
     async for db in get_session():
         output = AgentOutput(
-            run_id=run_id,
+            task_id=task_id,
             variation_id=variation_id,
             content=json.dumps(content_data),
             output_type=output_type,
@@ -75,15 +75,16 @@ async def create_task_1_data():
     run_id = "1"
     user_id = await get_or_create_test_user()
     
-    # Create run entry
+    # Create run entry and get task_id
+    task_id = None
     async for db in get_session():
         # Check if run already exists
-        result = await db.execute(select(Run).where(Run.id == run_id))
+        result = await db.execute(select(Run).where(Run.run_id == run_id))
         existing_run = result.scalar_one_or_none()
         
         if not existing_run:
             run = Run(
-                id=run_id,
+                run_id=run_id,
                 user_id=user_id,
                 github_url="https://github.com/aideator/helloworld",
                 prompt="Make hello world label ominous",
@@ -95,9 +96,12 @@ async def create_task_1_data():
             )
             db.add(run)
             await db.commit()
-            print(f"Created run: {run_id}")
+            await db.refresh(run)  # Get the auto-generated task_id
+            task_id = run.task_id
+            print(f"Created run: {run_id} with task_id: {task_id}")
         else:
-            print(f"Run {run_id} already exists, updating outputs only")
+            task_id = existing_run.task_id
+            print(f"Run {run_id} already exists with task_id: {task_id}, updating outputs only")
         break
 
     # Create agent outputs for each variation
@@ -156,14 +160,14 @@ async def create_task_1_data():
         variation_id = variation["id"]
         
         # Job summary
-        await insert_agent_output(run_id, variation_id, "job_summary", {
+        await insert_agent_output(task_id, variation_id, "job_summary", {
             "summary": variation["summary"],
             "success": True,
             "variation_id": variation_id
         })
         
         # Diffs
-        await insert_agent_output(run_id, variation_id, "diffs", {
+        await insert_agent_output(task_id, variation_id, "diffs", {
             "file_changes": variation["files"],
             "variation_id": variation_id
         })
@@ -171,7 +175,7 @@ async def create_task_1_data():
         # Metrics  
         total_additions = sum(f["additions"] for f in variation["files"])
         total_deletions = sum(f["deletions"] for f in variation["files"])
-        await insert_agent_output(run_id, variation_id, "metrics", {
+        await insert_agent_output(task_id, variation_id, "metrics", {
             "additions": total_additions,
             "deletions": total_deletions,
             "files_changed": len(variation["files"]),
@@ -179,13 +183,13 @@ async def create_task_1_data():
         })
         
         # Sample logs
-        await insert_agent_output(run_id, variation_id, "logging", {
+        await insert_agent_output(task_id, variation_id, "logging", {
             "level": "INFO",
             "message": f"[Variation {variation_id}] Analyzing task: 'make hello world label ominous'",
             "variation_id": variation_id
         })
         
-        await insert_agent_output(run_id, variation_id, "logging", {
+        await insert_agent_output(task_id, variation_id, "logging", {
             "level": "INFO", 
             "message": f"[Variation {variation_id}] Changes applied successfully to README.md",
             "variation_id": variation_id
@@ -199,15 +203,16 @@ async def create_task_2_data():
     run_id = "2"
     user_id = await get_or_create_test_user()
     
-    # Create run entry
+    # Create run entry and get task_id
+    task_id = None
     async for db in get_session():
         # Check if run already exists
-        result = await db.execute(select(Run).where(Run.id == run_id))
+        result = await db.execute(select(Run).where(Run.run_id == run_id))
         existing_run = result.scalar_one_or_none()
         
         if not existing_run:
             run = Run(
-                id=run_id,
+                run_id=run_id,
                 user_id=user_id,
                 github_url="https://github.com/aideator/helloworld",
                 prompt="Make hello world message cheerier",
@@ -219,9 +224,12 @@ async def create_task_2_data():
             )
             db.add(run)
             await db.commit()
-            print(f"Created run: {run_id}")
+            await db.refresh(run)  # Get the auto-generated task_id
+            task_id = run.task_id
+            print(f"Created run: {run_id} with task_id: {task_id}")
         else:
-            print(f"Run {run_id} already exists, updating outputs only")
+            task_id = existing_run.task_id
+            print(f"Run {run_id} already exists with task_id: {task_id}, updating outputs only")
         break
 
     # Create agent outputs for each variation - matches updated mock data
@@ -287,14 +295,14 @@ async def create_task_2_data():
         variation_id = variation["id"]
         
         # Job summary
-        await insert_agent_output(run_id, variation_id, "job_summary", {
+        await insert_agent_output(task_id, variation_id, "job_summary", {
             "summary": variation["summary"],
             "success": True,
             "variation_id": variation_id
         })
         
         # Diffs
-        await insert_agent_output(run_id, variation_id, "diffs", {
+        await insert_agent_output(task_id, variation_id, "diffs", {
             "file_changes": variation["files"],
             "variation_id": variation_id
         })
@@ -302,7 +310,7 @@ async def create_task_2_data():
         # Metrics  
         total_additions = sum(f["additions"] for f in variation["files"])
         total_deletions = sum(f["deletions"] for f in variation["files"])
-        await insert_agent_output(run_id, variation_id, "metrics", {
+        await insert_agent_output(task_id, variation_id, "metrics", {
             "additions": total_additions,
             "deletions": total_deletions,
             "files_changed": len(variation["files"]),
@@ -310,13 +318,13 @@ async def create_task_2_data():
         })
         
         # Sample logs
-        await insert_agent_output(run_id, variation_id, "logging", {
+        await insert_agent_output(task_id, variation_id, "logging", {
             "level": "INFO",
             "message": f"[Variation {variation_id}] Analyzing task: 'make hello world message cheerier'",
             "variation_id": variation_id
         })
         
-        await insert_agent_output(run_id, variation_id, "logging", {
+        await insert_agent_output(task_id, variation_id, "logging", {
             "level": "INFO",
             "message": f"[Variation {variation_id}] Applied cheerful changes to README.md",
             "variation_id": variation_id
@@ -362,12 +370,12 @@ async def create_other_tasks_data():
     async for db in get_session():
         for task_data in other_tasks:
             # Check if run already exists
-            result = await db.execute(select(Run).where(Run.id == task_data["id"]))
+            result = await db.execute(select(Run).where(Run.run_id == task_data["id"]))
             existing_run = result.scalar_one_or_none()
             
             if not existing_run:
                 run = Run(
-                    id=task_data["id"],
+                    run_id=task_data["id"],
                     user_id=user_id,
                     github_url=task_data["github_url"],
                     prompt=task_data["title"],

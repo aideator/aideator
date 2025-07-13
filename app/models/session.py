@@ -15,8 +15,9 @@ class Session(SQLModel, table=True):
     user_id: str = Field(foreign_key="users.id", index=True)
 
     # Session metadata
-    title: str = Field(max_length=200)
+    title: str = Field(default="Untitled Session", max_length=200)
     description: str | None = Field(default=None, max_length=1000)
+    session_metadata: dict[str, Any] | None = Field(default=None, sa_column=Column("metadata", JSON))
     is_active: bool = Field(default=True)
     is_archived: bool = Field(default=False)
 

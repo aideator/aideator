@@ -42,21 +42,26 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Kubernetes connections are handled via kubectl
     # No persistent connection needed at the server level
 
-    # Initialize Redis (required)
-    try:
-        await redis_service.connect()
-        logger.info("Redis connected successfully")
-    except Exception as e:
-        logger.error(f"Redis connection failed: {e}")
-        raise RuntimeError(
-            "Redis connection is required for streaming. Please ensure Redis is available."
-        )
+    # Initialize Redis (conditionally - off by default)
+    if settings.enable_redis:
+        try:
+            await redis_service.connect()
+            logger.info("Redis connected successfully")
+        except Exception as e:
+            logger.error(f"Redis connection failed: {e}")
+            if settings.require_redis:
+                raise RuntimeError("Redis connection is required for streaming.")
+            else:
+                logger.warning("Redis connection failed - continuing without streaming features")
+    else:
+        logger.info("Redis disabled by configuration (enable_redis=False)")
 
     yield
 
-    # Shutdown
-    await redis_service.disconnect()
-    logger.info("Redis disconnected")
+    # Shutdown Redis if it was enabled
+    if settings.enable_redis:
+        await redis_service.disconnect()
+        logger.info("Redis disconnected")
 
     logger.info("Shutting down application")
 
@@ -156,13 +161,15 @@ def create_application() -> FastAPI:
     @app.get("/health", tags=["System"])
     async def health_check() -> dict[str, Any]:
         """Health check endpoint."""
-        redis_healthy = await redis_service.health_check()
+        redis_healthy = True  # Default to healthy when disabled
+        if settings.enable_redis:
+            redis_healthy = await redis_service.health_check()
 
         return {
             "status": "healthy" if redis_healthy else "degraded",
             "version": settings.version,
             "orchestration": "kubernetes",
-            "redis": "healthy" if redis_healthy else "unhealthy",
+            "redis": "healthy" if redis_healthy else "disabled",
         }
 
     return app

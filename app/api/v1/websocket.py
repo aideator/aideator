@@ -47,10 +47,10 @@ def format_stream_message(message: dict[str, Any]) -> dict[str, Any]:
     return {"type": websocket_type, "data": data}
 
 
-@router.websocket("/ws/runs/{run_id}")
+@router.websocket("/ws/tasks/{task_id}")
 async def websocket_stream_run(
     websocket: WebSocket,
-    run_id: str,
+    task_id: int,
     db: AsyncSession = Depends(get_session),
 ):
     """
@@ -60,13 +60,13 @@ async def websocket_stream_run(
     Supports bidirectional communication for control commands.
     """
     await websocket.accept()
-    logger.info(f"WebSocket connected for run {run_id}")
+    logger.info(f"WebSocket connected for task {task_id}")
 
     # Get user from WebSocket (optional for now)
     current_user = await get_current_user_from_websocket(websocket, db)
 
     # Verify run exists and user has access
-    query = select(Run).where(Run.id == run_id)
+    query = select(Run).where(Run.task_id == task_id)
     if current_user:
         query = query.where(Run.user_id == current_user.id)
 
@@ -83,7 +83,7 @@ async def websocket_stream_run(
     await websocket.send_json(
         {
             "type": "connected",
-            "data": {"run_id": run_id, "timestamp": "2024-01-01T00:00:00Z"},
+            "data": {"task_id": task_id, "run_id": run.run_id, "timestamp": "2024-01-01T00:00:00Z"},
         }
     )
 
@@ -104,7 +104,7 @@ async def websocket_stream_run(
         async def stream_messages():
             """Stream messages from Redis Streams to WebSocket."""
             try:
-                async for message in redis_service.read_run_streams(run_id, last_ids):
+                async for message in redis_service.read_run_streams(run.run_id, last_ids):
                     # Update last_ids
                     stream_type = message["type"]
                     last_ids[stream_type] = message["message_id"]
@@ -137,17 +137,17 @@ async def websocket_stream_run(
         while True:
             try:
                 message = await websocket.receive_json()
-                await handle_control_message(websocket, run_id, message)
+                await handle_control_message(websocket, run.run_id, message)
 
             except WebSocketDisconnect:
-                logger.info(f"WebSocket disconnected for run {run_id}")
+                logger.info(f"WebSocket disconnected for task {task_id}")
                 break
             except Exception as e:
                 logger.error(f"Error handling WebSocket message: {e}")
                 break
 
     except Exception as e:
-        logger.error(f"WebSocket error for run {run_id}: {e}")
+        logger.error(f"WebSocket error for task {task_id}: {e}")
     finally:
         # Clean up
         if stream_task:
@@ -157,7 +157,7 @@ async def websocket_stream_run(
             except asyncio.CancelledError:
                 pass
 
-        logger.info(f"WebSocket connection closed for run {run_id}")
+        logger.info(f"WebSocket connection closed for task {task_id}")
 
 
 async def handle_control_message(
@@ -221,10 +221,10 @@ async def handle_control_message(
         )
 
 
-@router.websocket("/ws/runs/{run_id}/debug")
+@router.websocket("/ws/tasks/{task_id}/debug")
 async def websocket_debug_stream(
     websocket: WebSocket,
-    run_id: str,
+    task_id: int,
     variation_id: int = 0,
     db: AsyncSession = Depends(get_session),
 ):
@@ -232,13 +232,13 @@ async def websocket_debug_stream(
     WebSocket endpoint for debugging - streams only stdout logs.
     """
     await websocket.accept()
-    logger.info(f"Debug WebSocket connected for run {run_id}, variation {variation_id}")
+    logger.info(f"Debug WebSocket connected for task {task_id}, variation {variation_id}")
 
     # Get user from WebSocket (optional for now)
     current_user = await get_current_user_from_websocket(websocket, db)
 
     # Verify run exists and user has access
-    query = select(Run).where(Run.id == run_id)
+    query = select(Run).where(Run.task_id == task_id)
     if current_user:
         query = query.where(Run.user_id == current_user.id)
 
@@ -260,7 +260,7 @@ async def websocket_debug_stream(
 
     try:
         # Stream only stdout logs for this variation
-        async for message in redis_service.read_run_streams(run_id, {"stdout": "0-0"}):
+        async for message in redis_service.read_run_streams(run.run_id, {"stdout": "0-0"}):
             if message["type"] == "stdout":
                 # Filter by variation_id if specified
                 if message["data"].get("variation_id") == str(variation_id):
@@ -273,8 +273,8 @@ async def websocket_debug_stream(
                     )
 
     except WebSocketDisconnect:
-        logger.info(f"Debug WebSocket disconnected for run {run_id}")
+        logger.info(f"Debug WebSocket disconnected for task {task_id}")
     except Exception as e:
-        logger.error(f"Debug WebSocket error for run {run_id}: {e}")
+        logger.error(f"Debug WebSocket error for task {task_id}: {e}")
     finally:
-        logger.info(f"Debug WebSocket connection closed for run {run_id}")
+        logger.info(f"Debug WebSocket connection closed for task {task_id}")

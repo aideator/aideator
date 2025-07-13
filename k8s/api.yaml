@@ -64,7 +64,7 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         - name: AGENT_IMAGE
-          value: "aideator-agent:dev"
+          value: "aideator-agent:latest"
 ---
 apiVersion: v1
 kind: Service

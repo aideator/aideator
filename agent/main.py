@@ -24,7 +24,20 @@ import git
 from litellm import acompletion
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from agent.services.database_service import DatabaseService
+try:
+    # Add the parent directory to sys.path to find the agent package
+    import sys
+    from pathlib import Path
+    agent_dir = Path(__file__).parent.parent
+    if str(agent_dir) not in sys.path:
+        sys.path.insert(0, str(agent_dir))
+    
+    from agent.services.database_service import DatabaseService
+    DATABASE_SERVICE_AVAILABLE = True
+except ImportError as e:
+    print(f"Failed to import DatabaseService: {e}")
+    DATABASE_SERVICE_AVAILABLE = False
+    DatabaseService = None
 
 # Constants
 MIN_API_KEY_LENGTH = 10
@@ -124,13 +137,22 @@ class AIdeatorAgent:
     async def _init_database(self):
         """Initialize database connection in async context."""
         try:
-            self.db_service = DatabaseService(self.run_id, int(self.variation_id))
-            db_connected = await self.db_service.connect()
+            self.db_service = DatabaseService()
+            db_connected = await self.db_service.health_check()
             if db_connected:
                 self.log(f"[DB-CONNECT] Connected to database for run {self.run_id}", "INFO")
-                # Test database write - updated integration
-                await self.db_service.publish_log("Database connection test - INTEGRATION WORKING", "INFO")
-                self.log(f"[DB-CONNECT] Test database write successful", "DEBUG")
+                # Test database write - write a simple status
+                run = await self.db_service.get_run_by_run_id(self.run_id)
+                if run:
+                    await self.db_service.write_agent_output(
+                        task_id=run.task_id,
+                        variation_id=int(self.variation_id),
+                        content="Database connection test - INTEGRATION WORKING",
+                        output_type="status"
+                    )
+                    self.log(f"[DB-CONNECT] Test database write successful", "DEBUG")
+                else:
+                    self.log(f"[DB-CONNECT] No run found for run_id {self.run_id}", "WARNING")
             else:
                 self.log("⚠️ Database unavailable, using stdout fallback", "WARNING")
             return db_connected
@@ -392,20 +414,8 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             f"{message} | {json.dumps(kwargs) if kwargs else ''}",
         )
         
-        # Publish to database (async operation, fire and forget)
-        if hasattr(self, 'db_service') and self.db_service:
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # Schedule as a task if loop is running
-                    loop.create_task(self.db_service.publish_log(message, level, **kwargs))
-                else:
-                    # If no loop is running, this is likely during initialization
-                    pass
-            except RuntimeError:
-                # No event loop available, skip database logging
-                pass
+        # Database logging disabled for now - using direct writes instead
+        # (DatabaseService doesn't have publish_log method)
 
     def log_progress(self, message: str, detail: str = ""):
         """Log progress updates for user visibility."""
@@ -551,14 +561,31 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
         # Initialize database connection
         await self._init_database()
         
-        # Log a distinctive hello message for testing container execution
-        if self.db_service and self.db_service._connected:
-            hello_message = f"👋 Hello from container! I'm variation {self.variation_id} of run {self.run_id}. Container is running and database connection is working!"
-            await self.db_service.publish_log(hello_message, "INFO", 
-                                              container_id=self.variation_id,
-                                              run_id=self.run_id,
-                                              message_type="container_hello")
-            self.log(hello_message, "INFO")
+        # PROOF: Write to database from main.py agent code
+        if self.db_service:
+            hello_message = f"👋 MAIN.PY PROOF: Hello from main.py agent code! I'm variation {self.variation_id} of run {self.run_id}. Database writes from main.py working!"
+            run = await self.db_service.get_run_by_run_id(self.run_id)
+            if run:
+                # Write multiple types of outputs to prove main.py can write to database
+                await self.db_service.write_agent_output(
+                    task_id=run.task_id,
+                    variation_id=int(self.variation_id),
+                    content=hello_message,
+                    output_type="status"
+                )
+                await self.db_service.write_agent_output(
+                    task_id=run.task_id,
+                    variation_id=int(self.variation_id),
+                    content="MAIN.PY PROOF: This stdout message was written by the actual agent main.py code",
+                    output_type="stdout"
+                )
+                await self.db_service.write_log(
+                    task_id=run.task_id,
+                    variation_id=int(self.variation_id),
+                    log_message=f"MAIN.PY PROOF: Agent main.py successfully wrote to database for run_id={self.run_id}",
+                    log_level="INFO"
+                )
+                self.log("🎉 MAIN.PY PROOF: Successfully wrote to database from main.py agent code!", "INFO")
 
         # Log available API keys for debugging
         await self.log_async(
@@ -1289,6 +1316,42 @@ If the problem persists, contact support with the error details above.
 
 async def main():
     """Main entry point."""
+    
+    # Test database connection early
+    if DATABASE_SERVICE_AVAILABLE:
+        try:
+            db_service = DatabaseService()
+            if await db_service.health_check():
+                print("✅ Database connection successful")
+                
+                # Try to write a startup message if we have environment variables
+                run_id = os.getenv("RUN_ID", "unknown")
+                variation_id = int(os.getenv("VARIATION_ID", "0"))
+                
+                # Get task_id from run_id
+                run = await db_service.get_run_by_run_id(run_id)
+                if run:
+                    task_id = run.task_id
+                    await db_service.write_log(
+                        task_id=task_id,
+                        variation_id=variation_id,
+                        log_message=f"Agent starting up for run_id={run_id}, task_id={task_id}",
+                        log_level="INFO"
+                    )
+                    print(f"✅ Wrote startup message to database for task_id={task_id}")
+                else:
+                    print(f"⚠️ Could not find run with run_id={run_id}")
+                    
+            else:
+                print("❌ Database health check failed")
+            await db_service.close()
+        except Exception as e:
+            print(f"❌ Database test failed: {e}")
+            # Write to stdout so orchestrator can see
+            print(f"DATABASE_ERROR: {e}")
+    else:
+        print("❌ DatabaseService not available due to import error")
+    
     agent = AIdeatorAgent()
     try:
         # Run the agent
@@ -1328,3 +1391,4 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(main())
 # Updated Sat Jul 12 14:18:54 CDT 2025
+# Force rebuild

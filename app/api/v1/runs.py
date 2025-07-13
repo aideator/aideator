@@ -49,173 +49,55 @@ async def create_run(
     Create a new agent run that will spawn N containerized LLM agents.
 
     The run is processed asynchronously in the background using Kubernetes Jobs.
-    Connect to the returned stream_url to receive real-time agent outputs.
     """
-    # Generate run ID (use hyphens for Kubernetes compatibility)
+    # 1.  Generate legacy string id (used in job names & Redis streams)
     run_id = f"run-{uuid.uuid4().hex}"
+    
+    # 1.5 Generate session_id and turn_id if not provided
+    session_id = request.session_id or str(uuid.uuid4())
+    turn_id = request.turn_id or str(uuid.uuid4())
 
-    # Validate that requested models have available API keys
-    available_keys = {
-        "openai": bool(settings.openai_api_key and settings.openai_api_key.strip()),
-        "anthropic": bool(
-            settings.anthropic_api_key and settings.anthropic_api_key.strip()
-        ),
-        "gemini": bool(settings.gemini_api_key and settings.gemini_api_key.strip()),
-    }
-
-    unavailable_models = []
-    for variant in request.model_variants:
-        is_valid, error_msg = model_catalog.validate_model_access(
-            variant.model_definition_id, available_keys
-        )
-        if not is_valid:
-            unavailable_models.append(
-                {"model": variant.model_definition_id, "error": error_msg}
-            )
-
-    if unavailable_models:
-        # Get available alternatives
-        available_models = model_catalog.get_available_models_for_keys(available_keys)
-        available_model_names = [model.model_name for model in available_models[:5]]
-
-        error_detail = {
-            "message": "Some requested models are not available due to missing API keys",
-            "unavailable_models": unavailable_models,
-            "available_models": available_model_names,
-            "suggestion": f"Try using one of these available models: {', '.join(available_model_names)}"
-            if available_model_names
-            else "No models are currently available. Please configure API keys.",
-        }
-
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=error_detail
-        )
-
-    # Handle session and turn creation
-    session_id = request.session_id
-    turn_id = request.turn_id
-
-    if not session_id:
-        # Create a new session if none provided
-        session_id = str(uuid.uuid4())
-        session = Session(
-            id=session_id,
-            user_id=current_user.id,
-            title=f"Session {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
-            description="Multi-model comparison session",
-            models_used=[
-                variant.model_definition_id for variant in request.model_variants
-            ],
-        )
-        db.add(session)
-        logger.info(f"Created new session: {session_id}")
-    else:
-        # Verify session exists and belongs to user
-        session_query = (
-            select(Session)
-            .where(Session.id == session_id)
-            .where(Session.user_id == current_user.id)
-        )
-        session_result = await db.execute(session_query)
-        session_temp = session_result.scalar_one_or_none()
-        if session_temp is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found or not accessible",
-            )
-        session = session_temp
-
-        # Session is now guaranteed to exist
-
-    if not turn_id:
-        # Create a new turn if none provided
-        turn_id = str(uuid.uuid4())
-
-        # Get next turn number
-        turn_count_query = (
-            select(func.count()).select_from(Turn).where(Turn.session_id == session_id)
-        )
-        turn_count_result = await db.execute(turn_count_query)
-        turn_count = turn_count_result.scalar()
-        turn_number = (turn_count or 0) + 1
-
-        turn = Turn(
-            id=turn_id,
-            session_id=session_id,
-            user_id=current_user.id,
-            turn_number=turn_number,
-            prompt=request.prompt,
-            models_requested=[
-                variant.model_definition_id for variant in request.model_variants
-            ],
-            status="pending",
-        )
-        db.add(turn)
-        logger.info(f"Created new turn: {turn_id} (turn #{turn_number})")
-    else:
-        # Verify turn exists and belongs to the session
-        turn_query = (
-            select(Turn).where(Turn.id == turn_id).where(Turn.session_id == session_id)
-        )
-        turn_result = await db.execute(turn_query)
-        turn_temp = turn_result.scalar_one_or_none()
-
-        if turn_temp is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Turn not found or not accessible",
-            )
-        turn = turn_temp
-
-    # Create run record
+    # 2.  Insert Run row – we *do not* provide task_id (auto-increment)
     run = Run(
-        id=run_id,
+        run_id=run_id,
         github_url=str(request.github_url),
         prompt=request.prompt,
-        variations=len(request.model_variants),  # Number of model variants
+        variations=len(request.model_variants),
         agent_config={
-            "model_variants": [
-                variant.model_dump() for variant in request.model_variants
-            ],
+            "model_variants": [v.model_dump() for v in request.model_variants],
             "use_claude_code": request.use_claude_code,
             "agent_mode": request.agent_mode,
-            "session_id": session_id,
-            "turn_id": turn_id,
         },
         user_id=current_user.id,
         status=RunStatus.PENDING,
     )
-
     db.add(run)
     await db.commit()
+    await db.refresh(run)  # populate task_id from DB
 
-    logger.info(
-        "run_created",
-        run_id=run_id,
-        user_id=current_user.id,
-        variations=len(request.model_variants),
-    )
-
-    # Schedule background orchestration
+    # 3.  Kick off background orchestration
     background_tasks.add_task(
         orchestrator.execute_variations,
-        run_id=run_id,
+        task_id=run.task_id,
+        run_id=run.run_id,
         repo_url=str(request.github_url),
         prompt=request.prompt,
         variations=len(request.model_variants),
-        agent_config=None,  # agent_config is stored in the run record
+        agent_config=None,  # already stored in DB
         agent_mode=request.agent_mode,
         db_session=db,
     )
 
-    stream_url = f"ws://{settings.host}:{settings.port}/ws/runs/{run_id}"
+    stream_url = f"ws://{settings.host}:{settings.port}/ws/runs/{run.run_id}"
+
     return CreateRunResponse(
-        run_id=run_id,
+        task_id=run.task_id,
+        run_id=run.run_id,
         websocket_url=stream_url,
         stream_url=stream_url,
-        polling_url=f"{settings.api_v1_prefix}/runs/{run_id}/outputs",
+        polling_url=f"{settings.api_v1_prefix}/runs/{run.run_id}/outputs",
         status="accepted",
-        estimated_duration_seconds=len(request.model_variants) * 40,  # Rough estimate
+        estimated_duration_seconds=len(request.model_variants) * 40,
         session_id=session_id,
         turn_id=turn_id,
     )
@@ -271,17 +153,17 @@ async def list_runs(
 
 
 @router.get(
-    "/{run_id}",
+    "/{task_id}",
     response_model=RunDetails,
     summary="Get run details",
 )
 async def get_run(
-    run_id: str,
+    task_id: int,
     current_user: CurrentUserAPIKey,
     db: AsyncSession = Depends(get_session),
 ) -> Run:
     """Get detailed information about a specific run."""
-    query = select(Run).where(Run.id == run_id).where(Run.user_id == current_user.id)
+    query = select(Run).where(Run.task_id == task_id).where(Run.user_id == current_user.id)
 
     result = await db.execute(query)
     run = result.scalar_one_or_none()
@@ -296,18 +178,18 @@ async def get_run(
 
 
 @router.post(
-    "/{run_id}/select",
+    "/{task_id}/select",
     response_model=RunDetails,
     summary="Select winning variation",
 )
 async def select_winner(
-    run_id: str,
+    task_id: int,
     request: SelectWinnerRequest,
     current_user: CurrentUserAPIKey,
     db: AsyncSession = Depends(get_session),
 ) -> Run:
     """Select the winning variation for a completed run."""
-    query = select(Run).where(Run.id == run_id).where(Run.user_id == current_user.id)
+    query = select(Run).where(Run.task_id == task_id).where(Run.user_id == current_user.id)
 
     result = await db.execute(query)
     run = result.scalar_one_or_none()
@@ -337,7 +219,7 @@ async def select_winner(
 
     logger.info(
         "winner_selected",
-        run_id=run_id,
+        run_id=run.run_id,
         variation_id=request.winning_variation_id,
     )
 
@@ -345,17 +227,17 @@ async def select_winner(
 
 
 @router.delete(
-    "/{run_id}",
+    "/{task_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Cancel a run",
 )
 async def cancel_run(
-    run_id: str,
+    task_id: int,
     current_user: CurrentUserAPIKey,
     db: AsyncSession = Depends(get_session),
 ) -> None:
     """Cancel a pending or running run."""
-    query = select(Run).where(Run.id == run_id).where(Run.user_id == current_user.id)
+    query = select(Run).where(Run.task_id == task_id).where(Run.user_id == current_user.id)
 
     result = await db.execute(query)
     run = result.scalar_one_or_none()
@@ -376,7 +258,7 @@ async def cancel_run(
     run.status = RunStatus.CANCELLED
     await db.commit()
 
-    logger.info("run_cancelled", run_id=run_id)
+    logger.info("run_cancelled", run_id=run.run_id)
 
 
 @router.get(

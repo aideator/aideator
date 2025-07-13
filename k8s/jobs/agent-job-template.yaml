@@ -1,4 +1,5 @@
-# Agent job template for dynamic instantiation
+# BROKEN TEMPLATE - API should NOT read this file anymore
+DELIBERATELY_BROKEN_YAML_SHOULD_CAUSE_ERROR_IF_USED
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -26,8 +27,8 @@ spec:
         fsGroup: 1000
       containers:
         - name: agent
-          image: "ctlptl-registry:5000/aideator-agent:dev"
-          imagePullPolicy: Always
+          image: "aideator-agent:manual-test"
+          imagePullPolicy: Never
           env:
             - name: OPENAI_API_KEY
               valueFrom:
@@ -109,12 +110,7 @@ spec:
           volumeMounts:
             - name: workspace
               mountPath: /workspace
-            - name: data
-              mountPath: /app/data
       volumes:
         - name: workspace
           emptyDir:
             sizeLimit: 1Gi
-        - name: data
-          persistentVolumeClaim:
-            claimName: aideator-data

@@ -8,6 +8,46 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Input } from "@/components/ui/input"
 import { useTaskDetail } from "@/hooks/use-task-detail"
 import { notFound } from "next/navigation"
+import DiffViewer from "@/components/diff-viewer"
+
+// Convert task data to XML format for DiffViewer
+function convertTaskDataToXml(versionData: any): string {
+  if (!versionData?.files || versionData.files.length === 0) {
+    return `<diff_analysis>
+  <file>
+    <name>No files to display</name>
+    <diff>No changes detected in this task</diff>
+    <changes>No modifications were made during task execution</changes>
+  </file>
+</diff_analysis>`
+  }
+
+  const fileElements = versionData.files.map((file: any) => {
+    // Convert diff array back to standard diff format
+    const diffText = file.diff.map((line: any) => {
+      if (line.type === 'add') {
+        return `+${line.content}`
+      } else if (line.type === 'del') {
+        return `-${line.content}`
+      } else {
+        return line.content
+      }
+    }).join('\n')
+
+    // Generate changes summary
+    const changesSummary = `File modified with ${file.additions} additions and ${file.deletions} deletions`
+
+    return `  <file>
+    <name>${file.name}</name>
+    <diff>${diffText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</diff>
+    <changes>${changesSummary}</changes>
+  </file>`
+  }).join('\n')
+
+  return `<diff_analysis>
+${fileElements}
+</diff_analysis>`
+}
 
 export default function TaskPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -37,8 +77,21 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
     )
   }
 
-  if (!task || !task.taskDetails) {
+  if (!task) {
     return notFound()
+  }
+
+  // Handle case where task exists but has no agent outputs yet
+  if (!task.taskDetails || !task.taskDetails.versions || task.taskDetails.versions.length === 0) {
+    return (
+      <div className="flex flex-1 items-center justify-center bg-gray-950 text-gray-200">
+        <div className="text-center">
+          <div className="animate-pulse rounded-full h-8 w-8 border-b-2 border-blue-400 mx-auto mb-4"></div>
+          <p className="text-lg mb-2">Task is processing...</p>
+          <p className="text-gray-400 text-sm">Waiting for agent outputs to become available</p>
+        </div>
+      </div>
+    )
   }
 
   const versionData = task.taskDetails.versions.find((v) => v.id === activeVersion)
@@ -133,41 +186,7 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
               </TabsTrigger>
             </TabsList>
             <TabsContent value="diff" className="flex-1 overflow-y-auto p-4">
-              <Accordion type="single" collapsible className="w-full" defaultValue="item-0">
-                {versionData.files.map((file, index) => (
-                  <AccordionItem value={`item-${index}`} key={index} className="border-gray-800">
-                    <AccordionTrigger className="bg-gray-900 p-2 rounded-md hover:no-underline">
-                      <div className="flex justify-between items-center w-full">
-                        <span>{file.name}</span>
-                        <div className="font-mono text-xs">
-                          <span className="text-green-400">+{file.additions}</span>{" "}
-                          <span className="text-red-400">-{file.deletions}</span>
-                        </div>
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent className="p-0">
-                      <pre className="text-sm bg-black rounded-b-md overflow-x-auto">
-                        <code>
-                          {file.diff.map((line, i) => (
-                            <div
-                              key={i}
-                              className={`relative pl-12 pr-4 py-0.5 ${line.type === "add" ? "diff-add" : line.type === "del" ? "diff-del" : ""}`}
-                            >
-                              <span className="absolute left-4 select-none text-gray-500">
-                                {line.type !== "add" ? line.oldLine : ""}
-                              </span>
-                              <span className="absolute left-8 select-none text-gray-500">
-                                {line.type !== "del" ? line.newLine : ""}
-                              </span>
-                              <span>{line.content}</span>
-                            </div>
-                          ))}
-                        </code>
-                      </pre>
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
+              <DiffViewer xmlData={convertTaskDataToXml(versionData)} />
             </TabsContent>
             <TabsContent value="logs" className="flex-1 overflow-y-auto p-4 font-mono text-sm">
               <pre>
