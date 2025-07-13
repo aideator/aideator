@@ -245,9 +245,9 @@ class TestSessionsEndpoints:
         mock_result.scalar_one_or_none.return_value = mock_session
         mock_db.execute.return_value = mock_result
 
-        from app.api.v1.sessions import get_session
+        from app.api.v1.sessions import get_session_by_id
 
-        result = await get_session(
+        result = await get_session_by_id(
             session_id="test-session-123", current_user=mock_user, db=mock_db
         )
 
@@ -261,10 +261,10 @@ class TestSessionsEndpoints:
         mock_result.scalar_one_or_none.return_value = None
         mock_db.execute.return_value = mock_result
 
-        from app.api.v1.sessions import get_session
+        from app.api.v1.sessions import get_session_by_id
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_session(
+            await get_session_by_id(
                 session_id="non-existent", current_user=mock_user, db=mock_db
             )
 

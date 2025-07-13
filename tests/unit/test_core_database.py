@@ -17,6 +17,14 @@ class TestDatabaseModule:
         mock_conn = AsyncMock()
         mock_conn.run_sync = AsyncMock()
 
+        # Mock the execute result
+        mock_result = Mock()  # Not AsyncMock since fetchall() is sync
+        mock_result.fetchall.return_value = [
+            ("model_sync_logs",),
+            ("model_definitions",),
+        ]
+        mock_conn.execute.return_value = mock_result
+
         with patch("app.core.database.engine") as mock_engine:
             mock_engine.begin.return_value.__aenter__.return_value = mock_conn
 
@@ -91,8 +99,10 @@ class TestDatabaseModule:
         with patch("app.core.database.async_session_maker", mock_session_maker):
             from app.core.database import get_session
 
-            # The generator must be fully consumed for commit to be called
-            sessions = [session async for session in get_session()]
+            # Use the async generator properly
+            sessions = []
+            async for session in get_session():
+                sessions.append(session)
 
             assert len(sessions) == 1
             assert sessions[0] == mock_session
@@ -134,8 +144,10 @@ class TestDatabaseModule:
         with patch("app.core.database.async_session_maker", mock_session_maker):
             from app.core.database import get_async_session
 
-            # The generator must be fully consumed for session handling to complete
-            sessions = [session async for session in get_async_session()]
+            # Use the async generator properly
+            sessions = []
+            async for session in get_async_session():
+                sessions.append(session)
 
             assert len(sessions) == 1
             assert sessions[0] == mock_session

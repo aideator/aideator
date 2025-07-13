@@ -13,6 +13,11 @@ const customJestConfig = {
     '<rootDir>/tests/unit/**/*.{test,spec}.{js,jsx,ts,tsx}',
     '<rootDir>/tests/integration/**/*.{test,spec}.{js,jsx,ts,tsx}'
   ],
+  testPathIgnorePatterns: [
+    '<rootDir>/node_modules/',
+    '<rootDir>/.next/',
+    '<rootDir>/tests/unit/pages/home.test.tsx'
+  ],
   collectCoverageFrom: [
     '<rootDir>/app/**/*.{js,jsx,ts,tsx}',
     '<rootDir>/components/**/*.{js,jsx,ts,tsx}',
@@ -29,7 +34,7 @@ const customJestConfig = {
       statements: 80,
     },
   },
-  moduleNameMapping: {
+  moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
   },
 }

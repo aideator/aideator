@@ -32,8 +32,10 @@ export default function AuthCallbackPage() {
       if (encodedData) {
         setIsProcessing(true)
         try {
-          // Decode the base64 data
-          const decodedData = atob(encodedData)
+          // Decode the URL-safe base64 data
+          // Convert URL-safe base64 to regular base64 first
+          const regularBase64 = encodedData.replace(/-/g, '+').replace(/_/g, '/')
+          const decodedData = atob(regularBase64)
           const authData = JSON.parse(decodedData)
           
           if (authData.token && authData.user) {
@@ -46,7 +48,7 @@ export default function AuthCallbackPage() {
           } else {
             throw new Error("Invalid auth data structure")
           }
-        } catch (err) {
+        } catch {
           setError("Failed to process authentication data")
           setTimeout(() => {
             router.push("/signin?error=auth_failed")
@@ -57,7 +59,6 @@ export default function AuthCallbackPage() {
 
       // Legacy flow - shouldn't happen with current setup
       const code = searchParams.get("code")
-      const state = searchParams.get("state")
 
       if (!code) {
         setError("No authorization code received")

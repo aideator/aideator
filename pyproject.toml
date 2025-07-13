@@ -37,6 +37,7 @@ dependencies = [
     "ty>=0.0.1a14",
     "redis>=6.2.0",
     "greenlet>=3.2.3",
+    "playwright>=1.53.0",
 ]
 
 [project.scripts]

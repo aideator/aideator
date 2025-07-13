@@ -29,6 +29,7 @@ class MockSettings:
     port = 8000
     reload = False
     log_level = "info"
+    github_test_username = "test-user"
 
 
 @pytest.fixture
@@ -47,16 +48,21 @@ class TestLifespan:
     """Test lifespan context manager."""
 
     @pytest.mark.asyncio
+    @patch("app.main.redis_service")
     @patch("app.main.logger")
     @patch("app.main.model_sync_task")
     @patch("app.main.create_db_and_tables")
     @patch("app.main.settings", MockSettings())
     async def test_lifespan_startup_and_shutdown(
-        self, mock_create_db, mock_sync_task, mock_logger
+        self, mock_create_db, mock_sync_task, mock_logger, mock_redis_service
     ):
         """Test lifespan startup and shutdown."""
         # Mock the database creation
         mock_create_db.return_value = None
+
+        # Mock Redis service
+        mock_redis_service.connect = AsyncMock()
+        mock_redis_service.disconnect = AsyncMock()
 
         # Mock the model sync task
         mock_sync_task.start = AsyncMock()
@@ -71,10 +77,14 @@ class TestLifespan:
             mock_logger.info.assert_any_call("Starting Test Project v1.0.0")
             mock_create_db.assert_called_once()
             mock_logger.info.assert_any_call("Database initialized")
+            mock_redis_service.connect.assert_called_once()
+            mock_logger.info.assert_any_call("Redis connected successfully")
             mock_sync_task.start.assert_called_once()
             mock_logger.info.assert_any_call("Model sync task started")
 
         # Verify shutdown log and actions
+        mock_redis_service.disconnect.assert_called_once()
+        mock_logger.info.assert_any_call("Redis disconnected")
         mock_logger.info.assert_any_call("Shutting down application")
         mock_sync_task.stop.assert_called_once()
         mock_logger.info.assert_any_call("Model sync task stopped")
@@ -121,32 +131,32 @@ class TestCreateApplication:
         assert "/" in routes
         assert "/health" in routes
 
-    @patch("app.main.settings")
     @patch("app.main.custom_openapi")
-    def test_create_application_production_mode(
-        self, mock_custom_openapi, mock_settings
-    ):
+    def test_create_application_production_mode(self, mock_custom_openapi):
         """Test application creation in production mode (debug=False)."""
-        # Configure mock settings for production
-        mock_settings.project_name = "Prod Project"
-        mock_settings.version = "2.0.0"
-        mock_settings.api_v1_prefix = "/api/v1"
-        mock_settings.debug = False
-        mock_settings.allowed_origins = ["https://app.example.com"]
-        mock_settings.allowed_hosts = ["api.example.com"]
-        mock_settings.rate_limit_enabled = True
-        mock_settings.enable_metrics = False
-
         # Mock custom openapi
         mock_custom_openapi.return_value = lambda: {"openapi": "3.0.0"}
 
-        # Create app
-        app = create_application()
+        # Create production-like settings
+        prod_settings = MockSettings()
+        prod_settings.debug = False
+        prod_settings.project_name = "Prod Project"
+        prod_settings.version = "2.0.0"
+        prod_settings.api_v1_prefix = "/api/v1"
+        prod_settings.allowed_origins = ["https://app.example.com"]
+        prod_settings.allowed_hosts = ["api.example.com"]
+        prod_settings.rate_limit_enabled = True
+        prod_settings.enable_metrics = False
 
-        # Verify production configuration
-        assert app.docs_url is None  # Should be None in production
-        assert app.redoc_url is None  # Should be None in production
-        assert app.debug is False
+        # Patch settings with production config
+        with patch("app.main.settings", prod_settings):
+            # Create app
+            app = create_application()
+
+            # Verify production configuration
+            assert app.docs_url is None  # Should be None in production
+            assert app.redoc_url is None  # Should be None in production
+            assert app.debug is False
 
     @patch("app.main.settings")
     def test_create_application_with_trusted_hosts(self, mock_settings):
@@ -222,8 +232,12 @@ class TestEndpoints:
 
     @patch("app.main.settings", MockSettings())
     @patch("app.main.create_db_and_tables", AsyncMock())
-    def test_health_endpoint(self):
+    @patch("app.main.redis_service")
+    def test_health_endpoint(self, mock_redis_service):
         """Test health check endpoint."""
+        # Mock Redis service to be healthy
+        mock_redis_service.health_check = AsyncMock(return_value=True)
+
         from app.main import app
 
         client = TestClient(app)

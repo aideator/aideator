@@ -31,6 +31,7 @@ class ModelSyncService:
             ModelSyncLog with details of the sync operation
         """
         sync_log = ModelSyncLog(status="in_progress")
+
         session.add(sync_log)
         if isinstance(session, AsyncSession):
             await session.commit()
@@ -89,6 +90,24 @@ class ModelSyncService:
             headers["Authorization"] = f"Bearer {self.proxy_api_key}"
 
         async with httpx.AsyncClient() as client:
+            # First check if LiteLLM is ready
+            try:
+                health_response = await client.get(
+                    f"{self.proxy_base_url}/health/readiness",
+                    headers=headers,
+                    timeout=10.0,
+                )
+                if health_response.status_code != 200:
+                    raise httpx.HTTPStatusError(
+                        f"LiteLLM not ready: {health_response.status_code}",
+                        request=health_response.request,
+                        response=health_response,
+                    )
+            except (httpx.TimeoutException, httpx.ConnectError) as e:
+                raise httpx.ConnectError(
+                    f"Cannot connect to LiteLLM proxy at {self.proxy_base_url}: {e}"
+                )
+
             # First get basic model list
             models_response = await client.get(
                 f"{self.proxy_base_url}/v1/models", headers=headers, timeout=30.0

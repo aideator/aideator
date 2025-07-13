@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime  # noqa: TC003
+from typing import Any
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -229,6 +230,33 @@ class CreateAPIKeyResponse(BaseModel):
                     "created_at": "2024-01-01T00:00:00Z",
                     "scopes": ["runs:create", "runs:read"],
                 },
+            }
+        }
+    }
+
+
+class DevLoginResponse(BaseModel):
+    """Development test login response."""
+
+    user: dict[str, Any] = Field(..., description="User information")
+    access_token: str = Field(..., description="JWT access token")
+    token_type: str = Field(..., description="Token type")
+    api_key: str = Field(..., description="API key for development")
+    message: str = Field(..., description="Response message")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "user": {
+                    "id": "user_test_abc123",
+                    "email": "test@aideator.local",
+                    "full_name": "Test User",
+                    "company": "AIdeator Development",
+                },
+                "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                "token_type": "bearer",
+                "api_key": "aid_sk_test_1234567890abcdef...",
+                "message": "Development test user login successful",
             }
         }
     }

@@ -4,7 +4,8 @@ import { BrainCircuit, ArrowLeft, Archive, Share, GitPullRequest, FileText } fro
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { sessions } from "@/lib/data"
+import { apiClient } from "@/lib/api"
+import { Session } from "@/lib/types"
 import { useState, useEffect } from "react"
 import { AccountDropdown } from "@/components/account-dropdown"
 import { useAuth } from "@/lib/auth-context"
@@ -12,25 +13,31 @@ import { useAuth } from "@/lib/auth-context"
 export function PageHeader() {
   const pathname = usePathname()
   const [isPrCreated, setIsPrCreated] = useState(false)
-  const { user, loading } = useAuth()
-  const [mounted, setMounted] = useState(false)
-  
-  // Prevent hydration mismatch by only rendering auth-dependent content after mount
-  useEffect(() => {
-    setMounted(true)
-  }, [])
+  const [session, setSession] = useState<Session | null>(null)
   
   // Check if we're on a session page
   const sessionMatch = pathname.match(/^\/session\/([^/]+)$/)
   const sessionId = sessionMatch?.[1]
-  const session = sessionId ? sessions.find((s) => s.id === sessionId) : null
   
-  // Reset PR state when navigating away from session
+  // Load session data and reset PR state
   useEffect(() => {
-    if (!sessionId) {
+    if (sessionId) {
+      loadSession(sessionId)
+    } else {
+      setSession(null)
       setIsPrCreated(false)
     }
   }, [sessionId])
+
+  const loadSession = async (id: string) => {
+    try {
+      const sessionData = await apiClient.getSession(id)
+      setSession(sessionData)
+    } catch (err) {
+      console.error('Failed to load session:', err)
+      setSession(null)
+    }
+  }
   
   if (session) {
     // Session page header
@@ -45,6 +52,17 @@ export function PageHeader() {
           <h1 className="text-lg font-medium text-gray-50">{session.title}</h1>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" asChild className="text-gray-300 hover:text-gray-50">
+            <a 
+              href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/docs`}
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center gap-2"
+            >
+              <FileText className="w-4 h-4" />
+              API Docs
+            </a>
+          </Button>
           <Button variant="outline" className="bg-gray-800 border-gray-700">
             <Archive className="w-4 h-4 mr-2" />
             Archive
@@ -57,6 +75,7 @@ export function PageHeader() {
             <GitPullRequest className="w-4 h-4 mr-2" />
             {isPrCreated ? "View PR" : "Create PR"}
           </Button>
+          <AccountDropdown />
         </div>
       </header>
     )
@@ -65,24 +84,26 @@ export function PageHeader() {
   // Default header for other pages
   return (
     <header className="border-b border-gray-800 bg-gray-950">
-      <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-3 w-fit">
-          <BrainCircuit className="w-8 h-8 text-gray-300" />
-          <span className="text-xl font-semibold text-gray-50">AIdeator</span>
-        </Link>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" asChild>
-            <a 
-              href="http://localhost:8000/docs" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 text-gray-300 hover:text-gray-50"
-            >
-              <FileText className="w-4 h-4" />
-              API Docs
-            </a>
-          </Button>
-          {mounted && !loading && user && <AccountDropdown />}
+      <div className="container mx-auto px-4 py-4">
+        <div className="flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-3 w-fit">
+            <BrainCircuit className="w-8 h-8 text-gray-300" />
+            <span className="text-xl font-semibold text-gray-50">AIdeator</span>
+          </Link>
+          <nav className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" asChild>
+              <a 
+                href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/docs`}
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-gray-300 hover:text-gray-50"
+              >
+                <FileText className="w-4 h-4" />
+                API Docs
+              </a>
+            </Button>
+            <AccountDropdown />
+          </nav>
         </div>
       </div>
     </header>

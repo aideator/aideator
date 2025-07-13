@@ -126,7 +126,7 @@ class TestRunsEndpoints:
             )
 
         assert result.run_id.startswith("run-")  # Auto-generated run ID
-        assert "/ws/runs/" in result.stream_url  # WebSocket URL for streaming
+        assert result.websocket_url.startswith("ws://")
         assert result.status == "accepted"
         # Check that background task was added (orchestrator.execute_variations is called via background_tasks)
         mock_background_tasks.add_task.assert_called_once()

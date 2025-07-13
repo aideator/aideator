@@ -1,5 +1,7 @@
+import secrets
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Any
 
 from fastapi import FastAPI
@@ -7,13 +9,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from prometheus_client import make_asgi_app
+from sqlmodel import select
 
 from app.api.v1 import api_router
 from app.core.config import get_settings
-from app.core.database import create_db_and_tables
+from app.core.database import create_db_and_tables, get_session
+from app.core.encryption import encrypt_token
 from app.core.logging import setup_logging
 from app.middleware.logging import LoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
+from app.models.provider_key import ProviderAPIKeyDB
+from app.models.user import User
 from app.services.redis_service import redis_service
 from app.tasks.model_sync_task import model_sync_task
 
@@ -22,6 +28,84 @@ from app.utils.openapi import custom_openapi
 
 settings = get_settings()
 logger = setup_logging()
+
+
+async def _init_dev_user() -> None:
+    """Initialize development user and provider keys from environment."""
+    try:
+        # Get database session
+        async for db in get_session():
+            user_id = f"user_{settings.github_test_username.replace('-', '_')}"
+
+            # Check if user already exists
+            result = await db.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
+
+            if not user:
+                # Create development user
+                user = User(
+                    id=user_id,
+                    email=f"{settings.github_test_username}@github.dev",
+                    full_name="Development User",
+                    github_id="dev_github_id_12345",
+                    github_username=settings.github_test_username,
+                    github_avatar_url=f"https://github.com/{settings.github_test_username}.png",
+                    auth_provider="github",
+                    is_active=True,
+                    is_superuser=True,
+                    created_at=datetime.utcnow(),
+                    hashed_password="dev_hashed_password",
+                    github_access_token_encrypted=encrypt_token("dev_github_token"),
+                )
+                db.add(user)
+                await db.commit()
+                await db.refresh(user)
+                logger.info(f"Created development user: {user.email}")
+            else:
+                logger.info(f"Development user exists: {user.email}")
+
+            # Setup provider keys
+            for provider, api_key_attr in [
+                ("openai", "openai_api_key"),
+                ("anthropic", "anthropic_api_key"),
+            ]:
+                api_key = getattr(settings, api_key_attr, None)
+                if not api_key or api_key.startswith("sk-placeholder"):
+                    continue
+
+                # Check if provider key already exists
+                result = await db.execute(
+                    select(ProviderAPIKeyDB).where(
+                        ProviderAPIKeyDB.user_id == user.id,
+                        ProviderAPIKeyDB.provider == provider,
+                        ProviderAPIKeyDB.is_active,
+                    )
+                )
+                if not result.scalar_one_or_none():
+                    # Create provider key
+                    provider_key = ProviderAPIKeyDB(
+                        id=f"provkey_{secrets.token_urlsafe(12)}",
+                        user_id=user.id,
+                        provider=provider,
+                        encrypted_key=encrypt_token(api_key),
+                        key_hint=f"...{api_key[-4:]}",
+                        name=f"Dev {provider.upper()} Key",
+                        description=f"Auto-configured {provider} key for development",
+                        is_active=True,
+                        is_valid=True,
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow(),
+                    )
+                    db.add(provider_key)
+                    await db.commit()
+                    logger.info(f"Created {provider} provider key")
+                else:
+                    logger.info(f"{provider} provider key exists")
+
+            break  # Exit the async generator loop
+
+    except Exception as e:
+        logger.error(f"Failed to initialize development user: {e}")
 
 
 @asynccontextmanager
@@ -50,6 +134,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         raise RuntimeError(
             "Redis connection is required for streaming. Please ensure Redis is available."
         )
+
+    # Initialize development user and provider keys
+    if settings.debug and settings.github_test_username:
+        await _init_dev_user()
+        logger.info("Development user initialized")
 
     yield
 

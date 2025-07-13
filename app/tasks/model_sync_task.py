@@ -42,7 +42,7 @@ class ModelSyncTask:
 
     async def _run_sync_loop(self) -> None:
         """Main sync loop."""
-        # Run initial sync immediately
+        # Run initial sync
         await self._sync_once()
 
         while self.is_running:

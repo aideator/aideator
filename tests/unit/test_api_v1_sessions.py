@@ -283,14 +283,14 @@ class TestSessionsAPI:
     @pytest.mark.asyncio
     async def test_get_session_success(self, mock_user, mock_db_session, mock_session):
         """Test successful session retrieval."""
-        from app.api.v1.sessions import get_session
+        from app.api.v1.sessions import get_session_by_id
 
         # Mock database query result
         mock_result = Mock()
         mock_result.scalar_one_or_none.return_value = mock_session
         mock_db_session.execute.return_value = mock_result
 
-        response = await get_session(
+        response = await get_session_by_id(
             session_id="session_abc123",
             current_user=mock_user,
             db=mock_db_session,
@@ -301,7 +301,7 @@ class TestSessionsAPI:
     @pytest.mark.asyncio
     async def test_get_session_not_found(self, mock_user, mock_db_session):
         """Test session retrieval when session not found."""
-        from app.api.v1.sessions import get_session
+        from app.api.v1.sessions import get_session_by_id
 
         # Mock database query result - session not found
         mock_result = Mock()
@@ -309,7 +309,7 @@ class TestSessionsAPI:
         mock_db_session.execute.return_value = mock_result
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_session(
+            await get_session_by_id(
                 session_id="nonexistent_session",
                 current_user=mock_user,
                 db=mock_db_session,

@@ -63,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             try {
               setUser(JSON.parse(storedUser))
               setToken(storedToken)
-            } catch (e) {
+            } catch {
               router.push("/signin")
             }
           }

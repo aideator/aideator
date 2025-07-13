@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     github_oauth_scopes: str = "read:user,user:email"  # Only basic user info for auth
     # Note: OAuth redirect URI will be dynamically constructed based on request origin
 
+    # GitHub Test Credentials (for testing OAuth)
+    github_test_username: str | None = None
+    github_test_password: str | None = None
+
     # Frontend URL
     frontend_url: str = "http://localhost:3000"
 

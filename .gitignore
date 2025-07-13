@@ -57,6 +57,7 @@ coverage.xml
 *.py,cover
 .cache
 test-results/
+frontend/coverage/
 
 # Mypy
 .mypy_cache/
@@ -128,6 +129,9 @@ server.log
 server_new.log
 cluster-config.yaml
 
+# Tilt-generated files
+.tilt-init-user.py
+
 # Redis dump
 dump.rdb
 
@@ -155,7 +159,7 @@ node_modules
 !.yarn/versions
 
 # testing
-/coverage
+coverage/
 
 # next.js
 .next/
@@ -189,3 +193,4 @@ next-env.d.ts
 
 # Documentation features (work in progress)
 _docs/features/*.md
+frontend/playwright-report/

@@ -65,10 +65,14 @@ yaml = helm(
 k8s_yaml(yaml)
 
 # Configure individual resources with images and port forwards
-k8s_resource('aideator-fastapi', port_forwards='8000:8000', labels=['backend'], new_name='api')
+# Ensure proper startup ordering: Database -> LiteLLM -> FastAPI
 k8s_resource('chart-aideator-postgresql', port_forwards='5432:5432', labels=['database'], new_name='database')
 k8s_resource('chart-redis-master', port_forwards='6379:6379', labels=['cache'], new_name='redis')
-k8s_resource('chart-aideator-litellm', port_forwards='4000:4000', labels=['ai-gateway'], new_name='litellm')
+k8s_resource('chart-aideator-litellm', port_forwards='4000:4000', labels=['ai-gateway'], new_name='litellm', resource_deps=['database'])
+k8s_resource('aideator-fastapi', port_forwards='8000:8000', labels=['backend'], new_name='api', resource_deps=['database', 'litellm'])
+
+# Development user initialization is now handled automatically 
+# by FastAPI startup events when DEBUG=true and GITHUB_TEST_USERNAME is set
 
 # Frontend development (runs locally)
 local_resource(
