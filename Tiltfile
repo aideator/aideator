@@ -38,19 +38,18 @@ docker_build(
     ],
 )
 
-# Build agent image - let Tilt handle registry configuration
-docker_build(
+# Build agent image with custom build to control tagging
+custom_build(
     'aideator-agent',
-    context='.',
-    dockerfile='Dockerfile.agent',
-    only=[
+    'docker build -t $EXPECTED_REF -f agent/Dockerfile . && ' +
+    'docker tag $EXPECTED_REF localhost:5005/aideator-agent:dev && ' +
+    'docker push localhost:5005/aideator-agent:dev',
+    deps=[
         'agent/',
         'app/models/',
         'app/core/config.py',
-        'requirements.txt',
-        'pyproject.toml',
-        'prompts/',
     ],
+    tag='dev',  # This tells Tilt to always use :dev tag
 )
 
 # Ensure cluster is ready before creating secrets
@@ -131,7 +130,7 @@ spec:
     spec:
       containers:
       - name: agent
-        image: aideator-agent
+        image: aideator-agent:dev
         command: ["echo", "Image built"]
       restartPolicy: Never
   backoffLimit: 0

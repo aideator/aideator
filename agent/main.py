@@ -1328,169 +1328,71 @@ Be thorough but concise in your response.
 
             # Call THROUGH the LiteLLM Gateway
             # The gateway will handle routing to the actual provider
-            try:
-                # Get the provider API key for this model
-                provider = self._get_model_provider(self.config["model"])
-                provider_key_env = f"{provider.upper()}_API_KEY"
-                api_key = os.getenv(provider_key_env)
-                
-                print(json.dumps({
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "level": "DEBUG",
-                    "message": f"🔧 Using provider={provider}, has_api_key={bool(api_key)}, gateway_key={self.gateway_key}"
-                }), flush=True)
-                
-                print(json.dumps({
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "level": "DEBUG",
-                    "message": "🔧 About to prepare completion kwargs"
-                }), flush=True)
-                
-                # Use LiteLLM Gateway with clientside API key injection
-                completion_kwargs = {
-                    "model": self.config["model"],
-                    "max_tokens": self.config["max_tokens"],
-                    "temperature": self.config["temperature"],
-                    "messages": [{"role": "user", "content": full_prompt}],
-                    "stream": True,
-                    "stream_options": {"include_usage": True},
-                    "api_base": self.gateway_url,  # Point to LiteLLM Gateway
-                    "api_key": self.gateway_key,   # Use Gateway master key for auth
-                }
-                
-                # Pass provider API key via extra_body (clientside auth)
-                if api_key:
-                    completion_kwargs["extra_body"] = {"api_key": api_key}
-                
-                print(json.dumps({
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "level": "DEBUG",
-                    "message": f"🔧 About to call acompletion with model={completion_kwargs['model']}"
-                }), flush=True)
-                
-                response = await acompletion(**completion_kwargs)
-                
-                print(json.dumps({
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "level": "DEBUG",
-                    "message": "🔧 acompletion call successful, starting to process stream"
-                }), flush=True)
-                
-                # Debug: Verify response object
-                print(json.dumps({
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "level": "DEBUG",
-                    "message": f"🔧 Response object type: {type(response)}"
-                }), flush=True)
-                
-            except Exception as api_error:
-                # Handle specific API errors with user-friendly messages
-                error_str = str(api_error).lower()
+            # Get the provider API key for this model
+            provider = self._get_model_provider(self.config["model"])
+            provider_key_env = f"{provider.upper()}_API_KEY"
+            api_key = os.getenv(provider_key_env)
+            
+            print(json.dumps({
+                "timestamp": datetime.utcnow().isoformat(),
+                "level": "DEBUG",
+                "message": f"🔧 Using provider={provider}, has_api_key={bool(api_key)}, gateway_key={self.gateway_key}"
+            }), flush=True)
+            
+            print(json.dumps({
+                "timestamp": datetime.utcnow().isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 About to prepare completion kwargs"
+            }), flush=True)
+            
+            # Use LiteLLM Gateway with clientside API key injection
+            completion_kwargs = {
+                "model": self.config["model"],
+                "max_tokens": self.config["max_tokens"],
+                "temperature": self.config["temperature"],
+                "messages": [{"role": "user", "content": full_prompt}],
+                "stream": True,
+                "stream_options": {"include_usage": True},
+                "api_base": self.gateway_url,  # Point to LiteLLM Gateway
+                "api_key": self.gateway_key,   # Use Gateway master key for auth
+            }
+            
+            # Pass provider API key via extra_body (clientside auth)
+            if api_key:
+                completion_kwargs["extra_body"] = {"api_key": api_key}
+            
+            print(json.dumps({
+                "timestamp": datetime.utcnow().isoformat(),
+                "level": "DEBUG",
+                "message": f"🔧 About to call acompletion with model={completion_kwargs['model']}"
+            }), flush=True)
+            
+            response = await acompletion(**completion_kwargs)
+            
+            print(json.dumps({
+                "timestamp": datetime.utcnow().isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 acompletion call successful, starting to process stream"
+            }), flush=True)
+            
+            # Debug: Verify response object
+            print(json.dumps({
+                "timestamp": datetime.utcnow().isoformat(),
+                "level": "DEBUG",
+                "message": f"🔧 Response object type: {type(response)}"
+            }), flush=True)
 
-                if (
-                    "authentication" in error_str
-                    or "api key" in error_str
-                    or "unauthorized" in error_str
-                ):
-                    provider = self._get_model_provider(self.config["model"])
-                    error_message = f"""
-🔑 **Authentication Error**
-
-The {provider.title()} API rejected the request due to authentication issues.
-
-**Possible causes:**
-- API key is invalid or expired
-- API key lacks necessary permissions
-- Model '{self.config["model"]}' requires a different tier of access
-
-**Next steps:**
-1. Verify your {provider.title()} API key is valid
-2. Check if your API key has access to model '{self.config["model"]}'
-3. Try using a different model from the same provider
-
-Original error: {api_error!s}
-"""
-                    print(error_message, flush=True)
-                    raise RuntimeError(
-                        f"Authentication failed for {provider}: {api_error}"
-                    )
-
-                if "rate limit" in error_str or "quota" in error_str:
-                    provider = self._get_model_provider(self.config["model"])
-                    error_message = f"""
-⏱️ **Rate Limit Exceeded**
-
-The {provider.title()} API rate limit has been exceeded.
-
-**What this means:**
-- Too many requests have been made to the API
-- Your account may have reached its usage quota
-
-**Next steps:**
-1. Wait a few minutes and try again
-2. Check your {provider.title()} account usage limits
-3. Consider upgrading your API plan if needed
-
-Original error: {api_error!s}
-"""
-                    print(error_message, flush=True)
-                    raise RuntimeError(
-                        f"Rate limit exceeded for {provider}: {api_error}"
-                    )
-
-                if "model" in error_str and (
-                    "not found" in error_str or "does not exist" in error_str
-                ):
-                    error_message = f"""
-🤖 **Model Not Available**
-
-The model '{self.config["model"]}' is not available or does not exist.
-
-**Possible causes:**
-- Model name is misspelled
-- Model is not available in your region
-- Model requires special access
-
-**Next steps:**
-1. Check the model name spelling
-2. Try a different model like 'gpt-4o-mini' or 'claude-3-haiku'
-3. Verify the model is available through your API provider
-
-Original error: {api_error!s}
-"""
-                    print(error_message, flush=True)
-                    raise RuntimeError(f"Model not available: {api_error}")
-
-                # Generic error
-                error_message = f"""
-⚠️ **API Request Failed**
-
-An error occurred while calling the model API.
-
-**Error details:**
-{api_error!s}
-
-**Next steps:**
-1. Check if the API service is available
-2. Verify your internet connection
-3. Try again in a few moments
-
-If the problem persists, contact support with the error details above.
-"""
-                print(error_message, flush=True)
-                raise RuntimeError(f"API request failed: {api_error}")
-
-        # CRITICAL DEBUG: This should appear if we reach here
-        print(json.dumps({
-            "timestamp": datetime.utcnow().isoformat(),
-            "level": "DEBUG",
-            "message": "🔧 REACHED AFTER EXCEPTION BLOCK - about to enter streaming loop"
-        }), flush=True)
-        
-        # Add debug logging before streaming loop
-        self.log("🔧 About to enter async streaming loop", "DEBUG")
-        
-        async for chunk in response:
+            # CRITICAL DEBUG: This should appear if we reach here
+            print(json.dumps({
+                "timestamp": datetime.utcnow().isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 REACHED AFTER acompletion - about to enter streaming loop"
+            }), flush=True)
+            
+            # Add debug logging before streaming loop  
+            self.log("🔧 About to enter async streaming loop", "DEBUG")
+            
+            async for chunk in response:
                 # Collect chunk for usage extraction
                 collected_chunks.append(chunk)
 
@@ -1672,16 +1574,104 @@ If the problem persists, contact support with the error details above.
             )
 
             return response_text
-            
-        except Exception as streaming_error:
-            # Log the streaming error specifically
-            print(json.dumps({
-                "timestamp": datetime.utcnow().isoformat(),
-                "level": "ERROR",
-                "message": f"🔧 STREAMING ERROR: {streaming_error}"
-            }), flush=True)
-            self.log_error("Streaming loop failed", streaming_error)
-            raise RuntimeError(f"Failed to process LLM stream: {streaming_error}") from streaming_error
+                
+        except Exception as api_error:
+            # Handle specific API errors with user-friendly messages
+            error_str = str(api_error).lower()
+
+            if (
+                "authentication" in error_str
+                or "api key" in error_str
+                or "unauthorized" in error_str
+            ):
+                provider = self._get_model_provider(self.config["model"])
+                error_message = f"""
+🔑 **Authentication Error**
+
+The {provider.title()} API rejected the request due to authentication issues.
+
+**Possible causes:**
+- API key is invalid or expired
+- API key lacks necessary permissions
+- Model '{self.config["model"]}' requires a different tier of access
+
+**Next steps:**
+1. Verify your {provider.title()} API key is valid
+2. Check if your API key has access to model '{self.config["model"]}'
+3. Try using a different model from the same provider
+
+Original error: {api_error!s}
+"""
+                print(error_message, flush=True)
+                raise RuntimeError(
+                    f"Authentication failed for {provider}: {api_error}"
+                )
+
+            if "rate limit" in error_str or "quota" in error_str:
+                provider = self._get_model_provider(self.config["model"])
+                error_message = f"""
+⏱️ **Rate Limit Exceeded**
+
+The {provider.title()} API rate limit has been exceeded.
+
+**What this means:**
+- Too many requests have been made to the API
+- Your account may have reached its usage quota
+
+**Next steps:**
+1. Wait a few minutes and try again
+2. Check your {provider.title()} account usage limits
+3. Consider upgrading your API plan if needed
+
+Original error: {api_error!s}
+"""
+                print(error_message, flush=True)
+                raise RuntimeError(
+                    f"Rate limit exceeded for {provider}: {api_error}"
+                )
+
+            if "model" in error_str and (
+                "not found" in error_str or "does not exist" in error_str
+            ):
+                error_message = f"""
+🤖 **Model Not Available**
+
+The model '{self.config["model"]}' is not available or does not exist.
+
+**Possible causes:**
+- Model name is misspelled
+- Model is not available in your region
+- Model requires special access
+
+**Next steps:**
+1. Check the model name spelling
+2. Try a different model like 'gpt-4o-mini' or 'claude-3-haiku'
+3. Verify the model is available through your API provider
+
+Original error: {api_error!s}
+"""
+                print(error_message, flush=True)
+                raise RuntimeError(f"Model not available: {api_error}")
+
+            # Generic error
+            error_message = f"""
+⚠️ **API Request Failed**
+
+An error occurred while calling the model API.
+
+**Error details:**
+{api_error!s}
+
+**Next steps:**
+1. Check if the API service is available
+2. Verify your internet connection
+3. Try again in a few moments
+
+If the problem persists, contact support with the error details above.
+"""
+            print(error_message, flush=True)
+            raise RuntimeError(f"API request failed: {api_error}")
+
 
 
 async def main():
