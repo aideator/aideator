@@ -112,7 +112,7 @@ export function PageHeader() {
         <div className="flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3 w-fit">
             <BrainCircuit className="w-8 h-8 text-gray-300" />
-            <span className="text-xl font-semibold text-gray-50">AIdeator</span>
+            <span className="text-xl font-semibold text-gray-50">DevSwarm</span>
           </Link>
           <nav className="flex items-center gap-2">
             <Button variant="ghost" size="sm" asChild>

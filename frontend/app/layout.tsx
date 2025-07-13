@@ -10,7 +10,7 @@ import { ApiClientConfigurator } from "@/components/api-client-configurator"
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
 
 export const metadata: Metadata = {
-  title: "AIdeator",
+  title: "DevSwarm",
   description: "A Kubernetes-native multi-agent AI orchestration platform"
 }
 
