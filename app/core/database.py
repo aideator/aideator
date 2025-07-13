@@ -97,7 +97,7 @@ async def create_db_and_tables() -> None:
                     "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename IN ('model_sync_logs', 'model_definitions')"
                 )
             )
-            tables = [row[0] for row in await result.fetchall()]
+            tables = [row[0] for row in result.fetchall()]
             logger.info(f"Verified tables created: {tables}")
 
     except Exception as e:
