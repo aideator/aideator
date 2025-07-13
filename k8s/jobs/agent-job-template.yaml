@@ -1,5 +1,3 @@
-# BROKEN TEMPLATE - API should NOT read this file anymore
-DELIBERATELY_BROKEN_YAML_SHOULD_CAUSE_ERROR_IF_USED
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -10,7 +8,7 @@ metadata:
     variation-id: "{variation_id}"
     component: agent
 spec:
-  ttlSecondsAfterFinished: 3600  # 1 hour cleanup
+  ttlSecondsAfterFinished: 3600
   backoffLimit: 0
   template:
     metadata:
@@ -27,7 +25,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: agent
-          image: "aideator-agent:manual-test"
+          image: "aideator-agent"
           imagePullPolicy: Never
           env:
             - name: OPENAI_API_KEY
@@ -92,13 +90,10 @@ spec:
               value: "INFO"
             - name: PYTHONUNBUFFERED
               value: "1"
-            # SECURITY TRADEOFF: Hardcoded Redis URL for development
-            # Production should use service discovery or secrets
             - name: REDIS_URL
               value: "redis://aideator-redis:6379/0"
-            # Database URL for agent to write outputs
             - name: DATABASE_URL
-              value: "postgresql://aideator:aideator123@aideator-postgresql:5432/aideator"
+              value: "postgresql://aideator:aideator123@aideator-database:5432/aideator"
           command: ["python", "-u", "/app/agent/main.py"]
           resources:
             requests:

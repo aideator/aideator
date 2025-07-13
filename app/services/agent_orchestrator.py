@@ -105,8 +105,8 @@ class AgentOrchestrator:
             "jobs": [],
         }
 
-        # Initialize Redis connection if needed
-        if not await self.redis.health_check():
+        # Initialize Redis connection if needed (only if Redis is enabled)
+        if settings.enable_redis and not await self.redis.health_check():
             await self.redis.connect()
 
         # Update run status
@@ -125,8 +125,9 @@ class AgentOrchestrator:
             logger.error(f"Error executing variations for run {run_id}: {e}")
             self.active_runs[run_id]["status"] = "failed"
 
-            # Send error event to Redis
-            await self.redis.add_status_update(run_id, "failed", {"error": str(e)})
+            # Send error event to Redis (if enabled)
+            if settings.enable_redis:
+                await self.redis.add_status_update(run_id, "failed", {"error": str(e)})
 
             # Decrement job count on failure
             await self._decrement_job_count(variations)
@@ -167,14 +168,16 @@ class AgentOrchestrator:
 
         # Send start event to Redis
         logger.info(f"Starting {len(jobs)} agent jobs for run {run_id}")
-        await self.redis.add_status_update(run_id, "running", {"job_count": len(jobs)})
+        if settings.enable_redis:
+            await self.redis.add_status_update(run_id, "running", {"job_count": len(jobs)})
 
         # Agents now handle their own streaming to Redis Streams
         # Just wait for all jobs to complete
         await self._wait_for_jobs_completion(run_id, [job_name for job_name, _ in jobs])
 
         # Send run completion status to Redis
-        await self.redis.add_status_update(run_id, "completed")
+        if settings.enable_redis:
+            await self.redis.add_status_update(run_id, "completed")
 
         # Update database status
         if db_session:
@@ -208,7 +211,8 @@ class AgentOrchestrator:
 
         except Exception as e:
             logger.error(f"Error waiting for job completion: {e}")
-            await self.redis.add_status_update(run_id, "failed", {"error": str(e)})
+            if settings.enable_redis:
+                await self.redis.add_status_update(run_id, "failed", {"error": str(e)})
 
     async def get_run_status(self, run_id: str) -> dict[str, Any]:
         """Get the status of a run."""
@@ -250,8 +254,9 @@ class AgentOrchestrator:
         # Update run status
         run_data["status"] = "cancelled"
 
-        # Send cancellation event to Redis
-        await self.redis.add_status_update(run_id, "cancelled")
+        # Send cancellation event to Redis (if enabled)
+        if settings.enable_redis:
+            await self.redis.add_status_update(run_id, "cancelled")
 
         return success
 

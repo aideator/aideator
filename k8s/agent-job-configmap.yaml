@@ -32,8 +32,8 @@ data:
             fsGroup: 1000
           containers:
             - name: agent
-              image: "aideator-agent:latest"
-              imagePullPolicy: Never
+              image: "localhost:5001/aideator-agent:latest"
+              imagePullPolicy: IfNotPresent
               env:
                 - name: OPENAI_API_KEY
                   valueFrom:
