@@ -197,7 +197,6 @@ export class Logger {
 }`,
         fileLang: "typescript"
       }
-    },
-    sampleGitDiffData
+    }
   ]
 };

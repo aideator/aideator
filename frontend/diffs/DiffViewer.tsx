@@ -102,7 +102,16 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
               >
                 {isCollapsed ? "▶" : "▼"}
               </button>
-              {file.fileName}
+              <span style={{ flexGrow: 1 }}>{file.fileName}</span>
+              <span style={{ 
+                fontSize: "12px",
+                fontWeight: "normal",
+                marginLeft: "auto"
+              }}>
+                <span style={{ color: "#22c55e" }}>+{file.additions}</span>
+                {" "}
+                <span style={{ color: "#ef4444" }}>-{file.deletions}</span>
+              </span>
             </div>
             {!isCollapsed && (
               <DiffView

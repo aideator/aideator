@@ -65,6 +65,16 @@ export interface ProcessedDiffFile {
   diffFile: DiffFile | CoreDiffFile;
   fileName: string;
   isGitDiff: boolean;
+  additions: number;
+  deletions: number;
+}
+
+function countLineChanges(diffFile: DiffFile | CoreDiffFile): { additions: number; deletions: number } {
+  // DiffFile instances have built-in properties for addition and deletion counts
+  return {
+    additions: diffFile.additionLength || 0,
+    deletions: diffFile.deletionLength || 0
+  };
 }
 
 export async function processMultiFileDiff(
@@ -81,10 +91,14 @@ export async function processMultiFileDiff(
     
     await initializeDiffFile(diffFile, options);
     
+    const { additions, deletions } = countLineChanges(diffFile);
+    
     processedFiles.push({
       diffFile,
       fileName: fileData.newFile.fileName || fileData.oldFile.fileName || "unnamed",
-      isGitDiff
+      isGitDiff,
+      additions,
+      deletions
     });
   }
 
