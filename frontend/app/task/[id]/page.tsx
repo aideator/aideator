@@ -7,6 +7,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Input } from "@/components/ui/input"
 import { useTaskDetail } from "@/hooks/use-task-detail"
+import { useAgentLogs } from "@/hooks/use-agent-logs"
+import { useAgentErrors } from "@/hooks/use-agent-errors"
 import { notFound } from "next/navigation"
 import DiffViewer from "@/components/diff-viewer"
 
@@ -53,6 +55,8 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
   const { id } = use(params)
   const [activeVersion, setActiveVersion] = useState(1)
   const { task, loading, error } = useTaskDetail(id)
+  const { logs, isLoading: logsLoading, error: logsError, getLogsByVariation, hasLogsForVariation } = useAgentLogs(id)
+  const { errors, isLoading: errorsLoading, error: errorsError, getErrorsByVariation, hasErrorsForVariation } = useAgentErrors(id)
 
   if (loading) {
     return (
@@ -102,6 +106,138 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
     if (!firstVersion) return notFound()
     setActiveVersion(firstVersion.id)
     return null // Re-render will handle it
+  }
+
+  // Render logs content for the current variation
+  const renderLogsContent = () => {
+    if (logsError) {
+      return (
+        <div className="text-center py-8">
+          <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-4" />
+          <p className="text-red-300 mb-2">Failed to load logs</p>
+          <p className="text-gray-400 text-sm">{logsError}</p>
+        </div>
+      )
+    }
+
+    // Get logs for the current variation (subtract 1 because variation_id is 0-indexed in API)
+    const variationLogs = getLogsByVariation(activeVersion - 1)
+    
+    if (logsLoading && variationLogs.length === 0) {
+      return (
+        <div className="text-center py-8">
+          <div className="animate-pulse rounded-full h-6 w-6 border-b-2 border-blue-400 mx-auto mb-4"></div>
+          <p className="text-gray-400">Waiting for logs...</p>
+        </div>
+      )
+    }
+
+    if (variationLogs.length === 0) {
+      return (
+        <div className="text-center py-8">
+          <Terminal className="w-8 h-8 text-gray-500 mx-auto mb-4" />
+          <p className="text-gray-400">Waiting for logs...</p>
+          <p className="text-gray-500 text-sm mt-2">Agent container may still be starting up</p>
+        </div>
+      )
+    }
+
+    return (
+      <div className="space-y-2">
+        {variationLogs.map((log) => (
+          <div key={log.id} className="flex gap-3 text-sm">
+            <span className="text-gray-500 text-xs w-24 flex-shrink-0">
+              {new Date(log.timestamp).toLocaleTimeString()}
+            </span>
+            <pre className="text-gray-300 whitespace-pre-wrap flex-1">{log.content}</pre>
+          </div>
+        ))}
+        {logsLoading && (
+          <div className="flex items-center gap-2 text-gray-500 text-sm py-2">
+            <div className="animate-pulse w-2 h-2 bg-blue-400 rounded-full"></div>
+            <span>Loading more logs...</span>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Render errors content for the current variation
+  const renderErrorsContent = () => {
+    if (errorsError) {
+      return (
+        <div className="text-center py-8">
+          <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-4" />
+          <p className="text-red-300 mb-2">Failed to load errors</p>
+          <p className="text-gray-400 text-sm">{errorsError}</p>
+        </div>
+      )
+    }
+
+    // Get errors for the current variation (subtract 1 because variation_id is 0-indexed in API)
+    const variationErrors = getErrorsByVariation(activeVersion - 1)
+    
+    if (errorsLoading && variationErrors.length === 0) {
+      return (
+        <div className="text-center py-8">
+          <div className="animate-pulse rounded-full h-6 w-6 border-b-2 border-red-400 mx-auto mb-4"></div>
+          <p className="text-gray-400">Checking for errors...</p>
+        </div>
+      )
+    }
+
+    if (variationErrors.length === 0) {
+      return (
+        <div className="text-center py-8 text-gray-500">
+          <AlertTriangle className="w-8 h-8 text-gray-600 mx-auto mb-4" />
+          <p className="text-lg mb-2">No errors found</p>
+          <p className="text-sm">This variation completed without any reported errors</p>
+        </div>
+      )
+    }
+
+    return (
+      <div className="space-y-4">
+        {variationErrors.map((errorItem) => (
+          <div key={errorItem.id} className={`rounded-lg p-4 border ${
+            errorItem.output_type === 'error' 
+              ? 'bg-red-950/50 border-red-800' 
+              : 'bg-orange-950/50 border-orange-800'
+          }`}>
+            <div className="flex items-start gap-3">
+              <AlertTriangle className={`w-5 h-5 mt-0.5 flex-shrink-0 ${
+                errorItem.output_type === 'error' ? 'text-red-400' : 'text-orange-400'
+              }`} />
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <h4 className={`font-medium ${
+                    errorItem.output_type === 'error' ? 'text-red-300' : 'text-orange-300'
+                  }`}>
+                    {errorItem.output_type === 'error' ? 'Error' : 'Stderr Output'}
+                  </h4>
+                  <span className="text-xs text-gray-500">
+                    {new Date(errorItem.timestamp).toLocaleTimeString()}
+                  </span>
+                </div>
+                <pre className={`text-sm p-3 rounded border overflow-x-auto whitespace-pre-wrap ${
+                  errorItem.output_type === 'error' 
+                    ? 'bg-black/50 border-red-700/50 text-red-200' 
+                    : 'bg-black/50 border-orange-700/50 text-orange-200'
+                }`}>
+                  {errorItem.content}
+                </pre>
+              </div>
+            </div>
+          </div>
+        ))}
+        {errorsLoading && (
+          <div className="flex items-center gap-2 text-gray-500 text-sm py-2">
+            <div className="animate-pulse w-2 h-2 bg-red-400 rounded-full"></div>
+            <span>Checking for more errors...</span>
+          </div>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -189,96 +325,10 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
               <DiffViewer xmlData={convertTaskDataToXml(versionData)} />
             </TabsContent>
             <TabsContent value="logs" className="flex-1 overflow-y-auto p-4 font-mono text-sm">
-              <pre>
-                {`[INFO] Starting task execution...
-[INFO] Cloning repository aideator/helloworld...
-[INFO] Repository cloned successfully.
-[INFO] Checking out branch 'main'...
-[INFO] Branch 'main' checked out.
-[INFO] Analyzing task: "make hello world label more ominous"
-[AGENT] Understanding the request... The user wants to change the text in README.md.
-[AGENT] Planning changes...
-[AGENT] 1. Read README.md
-[AGENT] 2. Replace "Hello World for Python" with something more ominous.
-[AGENT] 3. Write the changes back to README.md.
-[EXEC] Reading file: README.md
-[EXEC] Applying changes to README.md
-[EXEC] Writing file: README.md
-[INFO] Changes applied successfully.
-[INFO] Running tests...
-[TEST] pytest -v
-[TEST] ============================= test session starts ==============================
-[TEST] collected 0 items
-[TEST] ============================ 0 tests ran in 0.01s ==============================
-[INFO] Task completed successfully in 2m 1s.`}
-              </pre>
+              {renderLogsContent()}
             </TabsContent>
             <TabsContent value="errors" className="flex-1 overflow-y-auto p-4">
-              <div className="space-y-4">
-                <div className="bg-red-950/50 border border-red-800 rounded-lg p-4">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <h4 className="font-medium text-red-300 mb-2">Type Error in main.py</h4>
-                      <p className="text-sm text-red-200 mb-3">
-                        Line 42: Argument of type &apos;str&apos; cannot be assigned to parameter of type &apos;int&apos;
-                      </p>
-                      <pre className="text-xs bg-black/50 p-3 rounded border border-red-700/50 overflow-x-auto">
-                        <code className="text-red-300">
-{`def process_data(count: int) -> None:
-    pass
-
-process_data("hello")  # Error: expected int, got str`}
-                        </code>
-                      </pre>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="bg-amber-950/50 border border-amber-800 rounded-lg p-4">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <h4 className="font-medium text-amber-300 mb-2">Linting Warning</h4>
-                      <p className="text-sm text-amber-200 mb-3">
-                        Line 15: Unused import &apos;os&apos; detected
-                      </p>
-                      <pre className="text-xs bg-black/50 p-3 rounded border border-amber-700/50 overflow-x-auto">
-                        <code className="text-amber-300">
-{`import os  # This import is never used
-import sys
-
-print(sys.version)`}
-                        </code>
-                      </pre>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="bg-red-950/50 border border-red-800 rounded-lg p-4">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <h4 className="font-medium text-red-300 mb-2">Test Failure</h4>
-                      <p className="text-sm text-red-200 mb-3">
-                        test_hello_world.py::test_greeting - AssertionError
-                      </p>
-                      <pre className="text-xs bg-black/50 p-3 rounded border border-red-700/50 overflow-x-auto">
-                        <code className="text-red-300">
-{`def test_greeting():
-    result = get_greeting()
-    assert result == "Hello, World!"
-    # AssertionError: assert 'An ominous Hello World for Python' == 'Hello, World!'`}
-                        </code>
-                      </pre>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="text-center py-8 text-gray-500">
-                  <p className="text-sm">No additional errors found in this task execution.</p>
-                </div>
-              </div>
+              {renderErrorsContent()}
             </TabsContent>
         </Tabs>
       </main>
