@@ -52,7 +52,7 @@ export function ProviderKeyCard({ providerKey, onEdit, onDelete, onRefresh }: Pr
   }
 
   return (
-    <Card>
+    <Card className="group relative hover:shadow-lg transition-shadow">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
@@ -108,7 +108,7 @@ export function ProviderKeyCard({ providerKey, onEdit, onDelete, onRefresh }: Pr
           )}
         </div>
         
-        <div className="mt-4 flex gap-2">
+        <div className="mt-4 flex gap-2 justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           <Button
             size="sm"
             variant="outline"
