@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { AutoResizeTextarea } from "@/components/auto-resize-textarea"
-import { Mic, Loader2, Send } from "lucide-react"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Loader2, Send, GitBranch, Layers } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { apiClient } from "@/lib/api"
@@ -401,31 +403,90 @@ export default function Home() {
           )}
           
           {/* Submit button */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" className="text-gray-400 hover:text-gray-200">
-                <Mic className="w-5 h-5" />
+          {mode === "chat" ? (
+            <div className="flex items-center justify-end">
+              <Button
+                size="lg"
+                onClick={handleSubmit}
+                disabled={!canSubmit()}
+                className="gap-2 bg-gray-700 text-white hover:bg-gray-600 disabled:opacity-50"
+              >
+                {isCreatingRun ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    Start Chat
+                  </>
+                )}
               </Button>
             </div>
-            <Button
-              size="lg"
-              onClick={handleSubmit}
-              disabled={!canSubmit()}
-              className="gap-2 bg-white text-black hover:bg-gray-200 disabled:opacity-50"
-            >
-              {isCreatingRun ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Send className="w-4 h-4" />
-                  {mode === "chat" ? "Start Chat" : "Start Coding"}
-                </>
-              )}
-            </Button>
-          </div>
+          ) : (
+            <div className="flex items-end gap-4">
+              <div className="flex-1">
+                <Label className="text-sm text-gray-400">Branch</Label>
+                <Select 
+                  value={selectedBranch} 
+                  onValueChange={setSelectedBranch} 
+                  disabled={isLoadingBranches || (!selectedRepo && !customRepoUrl)}
+                >
+                  <SelectTrigger className="bg-gray-800/60 border-gray-700 gap-2">
+                    <GitBranch className="w-4 h-4 text-gray-400" />
+                    <SelectValue placeholder={isLoadingBranches ? "Loading..." : "Select branch"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((branch) => (
+                      <SelectItem key={branch.name} value={branch.name}>
+                        {branch.name}
+                        {branch.protected && (
+                          <span className="text-yellow-500 text-xs ml-2">🔒</span>
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="w-32">
+                <Label className="text-sm text-gray-400">Agents</Label>
+                <Select value={selectedAgentCount} onValueChange={setSelectedAgentCount}>
+                  <SelectTrigger className="bg-gray-800/60 border-gray-700 gap-2">
+                    <Layers className="w-4 h-4 text-gray-400" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1x</SelectItem>
+                    <SelectItem value="2">2x</SelectItem>
+                    <SelectItem value="3">3x</SelectItem>
+                    <SelectItem value="4">4x</SelectItem>
+                    <SelectItem value="5">5x</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Button
+                size="lg"
+                onClick={handleSubmit}
+                disabled={!canSubmit()}
+                className="gap-2 bg-gray-700 text-white hover:bg-gray-600 disabled:opacity-50"
+              >
+                {isCreatingRun ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    Start Coding
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="mt-10">

@@ -22,7 +22,7 @@ export function ModeSwitcher({ mode, onModeChange, className }: ModeSwitcherProp
         className={cn(
           "gap-2 rounded-md",
           mode === "chat" 
-            ? "bg-white text-black hover:bg-gray-200" 
+            ? "bg-gray-700 text-white hover:bg-gray-600" 
             : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
         )}
       >
@@ -36,7 +36,7 @@ export function ModeSwitcher({ mode, onModeChange, className }: ModeSwitcherProp
         className={cn(
           "gap-2 rounded-md",
           mode === "code" 
-            ? "bg-white text-black hover:bg-gray-200" 
+            ? "bg-gray-700 text-white hover:bg-gray-600" 
             : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
         )}
       >
