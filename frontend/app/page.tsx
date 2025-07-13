@@ -81,35 +81,35 @@ export default function Home() {
   }
 
   const loadPopularRepositories = async () => {
-    // Default to astral-sh/uv repo instead of API calls
+    // Default to aideator/helloworld repo instead of API calls
     setIsLoadingRepos(true)
     const defaultRepos: GitHubRepository[] = [
       { 
         id: 1, 
-        name: 'uv',
-        full_name: 'astral-sh/uv', 
+        name: 'helloworld',
+        full_name: 'aideator/helloworld', 
         private: false,
-        html_url: 'https://github.com/astral-sh/uv',
-        description: 'An extremely fast Python package and project manager, written in Rust.', 
+        html_url: 'https://github.com/aideator/helloworld',
+        description: 'A simple hello world application for testing code modifications.', 
         default_branch: 'main'
       }
     ]
     setRepositories(defaultRepos)
-    setSelectedRepo('astral-sh/uv')
+    setSelectedRepo('aideator/helloworld')
     setIsLoadingRepos(false)
   }
 
   const loadBranches = useCallback(async () => {
     if (!selectedRepo) return
     
-    // Default to main branch for astral-sh/uv
+    // Default to main branch for aideator/helloworld
     setIsLoadingBranches(true)
     const defaultBranches: GitHubBranch[] = [
       { 
         name: 'main', 
         commit: {
           sha: 'abc123def456',
-          url: 'https://api.github.com/repos/astral-sh/uv/commits/abc123def456'
+          url: 'https://api.github.com/repos/aideator/helloworld/commits/abc123def456'
         },
         protected: false 
       }

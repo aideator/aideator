@@ -1133,6 +1133,10 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                 status="success",
             )
 
+            # Generate and save diffs if in code mode
+            if is_code_mode and self.repo_dir.exists():
+                await self._generate_and_save_diffs()
+
         except Exception as e:
             self.log_error("Agent execution failed", e)
             raise
@@ -1442,19 +1446,24 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                                             # Note: stdout database writing is handled by DatabaseStreamWriter
                                             collected_output.append(text_content)
                                         elif content_item.get("type") == "tool_use":
-                                            tool_info = f"🔧 Using tool: {content_item.get('name', 'unknown')}"
+                                            tool_name = content_item.get('name', 'unknown')
+                                            tool_info = f"🔧 Using tool: {tool_name}"
+                                            # Only print once - DatabaseStreamWriter will handle DB persistence
                                             print(tool_info, flush=True)
-                                            # Note: stdout database writing is handled by DatabaseStreamWriter
                                             collected_output.append(tool_info + "\n")
+                                            
+                                            # Stream to Redis only (DB handled by DatabaseStreamWriter)
+                                            await self._publish_to_redis_only(tool_info)
 
-                            except json.JSONDecodeError:
-                                # If not JSON, treat as plain text output (like TypeScript fallback)
+                            except json.JSONDecodeError as e:
+                                # This should NOT happen with --output-format stream-json
                                 self.log_progress(
-                                    "Plain text output",
-                                    f"{line[:50]}{'...' if len(line) > 50 else ''}",
+                                    "JSON DECODE ERROR - This should not happen!",
+                                    f"Line: '{line}' | Error: {str(e)[:100]}",
                                 )
-                                print(line, flush=True)
-                                collected_output.append(line + "\n")
+                                # Do NOT print the line - it's malformed and causes duplication
+                                # print(line, flush=True)  # REMOVED
+                                # collected_output.append(line + "\n")  # REMOVED
 
                 # Handle any remaining buffer content
                 if buffer.strip():
@@ -1462,7 +1471,8 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                         "Processing remaining buffer",
                         f"{buffer[:50]}{'...' if len(buffer) > 50 else ''}",
                     )
-                    print(buffer, flush=True)
+                    # Buffer content was already processed in the streaming loop above
+                    # Do not print again to avoid duplication
                     collected_output.append(buffer)
 
                 # Wait for process to complete
@@ -1717,15 +1727,19 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             # Set up environment for containerized CI/CD with comprehensive debugging
             codex_env = os.environ.copy()
             codex_env.update({
+                "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),  # Required for Codex
                 "DEBUG": "true",  # Enable verbose logging for debugging
                 "RUST_LOG": "debug",  # Enable Rust debug logging
                 "CODEX_LOG": "debug",  # Enable all Codex logging
-                # Ensure critical paths are available
-                "PATH": "/opt/venv/bin:/usr/bin:/bin:/usr/local/bin:/sbin:/usr/sbin",
+                # Ensure critical paths are available - include all possible locations
+                "PATH": "/opt/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
                 "HOME": str(Path.home()),  # Use actual home directory
                 "USER": "agentuser",
                 "SHELL": "/bin/bash",
                 "TERM": "xterm",  # Ensure terminal type is set
+                # Add Codex-specific environment variables
+                "CODEX_SANDBOX_MODE": "danger-full-access",
+                "CODEX_APPROVAL_POLICY": "never",
             })
             
             # Create Codex config for containerized environment
@@ -1733,87 +1747,47 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             config_dir.mkdir(exist_ok=True)
             config_file = config_dir / "config.toml"
             
-            # Write config to allow full environment inheritance in container
+            # Create instructions file to guide Codex
+            instructions_file = config_dir / "instructions.md"
+            instructions_content = """# Codex Agent Instructions
+
+## Repository Analysis Guide
+
+When analyzing a repository, use these commands effectively:
+
+### Essential Commands
+- `ls` - List files and directories
+- `find . -type f -name "*.py"` - Find specific file types
+- `rg --files` - List all files (respects .gitignore)
+- `rg "pattern"` - Search for patterns in files
+- `git log --oneline -n 10` - View recent commits
+- `git status` - Check repository status
+
+### Reading Files
+- `cat filename` - Read entire file (works for most files)
+- `head -n 50 filename` - Read first 50 lines
+- `tail -n 50 filename` - Read last 50 lines
+- `grep -n "pattern" filename` - Search in specific file
+- `wc -l filename` - Count lines in file
+
+### Best Practices
+1. Start with `ls` and `find` to understand structure
+2. Use `rg` for searching across multiple files
+3. Read key files like README.md, package.json, Cargo.toml
+4. For large files, use `head` or `tail` to sample content
+5. Use git commands to understand project history
+"""
+            with open(instructions_file, "w") as f:
+                f.write(instructions_content.strip())
+            
+            # Write minimal valid config
             config_content = """
-[shell_environment_policy]
-inherit = "all"  # Inherit all environment variables for containerized execution
-ignore_default_excludes = true  # Don't filter any environment variables
-
-[sandbox]
-mode = "danger-full-access"  # Already using --dangerously-bypass-approvals-and-sandbox
-
-approval_policy = "never"  # Never prompt for approval in automation mode
-
-# Debug settings for containerized execution
-[debug]
-log_level = "debug"
-verbose = true
+model = "gpt-4o-mini"
+approval_policy = "never"
 """
             with open(config_file, "w") as f:
                 f.write(config_content.strip())
             
-            # Create an execpolicy rules file to help Codex understand available commands
-            rules_file = config_dir / "exec_rules.star"
-            rules_content = """
-# Define common commands available in the container
-define_program(
-    program="ls",
-    system_path=["/bin/ls", "/usr/bin/ls"],
-)
-
-define_program(
-    program="cat",
-    system_path=["/bin/cat", "/usr/bin/cat"],
-)
-
-define_program(
-    program="rg",
-    options=[flag("--files"), flag("--type"), flag("-l")],
-    system_path=["/usr/bin/rg"],
-)
-
-define_program(
-    program="git",
-    args=["status", "log", "diff", "show"],
-    system_path=["/usr/bin/git"],
-)
-
-define_program(
-    program="find",
-    system_path=["/usr/bin/find"],
-)
-
-define_program(
-    program="grep",
-    system_path=["/bin/grep", "/usr/bin/grep"],
-)
-"""
-            with open(rules_file, "w") as f:
-                f.write(rules_content.strip())
-            
-            # Update config to reference the rules file
-            config_content = """
-[shell_environment_policy]
-inherit = "all"  # Inherit all environment variables for containerized execution
-ignore_default_excludes = true  # Don't filter any environment variables
-
-[sandbox]
-mode = "danger-full-access"  # Already using --dangerously-bypass-approvals-and-sandbox
-
-approval_policy = "never"  # Never prompt for approval in automation mode
-
-# Point to our custom exec policy rules
-[exec_policy]
-rules_file = "{rules_file}"
-
-# Debug settings for containerized execution
-[debug]
-log_level = "debug"
-verbose = true
-""".format(rules_file=str(rules_file))
-            
-            with open(config_file, "w") as f:
-                f.write(config_content.strip())
             
             result = await asyncio.create_subprocess_exec(
                 "codex",
@@ -2427,6 +2401,96 @@ If the problem persists, contact support with the error details above.
             print(error_message, flush=True)
             raise RuntimeError(f"API request failed: {api_error}")
 
+
+
+    async def _generate_and_save_diffs(self) -> None:
+        """Generate diffs for all changed files and save to database."""
+        try:
+            self.log("🔍 Generating diffs for changed files", "INFO")
+            
+            # Change to repository directory
+            os.chdir(self.repo_dir)
+            
+            # Get list of changed files using git status
+            result = subprocess.run(['git', 'status', '--porcelain'], 
+                                  capture_output=True, text=True)
+            lines = result.stdout.strip().split('\n')
+            changed_files = [line[3:] for line in lines if line.strip()]
+            
+            if not changed_files:
+                self.log("📝 No file changes detected", "INFO")
+                return
+                
+            self.log(f"📂 Found {len(changed_files)} changed files", "INFO", 
+                    changed_files=changed_files)
+            
+            # Build diff array using the same format as the Python script
+            diff_array = []
+            for file in changed_files:
+                try:
+                    # Get old content from HEAD
+                    old_content = ""
+                    try:
+                        old_result = subprocess.run(['git', 'show', f'HEAD:{file}'], 
+                                                  capture_output=True, text=True, check=True)
+                        old_content = old_result.stdout
+                    except subprocess.CalledProcessError:
+                        # File is new and not in HEAD
+                        old_content = ""
+                    
+                    # Get new content from working directory
+                    new_content = ""
+                    try:
+                        with open(file, 'r', encoding='utf-8') as f:
+                            new_content = f.read()
+                    except FileNotFoundError:
+                        # File has been deleted
+                        new_content = ""
+                    
+                    diff_array.append({
+                        'oldFile': {'name': file, 'content': old_content},
+                        'newFile': {'name': file, 'content': new_content}
+                    })
+                    
+                except Exception as e:
+                    self.log(f"⚠️ Error processing file {file}: {e}", "WARNING")
+                    continue
+            
+            if diff_array:
+                # Save diffs to database
+                await self._save_diffs_to_database(diff_array)
+                self.log(f"✅ Generated and saved diffs for {len(diff_array)} files", "INFO")
+            else:
+                self.log("📝 No valid diffs generated", "INFO")
+                
+        except Exception as e:
+            self.log_error("Failed to generate diffs", e)
+
+    async def _save_diffs_to_database(self, diff_array: list) -> None:
+        """Save diff array to database as agent output."""
+        try:
+            # Convert diff array to JSON string for storage
+            diff_json = json.dumps(diff_array, indent=2)
+            
+            # Save as agent output with type 'diffs'
+            if self.db_service:
+                await self.db_service.write_agent_output(
+                    run_id=self.run_id,
+                    variation_id=int(self.variation_id),
+                    content=diff_json,
+                    output_type="diffs",
+                    metadata={
+                        "source": "diff_generator",
+                        "file_count": len(diff_array),
+                        "format": "json"
+                    }
+                )
+                self.log("💾 Diffs saved to database successfully", "INFO")
+            else:
+                self.log("⚠️ Database service not available, diffs not saved", "WARNING")
+                
+        except Exception as e:
+            self.log_error("Failed to save diffs to database", e)
 
 
 async def main():

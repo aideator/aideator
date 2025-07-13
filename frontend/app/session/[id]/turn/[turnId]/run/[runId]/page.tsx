@@ -107,7 +107,7 @@ export default function RunPage() {
             const newOutput: AgentOutput = {
               id: `${messageId}-${message.data.variation_id}-${messageIdCounter.current++}`,
               run_id: runId,
-              variation_id: parseInt(message.data.variation_id) || 1,
+              variation_id: parseInt(message.data.variation_id) ?? 0,
               content: message.data.content || "",
               timestamp: message.data.timestamp,
               output_type: message.type,
@@ -286,12 +286,12 @@ export default function RunPage() {
         </div>
 
 
-        <Tabs defaultValue="variation-1" className="w-full">
+        <Tabs defaultValue="variation-0" className="w-full">
           <div className="flex items-center justify-between mb-4">
             <TabsList className="bg-gray-900/50 border border-gray-800">
-              {Array.from({ length: run.variations }, (_, i) => i + 1).map((variation) => (
+              {Array.from({ length: run.variations }, (_, i) => i).map((variation) => (
                 <TabsTrigger key={variation} value={`variation-${variation}`}>
-                  Model {variation}
+                  Model {variation + 1}
                 </TabsTrigger>
               ))}
               <TabsTrigger value="results">Results</TabsTrigger>
@@ -313,11 +313,11 @@ export default function RunPage() {
             </div>
           </div>
 
-          {Array.from({ length: run.variations }, (_, i) => i + 1).map((variation) => (
+          {Array.from({ length: run.variations }, (_, i) => i).map((variation) => (
             <TabsContent key={variation} value={`variation-${variation}`} className="space-y-4">
               <div className="bg-gray-900/30 border border-gray-800 rounded-lg">
                 <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-                  <h3 className="font-medium">Model {variation} Output</h3>
+                  <h3 className="font-medium">Model {variation + 1} Output</h3>
                   <div className="flex items-center gap-2">
                     {isStreaming && (
                       <div className="flex items-center gap-2 text-sm text-green-400">
@@ -343,7 +343,7 @@ export default function RunPage() {
                         .map((output) => {
                           // Only showing LLM output now
                           return (
-                            <div key={output.id} className="text-green-400">
+                            <div key={output.id} className="text-green-400 whitespace-pre-wrap">
                               {output.content}
                             </div>
                           );

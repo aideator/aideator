@@ -40,6 +40,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install AI CLI tools globally
 RUN npm install -g @anthropic-ai/claude-code @openai/codex
 
+# Note: Codex requires specific binary locations to execute commands
+# Ensure all common commands are available in standard paths
+# The --dangerously-bypass-approvals-and-sandbox flag disables sandboxing
+
+# Ensure commands are available in standard locations
+RUN which ls cat head tail wc sed find grep || true
+RUN ls -la /bin/ /usr/bin/ | grep -E "(ls|cat|head|tail|wc|sed|find|grep)" || true
+
 # Copy agent code only
 COPY --chown=agentuser:agentuser agent/ ./agent/
 COPY --chown=agentuser:agentuser app/models/ ./app/models/
