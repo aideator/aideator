@@ -55,8 +55,8 @@ def format_stream_message(message: dict[str, Any]) -> dict[str, Any]:
 
 async def get_websocket_user(
     websocket: WebSocket,
-    api_key: str | None = Query(None),
-    db: AsyncSession = Depends(get_session),
+    api_key: str | None,
+    db: AsyncSession,
 ):
     """Get user from WebSocket query parameters."""
     logger.info(f"🔌 WebSocket authentication attempt with API key: {api_key[:10] + '...' if api_key else 'None'}")
@@ -83,7 +83,7 @@ async def get_websocket_user(
 async def websocket_stream_run(
     websocket: WebSocket,
     run_id: str,
-    current_user: User = Depends(get_websocket_user),
+    api_key: str | None = Query(None),
     db: AsyncSession = Depends(get_session),
 ):
     """
@@ -93,6 +93,18 @@ async def websocket_stream_run(
     Supports bidirectional communication for control commands.
     """
     await websocket.accept()
+    
+    # Authenticate user  
+    try:
+        current_user = await get_websocket_user(websocket, api_key, db)
+    except WebSocketException as e:
+        await websocket.close(code=e.code, reason=e.reason)
+        return
+    except Exception as e:
+        logger.error(f"Authentication error: {e}")
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Authentication failed")
+        return
+    
     logger.info(f"WebSocket connected for run {run_id} by user {current_user.id}")
 
     # Verify run exists and user has access
@@ -253,13 +265,25 @@ async def websocket_debug_stream(
     websocket: WebSocket,
     run_id: str,
     variation_id: int = 0,
-    current_user: User = Depends(get_websocket_user),
+    api_key: str | None = Query(None),
     db: AsyncSession = Depends(get_session),
 ):
     """
     WebSocket endpoint for debugging - streams only stdout logs.
     """
     await websocket.accept()
+    
+    # Authenticate user
+    try:
+        current_user = await get_websocket_user(websocket, api_key, db)
+    except WebSocketException as e:
+        await websocket.close(code=e.code, reason=e.reason)
+        return
+    except Exception as e:
+        logger.error(f"Authentication error: {e}")
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Authentication failed")
+        return
+    
     logger.info(f"Debug WebSocket connected for run {run_id}, variation {variation_id} by user {current_user.id}")
 
     # Verify run exists and user has access
@@ -306,21 +330,34 @@ async def websocket_debug_stream(
 async def websocket_system_debug_stream(
     websocket: WebSocket,
     run_id: str,
-    current_user: User = Depends(get_websocket_user),
+    api_key: str | None = Query(None),
     db: AsyncSession = Depends(get_session),
 ):
     """
     WebSocket endpoint for system debugging - streams kubectl logs and system output.
     Available only in dev mode.
     """
-    # Check if dev mode is enabled
+    # Check if dev mode is enabled first
     if not (settings.debug or os.getenv("AIDEATOR_DEV_MODE") == "true"):
         await websocket.close(
             code=status.WS_1008_POLICY_VIOLATION, reason="Dev mode only"
         )
         return
     
+    # Accept the connection early to allow proper error handling
     await websocket.accept()
+    
+    # Now authenticate the user
+    try:
+        current_user = await get_websocket_user(websocket, api_key, db)
+    except WebSocketException as e:
+        await websocket.close(code=e.code, reason=e.reason)
+        return
+    except Exception as e:
+        logger.error(f"Authentication error: {e}")
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Authentication failed")
+        return
+    
     logger.info(f"System Debug WebSocket connected for run {run_id} by user {current_user.id}")
 
     # Verify run exists and user has access

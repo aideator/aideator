@@ -767,6 +767,32 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                 "ERROR",
             )
 
+    async def _publish_to_redis_only(self, content: str):
+        """Publish agent output to Redis Streams only (database handled by DatabaseStreamWriter)."""
+        try:
+            if self.redis_client:
+                stream_name = f"run:{self.run_id}:llm"
+                fields = {
+                    "variation_id": self.variation_id,
+                    "content": content,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "metadata": json.dumps({"content_length": len(content)}),
+                }
+
+                message_id = await self.redis_client.xadd(stream_name, fields)
+                self.log(
+                    f"[REDIS-ONLY] Published LLM output to stream: {stream_name}, ID: {message_id}",
+                    "DEBUG",
+                )
+            else:
+                self.log("[REDIS-ONLY] Redis client not initialized", "ERROR")
+
+        except Exception as e:
+            self.log(
+                f"[REDIS-ONLY] Failed to publish output to Redis Streams: {e}",
+                "ERROR",
+            )
+
     async def publish_status(self, status: str, metadata: dict[str, Any] | None = None):
         """Publish status update with dual write to Redis Streams and PostgreSQL."""
         # Dual write: Write to both Redis and database
@@ -1265,8 +1291,8 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                                             text_content = content_item["text"]
                                             # Output immediately for streaming (like TypeScript)
                                             print(text_content, end="", flush=True)
-                                            # Stream to Redis immediately
-                                            await self.publish_output(text_content)
+                                            # Stream to Redis only (database handled by DatabaseStreamWriter)
+                                            await self._publish_to_redis_only(text_content)
                                             # Note: stdout database writing is handled by DatabaseStreamWriter
                                             collected_output.append(text_content)
                                         elif content_item.get("type") == "tool_use":
@@ -1578,11 +1604,11 @@ Be thorough but concise in your response.
                             if space_pos > 100:  # Only adjust if we have substantial content
                                 output_chunk = buffer[: space_pos + 1]
 
-                        # Output to stdout
+                        # Output to stdout (DatabaseStreamWriter handles database persistence)
                         print(output_chunk, end="", flush=True)
                         
-                        # Stream to Redis/database
-                        await self.publish_output(output_chunk)
+                        # Stream to Redis only (database handled by DatabaseStreamWriter)
+                        await self._publish_to_redis_only(output_chunk)
                         buffer = buffer[len(output_chunk) :]
 
 
@@ -1597,8 +1623,8 @@ Be thorough but concise in your response.
                 # Output remaining buffer
                 print(buffer, end="", flush=True)
                 
-                # Stream to Redis/database
-                await self.publish_output(buffer)
+                # Stream to Redis only (database handled by DatabaseStreamWriter)
+                await self._publish_to_redis_only(buffer)
 
             # Extract usage data from collected chunks
             tokens_used = None

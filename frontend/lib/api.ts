@@ -103,6 +103,16 @@ class APIClient {
     return { access_token: data.access_token, api_key: data.api_key }
   }
 
+  async getModelCatalog(): Promise<{ models: any[], providers: any[], capabilities: string[] }> {
+    try {
+      const response = await this.request<{ models: any[], providers: any[], capabilities: string[] }>('/api/v1/models/catalog')
+      return response
+    } catch (error) {
+      console.error('getModelCatalog: Error occurred', error)
+      throw error
+    }
+  }
+
   async getModelDefinitions(): Promise<string[]> {
     try {
       // Backend returns a direct array of models, not wrapped in an object

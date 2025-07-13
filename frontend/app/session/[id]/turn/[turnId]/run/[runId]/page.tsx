@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -34,6 +34,7 @@ export default function RunPage() {
   const [wsClient, setWsClient] = useState<WebSocketClient | null>(null)
   const [showSystemDebug, setShowSystemDebug] = useState(false)
   const messageIdCounter = useRef(0)
+  const seenMessageIds = useRef(new Set<string>())
   
   // Ref for auto-scrolling
   const outputsEndRef = useRef<HTMLDivElement>(null)
@@ -45,12 +46,21 @@ export default function RunPage() {
     }
   }, [sessionId, turnId, runId])
 
+  // Cleanup WebSocket on unmount
+  useEffect(() => {
+    return () => {
+      if (wsClient) {
+        wsClient.close()
+      }
+    }
+  }, [])
+
   // Auto-start streaming when run data is loaded
   useEffect(() => {
     if (run && (run.status === 'running' || run.status === 'pending') && !wsClient) {
       startWebSocketConnection()
     }
-  }, [run, wsClient])
+  }, [run, wsClient, startWebSocketConnection])
   
   // Auto-scroll to bottom when new outputs arrive
   useEffect(() => {
@@ -79,7 +89,7 @@ export default function RunPage() {
     }
   }
 
-  const startWebSocketConnection = () => {
+  const startWebSocketConnection = useCallback(() => {
     try {
       // Close existing connection if any
       if (wsClient) {
@@ -88,6 +98,9 @@ export default function RunPage() {
         setIsStreaming(false)
       }
       
+      // Clear seen message IDs for fresh start
+      seenMessageIds.current.clear()
+      
       const wsUrl = `ws://localhost:8000/api/v1/ws/runs/${runId}`
       const client = createWebSocketClient(wsUrl)
       client.connect({
@@ -95,8 +108,18 @@ export default function RunPage() {
           // Handle incoming WebSocket messages
           // Only accept LLM output messages, not stdout/stderr which contain logging
           if (message.type === "llm") {
+            // Generate or use existing message ID
+            const messageId = message.message_id || `msg-${Date.now()}-${Math.random()}`
+            
+            // Skip if we've already processed this message
+            if (seenMessageIds.current.has(messageId)) {
+              console.log('Skipping duplicate message:', messageId)
+              return
+            }
+            seenMessageIds.current.add(messageId)
+            
             const newOutput: AgentOutput = {
-              id: `msg-${Date.now()}-${Math.random()}-${message.data.variation_id}-${messageIdCounter.current++}`,
+              id: `${messageId}-${message.data.variation_id}-${messageIdCounter.current++}`,
               run_id: runId,
               variation_id: parseInt(message.data.variation_id) || 1,
               content: message.data.content || "",
@@ -119,7 +142,7 @@ export default function RunPage() {
     } catch (err) {
       console.error('Failed to start WebSocket connection:', err)
     }
-  }
+  }, [wsClient, createWebSocketClient, runId, messageIdCounter, seenMessageIds])
 
 
   const stopWebSocketConnection = () => {
