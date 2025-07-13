@@ -1,6 +1,6 @@
 import { DiffFile, generateDiffFile } from "@git-diff-view/file";
 import { DiffFile as CoreDiffFile } from "@git-diff-view/core";
-import type { DiffData } from "./data";
+import type { DiffData, MultiFileDiffData } from "./data";
 
 export interface DiffViewOptions {
   mode?: "split" | "unified";
@@ -59,4 +59,34 @@ export function getDefaultOptions(): DiffViewOptions {
     theme: "light",
     fontSize: 13
   };
+}
+
+export interface ProcessedDiffFile {
+  diffFile: DiffFile | CoreDiffFile;
+  fileName: string;
+  isGitDiff: boolean;
+}
+
+export async function processMultiFileDiff(
+  data: MultiFileDiffData,
+  options: DiffViewOptions = {}
+): Promise<ProcessedDiffFile[]> {
+  const processedFiles: ProcessedDiffFile[] = [];
+
+  for (const fileData of data.files) {
+    const isGitDiff = !!fileData.hunks;
+    const diffFile = isGitDiff
+      ? createDiffFileFromHunks(fileData)
+      : createDiffFileFromContent(fileData);
+    
+    await initializeDiffFile(diffFile, options);
+    
+    processedFiles.push({
+      diffFile,
+      fileName: fileData.newFile.fileName || fileData.oldFile.fileName || "unnamed",
+      isGitDiff
+    });
+  }
+
+  return processedFiles;
 }

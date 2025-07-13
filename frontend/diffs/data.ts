@@ -12,6 +12,10 @@ export interface DiffData {
   hunks?: string[];
 }
 
+export interface MultiFileDiffData {
+  files: DiffData[];
+}
+
 export const sampleDiffData: DiffData = {
   oldFile: {
     fileName: "UserService.ts",
@@ -109,5 +113,91 @@ export const sampleGitDiffData: DiffData = {
     '+    "test": "react-scripts test"',
     '   }',
     ' }'
+  ]
+};
+
+export const sampleMultiFileDiffData: MultiFileDiffData = {
+  files: [
+    sampleDiffData,
+    {
+      oldFile: {
+        fileName: "types.ts",
+        content: `export interface User {
+  id: string;
+  name: string;
+  email: string;
+}`,
+        fileLang: "typescript"
+      },
+      newFile: {
+        fileName: "types.ts",
+        content: `export interface User {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface UserProfile extends User {
+  bio?: string;
+  avatar?: string;
+}`,
+        fileLang: "typescript"
+      }
+    },
+    {
+      oldFile: {
+        fileName: "logger.ts",
+        content: `export class Logger {
+  log(message: string): void {
+    console.log(message);
+  }
+}`,
+        fileLang: "typescript"
+      },
+      newFile: {
+        fileName: "logger.ts",
+        content: `export enum LogLevel {
+  DEBUG = 'debug',
+  INFO = 'info',
+  WARN = 'warn',
+  ERROR = 'error'
+}
+
+export class Logger {
+  private level: LogLevel = LogLevel.INFO;
+
+  constructor(level?: LogLevel) {
+    if (level) {
+      this.level = level;
+    }
+  }
+
+  log(message: string, level: LogLevel = LogLevel.INFO): void {
+    const timestamp = new Date().toISOString();
+    console.log(\`[\${timestamp}] [\${level.toUpperCase()}] \${message}\`);
+  }
+
+  debug(message: string): void {
+    this.log(message, LogLevel.DEBUG);
+  }
+
+  info(message: string): void {
+    this.log(message, LogLevel.INFO);
+  }
+
+  warn(message: string): void {
+    this.log(message, LogLevel.WARN);
+  }
+
+  error(message: string): void {
+    this.log(message, LogLevel.ERROR);
+  }
+}`,
+        fileLang: "typescript"
+      }
+    },
+    sampleGitDiffData
   ]
 };

@@ -1,65 +1,52 @@
-"use client";
-
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import { DiffView, DiffModeEnum } from "@git-diff-view/react";
-import { sampleDiffData, sampleGitDiffData } from "./data";
+import { sampleMultiFileDiffData, type DiffData } from "./data";
 import { 
-  createDiffFileFromContent, 
-  createDiffFileFromHunks, 
-  initializeDiffFile,
+  processMultiFileDiff,
   getDefaultOptions,
-  type DiffViewOptions 
+  type DiffViewOptions,
+  type ProcessedDiffFile
 } from "./utils";
 import "@git-diff-view/react/styles/diff-view.css";
 
 interface DiffViewerProps {
+  data?: DiffData[];
   options?: DiffViewOptions;
-  useGitDiff?: boolean;
 }
 
-const defaultOptions = getDefaultOptions();
-
 export const DiffViewer: React.FC<DiffViewerProps> = ({ 
-  options: providedOptions,
-  useGitDiff = false 
+  data = sampleMultiFileDiffData.files,
+  options = getDefaultOptions()
 }) => {
-  const options = useMemo(() => providedOptions || defaultOptions, [providedOptions]);
-  
-  console.log('DiffViewer rendering, useGitDiff:', useGitDiff, 'options:', options);
-  const [diffFile, setDiffFile] = useState<any>(null);
+  const [diffFiles, setDiffFiles] = useState<ProcessedDiffFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadDiff = async () => {
-      console.log('loadDiff starting');
       try {
         setLoading(true);
         setError(null);
         
-        const data = useGitDiff ? sampleGitDiffData : sampleDiffData;
-        console.log('Using data:', data);
-        
-        const file = useGitDiff 
-          ? createDiffFileFromHunks(data)
-          : createDiffFileFromContent(data);
-        console.log('Created file:', file);
-        
-        console.log('Initializing diff file...');
-        await initializeDiffFile(file, options);
-        console.log('Diff file initialized:', file);
-        setDiffFile(file);
+        const processedFiles = await processMultiFileDiff({ files: data }, options);
+        setDiffFiles(processedFiles);
       } catch (err) {
-        console.error('Error loading diff:', err);
         setError(err instanceof Error ? err.message : "Failed to load diff");
       } finally {
-        console.log('loadDiff complete, setting loading to false');
         setLoading(false);
       }
     };
 
     loadDiff();
-  }, [useGitDiff, options]);
+  }, [data, options]);
+
+  if (loading) {
+    return (
+      <div style={{ padding: "20px", textAlign: "center" }}>
+        Loading diff...
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -69,33 +56,38 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
     );
   }
 
-
-  if (loading) {
-    console.log('Still loading, showing loading message');
-    return (
-      <div style={{ padding: "20px", textAlign: "center" }}>
-        Loading diff...
-      </div>
-    );
-  }
-
-  if (!diffFile) {
-    console.log('No diffFile, returning null');
+  if (!diffFiles.length) {
     return null;
   }
-  
-  console.log('Rendering DiffView with diffFile:', diffFile);
+
+  const showFileHeaders = diffFiles.length > 1;
 
   return (
     <div style={{ height: "100%", overflow: "auto" }}>
-      <DiffView
-        diffFile={diffFile}
-        diffViewMode={options.mode === "unified" ? DiffModeEnum.Unified : DiffModeEnum.Split}
-        diffViewWrap={options.wrap}
-        diffViewHighlight={options.highlight}
-        diffViewTheme={options.theme}
-        diffViewFontSize={options.fontSize}
-      />
+      {diffFiles.map((file, index) => (
+        <div key={index} style={{ marginBottom: index < diffFiles.length - 1 ? "40px" : 0 }}>
+          {showFileHeaders && (
+            <div style={{ 
+              padding: "10px 20px", 
+              backgroundColor: options.theme === "dark" ? "#1e1e1e" : "#f5f5f5",
+              borderBottom: `1px solid ${options.theme === "dark" ? "#333" : "#ddd"}`,
+              fontFamily: "monospace",
+              fontSize: "14px",
+              fontWeight: "bold"
+            }}>
+              {file.fileName}
+            </div>
+          )}
+          <DiffView
+            diffFile={file.diffFile}
+            diffViewMode={options.mode === "unified" ? DiffModeEnum.Unified : DiffModeEnum.Split}
+            diffViewWrap={options.wrap}
+            diffViewHighlight={options.highlight}
+            diffViewTheme={options.theme}
+            diffViewFontSize={options.fontSize}
+          />
+        </div>
+      ))}
     </div>
   );
 };
