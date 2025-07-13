@@ -450,18 +450,25 @@
                 return;
             }
 
-            tbody.innerHTML = runs.map(run => `
+            tbody.innerHTML = runs.map(run => {
+                // Format long run IDs for display
+                const displayId = run.id.length > 15 ? 
+                    `<span title="${run.id}">${run.id.substring(0, 12)}...</span>` : 
+                    run.id;
+                
+                return `
                 <tr>
-                    <td><strong>${run.id}</strong></td>
+                    <td><strong>${displayId}</strong></td>
                     <td><span class="status-badge status-${run.status}">${run.status}</span></td>
                     <td class="timestamp">${new Date(run.created_at).toLocaleString()}</td>
                     <td>${run.github_url || '-'}</td>
                     <td class="content-cell" onclick="toggleExpand(this)">${run.prompt || '-'}</td>
-                    <td>${JSON.stringify(run.model_variants) || '-'}</td>
+                    <td>${run.model_variants || '-'}</td>
                     <td>${run.agent_mode || '-'}</td>
                     <td>${run.message_count}</td>
                 </tr>
-            `).join('');
+                `;
+            }).join('');
         }
 
         function updateRunsPagination() {
@@ -498,19 +505,49 @@
         }
 
         async function loadRunIdOptions() {
-            const data = await fetchData('/run-ids');
-            if (data) {
-                const select = document.getElementById('outputRunId');
-                const currentValue = select.value;
-                select.innerHTML = '<option value="">All Runs</option>';
-                data.run_ids.forEach(id => {
-                    const option = document.createElement('option');
-                    option.value = id;
-                    option.textContent = id;
-                    select.appendChild(option);
-                });
-                select.value = currentValue;
+            // Get run IDs from both agent_outputs and runs tables
+            const [outputData, runData] = await Promise.all([
+                fetchData('/run-ids'),
+                fetchData('/runs?limit=100')
+            ]);
+            
+            const select = document.getElementById('outputRunId');
+            const currentValue = select.value;
+            select.innerHTML = '<option value="">All Runs</option>';
+            
+            // Create a set to avoid duplicates
+            const allRunIds = new Set();
+            
+            // Add run IDs from agent_outputs (short format)
+            if (outputData) {
+                outputData.run_ids.forEach(id => allRunIds.add(id));
             }
+            
+            // Add run IDs from runs table (long format)
+            if (runData) {
+                runData.runs.forEach(run => allRunIds.add(run.id));
+            }
+            
+            // Sort and add to dropdown
+            const sortedIds = Array.from(allRunIds).sort((a, b) => {
+                // Sort by length first (short IDs first), then alphabetically
+                if (a.length !== b.length) {
+                    return a.length - b.length;
+                }
+                return b.localeCompare(a); // Reverse alphabetical for newer runs first
+            });
+            
+            sortedIds.forEach(id => {
+                const option = document.createElement('option');
+                option.value = id;
+                // Show short format for display if it's a long ID
+                const displayText = id.length > 10 ? `${id.substring(0, 8)}...` : id;
+                option.textContent = `${displayText} (${id.length > 10 ? 'new' : 'old'} format)`;
+                option.title = id; // Full ID in tooltip
+                select.appendChild(option);
+            });
+            
+            select.value = currentValue;
         }
 
         // Load variations when run ID is selected

@@ -108,6 +108,9 @@ COPY --chown=agentuser:agentuser agent/ ./agent/
 COPY --chown=agentuser:agentuser app/models/ ./app/models/
 COPY --chown=agentuser:agentuser app/core/config.py ./app/core/config.py
 
+# Set PYTHONPATH to include the /app directory
+ENV PYTHONPATH="/app:$PYTHONPATH"
+
 # Switch to non-root user
 USER agentuser
 

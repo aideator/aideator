@@ -550,6 +550,15 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
 
         # Initialize database connection
         await self._init_database()
+        
+        # Log a distinctive hello message for testing container execution
+        if self.db_service and self.db_service._connected:
+            hello_message = f"👋 Hello from container! I'm variation {self.variation_id} of run {self.run_id}. Container is running and database connection is working!"
+            await self.db_service.publish_log(hello_message, "INFO", 
+                                              container_id=self.variation_id,
+                                              run_id=self.run_id,
+                                              message_type="container_hello")
+            self.log(hello_message, "INFO")
 
         # Log available API keys for debugging
         await self.log_async(

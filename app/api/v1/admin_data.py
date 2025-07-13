@@ -5,9 +5,9 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import and_, desc, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
-from app.models.agent_outputs import AgentOutput
-from app.models.run import Run
+from app.core.database import get_session
+from app.models.run import AgentOutput, Run
+from sqlmodel import select
 
 router = APIRouter()
 
@@ -19,46 +19,46 @@ async def get_runs(
     status: Optional[str] = Query(None),
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
 ):
     """Get runs with filtering and pagination."""
     
-    query = db.query(Run)
+    # Build query
+    query = select(Run)
     
     # Apply filters
-    filters = []
-    
     if status:
-        filters.append(Run.status == status)
+        query = query.where(Run.status == status)
     
     if start_date:
-        filters.append(Run.created_at >= start_date)
+        query = query.where(Run.created_at >= start_date)
     
     if end_date:
-        filters.append(Run.created_at <= end_date)
-    
-    if filters:
-        query = query.filter(and_(*filters))
+        query = query.where(Run.created_at <= end_date)
     
     # Add order and pagination
     query = query.order_by(desc(Run.created_at))
     
     # Get total count
-    total = await query.count()
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
     
-    # Apply pagination
-    runs = await query.offset(offset).limit(limit).all()
+    # Apply pagination and execute
+    paginated_query = query.offset(offset).limit(limit)
+    result = await db.execute(paginated_query)
+    runs = result.scalars().all()
     
     # Get message counts for each run
     run_ids = [run.id for run in runs]
+    message_count_dict = {}
     if run_ids:
-        message_counts = await db.execute(
-            "SELECT run_id, COUNT(*) as count FROM agent_outputs WHERE run_id = ANY(:run_ids) GROUP BY run_id",
-            {"run_ids": run_ids}
-        )
-        message_count_dict = {row.run_id: row.count for row in message_counts}
-    else:
-        message_count_dict = {}
+        count_query = select(AgentOutput.run_id, func.count(AgentOutput.id).label('count')).where(
+            AgentOutput.run_id.in_(run_ids)
+        ).group_by(AgentOutput.run_id)
+        count_result = await db.execute(count_query)
+        for row in count_result.fetchall():
+            message_count_dict[row.run_id] = row.count
     
     # Format response
     runs_data = []
@@ -67,11 +67,11 @@ async def get_runs(
             "id": run.id,
             "status": run.status,
             "created_at": run.created_at,
-            "updated_at": run.updated_at,
+            "updated_at": getattr(run, 'updated_at', run.created_at),
             "github_url": run.github_url,
             "prompt": run.prompt,
-            "model_variants": run.model_variants,
-            "agent_mode": run.agent_mode,
+            "model_variants": run.variations,
+            "agent_mode": getattr(run, 'agent_mode', 'unknown'),
             "message_count": message_count_dict.get(run.id, 0)
         }
         runs_data.append(run_data)
@@ -93,41 +93,41 @@ async def get_agent_outputs(
     variation_id: Optional[int] = Query(None),
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
 ):
     """Get agent outputs with filtering and pagination."""
     
-    query = db.query(AgentOutput)
+    # Build query
+    query = select(AgentOutput)
     
     # Apply filters
-    filters = []
-    
     if output_type:
-        filters.append(AgentOutput.output_type == output_type)
+        query = query.where(AgentOutput.output_type == output_type)
     
     if run_id:
-        filters.append(AgentOutput.run_id == run_id)
+        query = query.where(AgentOutput.run_id == run_id)
     
     if variation_id is not None:
-        filters.append(AgentOutput.variation_id == variation_id)
+        query = query.where(AgentOutput.variation_id == variation_id)
     
     if start_date:
-        filters.append(AgentOutput.timestamp >= start_date)
+        query = query.where(AgentOutput.timestamp >= start_date)
     
     if end_date:
-        filters.append(AgentOutput.timestamp <= end_date)
-    
-    if filters:
-        query = query.filter(and_(*filters))
+        query = query.where(AgentOutput.timestamp <= end_date)
     
     # Add order and pagination
     query = query.order_by(desc(AgentOutput.timestamp))
     
     # Get total count
-    total = await query.count()
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
     
-    # Apply pagination
-    outputs = await query.offset(offset).limit(limit).all()
+    # Apply pagination and execute
+    paginated_query = query.offset(offset).limit(limit)
+    result = await db.execute(paginated_query)
+    outputs = result.scalars().all()
     
     # Format response
     outputs_data = []
@@ -153,29 +153,28 @@ async def get_agent_outputs(
 @router.get("/variations/{run_id}")
 async def get_variations_for_run(
     run_id: str,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
 ):
     """Get all variation IDs for a specific run."""
     
-    result = await db.execute(
-        "SELECT DISTINCT variation_id FROM agent_outputs WHERE run_id = :run_id ORDER BY variation_id",
-        {"run_id": run_id}
-    )
+    query = select(AgentOutput.variation_id).where(
+        AgentOutput.run_id == run_id
+    ).distinct().order_by(AgentOutput.variation_id)
     
-    variations = [row.variation_id for row in result]
+    result = await db.execute(query)
+    variations = result.scalars().all()
     
     return {"variations": variations}
 
 
 @router.get("/output-types")
-async def get_output_types(db: AsyncSession = Depends(get_db)):
+async def get_output_types(db: AsyncSession = Depends(get_session)):
     """Get all distinct output types."""
     
-    result = await db.execute(
-        "SELECT DISTINCT output_type FROM agent_outputs ORDER BY output_type"
-    )
+    query = select(AgentOutput.output_type).distinct().order_by(AgentOutput.output_type)
     
-    output_types = [row.output_type for row in result]
+    result = await db.execute(query)
+    output_types = result.scalars().all()
     
     return {"output_types": output_types}
 
@@ -183,15 +182,13 @@ async def get_output_types(db: AsyncSession = Depends(get_db)):
 @router.get("/run-ids")
 async def get_run_ids(
     limit: int = Query(100, ge=1, le=500),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
 ):
     """Get all run IDs for dropdown selection."""
     
-    result = await db.execute(
-        "SELECT DISTINCT run_id FROM agent_outputs ORDER BY run_id DESC LIMIT :limit",
-        {"limit": limit}
-    )
+    query = select(AgentOutput.run_id).distinct().order_by(desc(AgentOutput.run_id)).limit(limit)
     
-    run_ids = [row.run_id for row in result]
+    result = await db.execute(query)
+    run_ids = result.scalars().all()
     
     return {"run_ids": run_ids}

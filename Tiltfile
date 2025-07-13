@@ -52,7 +52,7 @@ local_resource(
 )
 
 # Deploy simple Kubernetes resources - No Helm!
-k8s_yaml(['k8s/database.yaml', 'k8s/redis.yaml', 'k8s/litellm.yaml', 'k8s/api.yaml', 'k8s/rbac.yaml'])
+k8s_yaml(['k8s/database.yaml', 'k8s/redis.yaml', 'k8s/litellm.yaml', 'k8s/api.yaml', 'k8s/rbac.yaml', 'k8s/pvc.yaml'])
 
 # Configure port forwards - Simple and Predictable
 k8s_resource('aideator-api', port_forwards='8000:8000', labels=['backend'])

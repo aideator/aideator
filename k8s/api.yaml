@@ -13,6 +13,7 @@ spec:
       labels:
         app: aideator-api
     spec:
+      serviceAccountName: aideator
       containers:
       - name: api
         image: aideator-api

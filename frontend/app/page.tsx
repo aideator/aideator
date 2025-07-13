@@ -125,26 +125,6 @@ export default function Home() {
             </TabsTrigger>
           </TabsList>
           <TabsContent value="tasks" className="mt-6 space-y-1">
-            {/* Mock task link for development */}
-            <Link href="/task/2">
-              <div className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-900 transition-colors cursor-pointer border border-gray-800 mb-4">
-                <div className="flex flex-col">
-                  <span className="font-medium">Make hello world message cheerier (Mock Task)</span>
-                  <span className="text-sm text-gray-400">7:29 PM · aideator/helloworld</span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-1 text-sm text-gray-400">
-                    <Layers className="w-4 h-4" />
-                    <span>3</span>
-                  </div>
-                  <div className="font-mono text-sm">
-                    <span className="text-green-400">+8</span>{" "}
-                    <span className="text-red-400">-8</span>
-                  </div>
-                </div>
-              </div>
-            </Link>
-            
             {loading ? (
               <div className="flex items-center justify-center py-8">
                 <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
