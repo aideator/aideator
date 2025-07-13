@@ -1,7 +1,7 @@
 """add_model_sync_logs_table
 
-Revision ID: 011
-Revises: 010
+Revision ID: 012
+Revises: 011
 Create Date: 2025-07-12 21:25:00.000000
 
 """
@@ -13,15 +13,15 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "011"
-down_revision: str | None = "010"
+revision: str = "012"
+down_revision: str | None = "011"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
     """Add model_sync_logs table for tracking LiteLLM model synchronization."""
-    
+
     op.create_table(
         "model_sync_logs",
         sa.Column("id", sa.Integer(), nullable=False, autoincrement=True),

@@ -25,6 +25,32 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
+@router.get("/auth")
+async def github_auth(state: str = Query(None)) -> RedirectResponse:
+    """Initiate GitHub OAuth flow."""
+    # Check if GitHub OAuth is configured
+    if not settings.github_client_id or not settings.github_client_secret:
+        raise HTTPException(
+            status_code=500,
+            detail="GitHub OAuth is not configured",
+        )
+
+    # Generate state if not provided
+    if not state:
+        state = secrets.token_urlsafe(8)
+
+    # Build OAuth URL
+    oauth_url = (
+        f"https://github.com/login/oauth/authorize"
+        f"?client_id={settings.github_client_id}"
+        f"&redirect_uri=http://localhost:8000/api/v1/github/callback"
+        f"&scope={settings.github_oauth_scopes}"
+        f"&state={state}"
+    )
+
+    return RedirectResponse(url=oauth_url, status_code=302)
+
+
 @router.get("/callback")
 async def github_callback(
     code: str = Query(None),

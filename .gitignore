@@ -129,6 +129,9 @@ server.log
 server_new.log
 cluster-config.yaml
 
+# Tilt-generated files
+.tilt-init-user.py
+
 # Redis dump
 dump.rdb
 

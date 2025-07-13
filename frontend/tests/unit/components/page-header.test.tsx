@@ -79,7 +79,7 @@ describe('PageHeader', () => {
       id: 'abc-123-def',
       user_id: 'user-456',
       title: 'Session with Complex ID',
-      description: null,
+      description: undefined,
       is_active: true,
       is_archived: false,
       created_at: '2023-01-01T00:00:00Z',

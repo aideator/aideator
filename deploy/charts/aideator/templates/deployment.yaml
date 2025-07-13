@@ -76,8 +76,9 @@ spec:
             - /bin/bash
             - -c
             - |
+              set -e  # Exit on error
               echo "Running database migrations..."
-              python -m alembic upgrade head
+              python -m alembic upgrade head || { echo "Migration failed!"; exit 1; }
               echo "Migrations completed successfully!"
           env:
             - name: DEBUG
@@ -97,7 +98,7 @@ spec:
                   name: aideator-secret
                   key: encryption-key
             - name: REDIS_URL
-              value: "redis://localhost:6379/0"
+              value: "redis://chart-redis-master:6379/0"
             # Use placeholder API keys to satisfy validation during migration
             - name: OPENAI_API_KEY
               value: "sk-placeholder-for-migrations-only-00000000000000000000"
@@ -146,7 +147,7 @@ spec:
             # SECURITY TRADEOFF: Using hardcoded Redis URL for development simplicity
             # In production, use ConfigMap or Secret for Redis credentials
             - name: REDIS_URL
-              value: "redis://localhost:6379/0"
+              value: "redis://chart-redis-master:6379/0"
             - name: KUBERNETES_NAMESPACE
               valueFrom:
                 fieldRef:
@@ -172,6 +173,16 @@ spec:
                 secretKeyRef:
                   name: {{ include "aideator.fullname" . }}-litellm-secret
                   key: master-key
+            - name: GITHUB_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: github-oauth-secret
+                  key: client-id
+            - name: GITHUB_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: github-oauth-secret
+                  key: client-secret
             {{- if .Values.env }}
             {{- range .Values.env }}
             - name: {{ .name }}

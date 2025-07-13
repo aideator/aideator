@@ -85,7 +85,7 @@ async def create_session(
 
 
 @router.get("/{session_id}", response_model=SessionResponse)
-async def get_session(
+async def get_session_by_id(
     session_id: str, current_user: CurrentUser, db: AsyncSession = Depends(get_session)
 ) -> SessionResponse:
     """Get a specific session."""

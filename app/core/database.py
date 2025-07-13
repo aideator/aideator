@@ -90,12 +90,16 @@ async def create_db_and_tables() -> None:
             # Try to create tables and indexes
             await conn.run_sync(SQLModel.metadata.create_all)
             logger.info("Database tables created successfully")
-            
+
             # Verify our key tables were created
-            result = await conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename IN ('model_sync_logs', 'model_definitions')"))
+            result = await conn.execute(
+                text(
+                    "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename IN ('model_sync_logs', 'model_definitions')"
+                )
+            )
             tables = [row[0] for row in result.fetchall()]
             logger.info(f"Verified tables created: {tables}")
-            
+
     except Exception as e:
         error_msg = str(e).lower()
         # Handle specific duplicate index/table errors

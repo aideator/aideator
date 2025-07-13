@@ -34,13 +34,10 @@ export default function SignInPage() {
     localStorage.removeItem('access_token')
     localStorage.removeItem('user')
     
-    // Build GitHub OAuth URL directly
-    const clientId = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID
-    const redirectUri = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/github/callback`
-    const scope = 'read:user user:email'
+    // Use backend OAuth endpoint instead of building URL manually
     const state = Math.random().toString(36).substring(7)
-    
-    const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${state}`
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+    const githubAuthUrl = `${apiUrl}/api/v1/github/auth?state=${state}`
     
     window.location.href = githubAuthUrl
   }

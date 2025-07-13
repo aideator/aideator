@@ -23,9 +23,8 @@ export function ProviderKeyCard({ providerKey, onEdit, onDelete, onRefresh }: Pr
     setIsValidating(true)
     try {
       const result = await apiClient.validateProviderKey(providerKey.id)
-      if (result.valid) {
-        onRefresh()
-      }
+      // Always refresh to show updated validation status
+      onRefresh()
     } catch (error) {
       console.error('Failed to validate key:', error)
     } finally {

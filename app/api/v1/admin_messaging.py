@@ -32,7 +32,7 @@ async def get_overview(
             AgentOutput.output_type
         )
     )
-    message_types = dict(type_counts)
+    messages_by_type = dict(type_counts)
 
     # Recent activity (last 24 hours)
     yesterday = datetime.utcnow() - timedelta(days=1)
@@ -50,11 +50,21 @@ async def get_overview(
         )
     )
 
-    # Active runs (pending + running)
-    active_runs = await db.scalar(
-        select(func.count(Run.id)).where(
-            or_(Run.status == RunStatus.PENDING, Run.status == RunStatus.RUNNING)
+    # Total runs
+    total_runs = await db.scalar(select(func.count(Run.id)))
+
+    # Runs by status
+    try:
+        status_counts = await db.execute(
+            select(Run.status, func.count(Run.id)).group_by(Run.status)
         )
+        runs_by_status = {status.value: count for status, count in status_counts}
+    except Exception:
+        runs_by_status = {}
+
+    # Recent runs (last 24 hours)
+    recent_runs = await db.scalar(
+        select(func.count(Run.id)).where(Run.created_at > yesterday)
     )
 
     # Messages in last hour
@@ -62,6 +72,17 @@ async def get_overview(
     recent_messages_1h = await db.scalar(
         select(func.count(AgentOutput.id)).where(AgentOutput.timestamp > one_hour_ago)
     )
+
+    # Database size
+    db_size = 0
+    try:
+        result = await db.execute(text("SELECT pg_database_size(current_database())"))
+        db_size = result.scalar() or 0
+    except Exception:
+        db_size = 0
+
+    # Average messages per run
+    avg_messages = total_messages / max(total_runs, 1) if total_runs else 0
 
     return {
         "active_runs": active_runs or 0,
@@ -102,7 +123,7 @@ async def get_runs(
     runs = result.scalars().all()
 
     # Get message counts for each run
-    run_metrics = []
+    run_list = []
     for run in runs:
         # Get message counts by variation
         variation_counts = await db.execute(
@@ -303,8 +324,59 @@ async def cleanup_database(
     current_user: User | None = None,
 ) -> dict[str, Any]:
     """Delete old runs and their messages."""
-    # Delegate to standalone function
-    return await cleanup_database(db, older_than_days, dry_run)
+    cutoff_date = datetime.utcnow() - timedelta(days=older_than_days)
+
+    # Find runs that would be/was deleted
+    runs_result = await db.execute(select(Run.id).where(Run.created_at < cutoff_date))
+    old_run_ids = [row[0] for row in runs_result]
+    runs_affected = len(old_run_ids)
+
+    # Count messages that would be/was deleted
+    if runs_affected > 0:
+        messages_affected = (
+            await db.scalar(
+                select(func.count(AgentOutput.id)).where(
+                    AgentOutput.timestamp < cutoff_date
+                )
+            )
+            or 0
+        )
+    else:
+        messages_affected = 0
+
+    if dry_run:
+        if runs_affected == 0:
+            message = "Dry run: No old runs found to delete"
+        else:
+            message = f"Dry run: Would delete {runs_affected} runs and {messages_affected} messages older than {older_than_days} days"
+
+        return {
+            "runs_affected": runs_affected,
+            "messages_affected": messages_affected,
+            "dry_run": True,
+            "message": message,
+        }
+    # Actually delete
+    if runs_affected == 0:
+        message = "No old runs found to delete"
+    else:
+        # Delete messages first (to avoid foreign key constraints)
+        await db.execute(delete(AgentOutput).where(AgentOutput.timestamp < cutoff_date))
+
+        # Delete runs
+        await db.execute(delete(Run).where(Run.created_at < cutoff_date))
+
+        # Commit the transaction
+        await db.commit()
+
+        message = f"Cleanup completed: Deleted {runs_affected} runs and {messages_affected} messages older than {older_than_days} days"
+
+    return {
+        "runs_affected": runs_affected,
+        "messages_affected": messages_affected,
+        "dry_run": False,
+        "message": message,
+    }
 
 
 @router.delete("/cleanup", summary="Clean up old data")

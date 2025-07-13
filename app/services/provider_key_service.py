@@ -77,7 +77,7 @@ class ProviderKeyService:
         )
 
         session.add(provider_key)
-        
+
         # Flush to ensure provider_key is inserted first
         if isinstance(session, AsyncSession):
             await session.flush()

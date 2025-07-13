@@ -32,8 +32,10 @@ export default function AuthCallbackPage() {
       if (encodedData) {
         setIsProcessing(true)
         try {
-          // Decode the base64 data
-          const decodedData = atob(encodedData)
+          // Decode the URL-safe base64 data
+          // Convert URL-safe base64 to regular base64 first
+          const regularBase64 = encodedData.replace(/-/g, '+').replace(/_/g, '/')
+          const decodedData = atob(regularBase64)
           const authData = JSON.parse(decodedData)
           
           if (authData.token && authData.user) {

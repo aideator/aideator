@@ -24,6 +24,7 @@ class MockSettings:
     rate_limit_requests = 5  # Use 5 for easier testing
     rate_limit_period = 60  # seconds
     api_key_header = "X-API-Key"
+    github_test_username = "test-user"
 
 
 @pytest.fixture

@@ -31,20 +31,7 @@ describe('Select Components', () => {
     )
     
     const trigger = screen.getByTestId('select-trigger')
-    expect(trigger).toHaveClass(
-      'flex',
-      'h-10',
-      'w-full',
-      'items-center',
-      'justify-between',
-      'rounded-md',
-      'border',
-      'border-input',
-      'bg-background',
-      'px-3',
-      'py-2',
-      'text-sm'
-    )
+    expect(trigger).toHaveClass('flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm')
   })
 
   it('should be disabled when disabled prop is true', () => {

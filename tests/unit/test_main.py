@@ -29,6 +29,7 @@ class MockSettings:
     port = 8000
     reload = False
     log_level = "info"
+    github_test_username = "test-user"
 
 
 @pytest.fixture
