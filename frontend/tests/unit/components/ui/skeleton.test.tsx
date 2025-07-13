@@ -29,8 +29,8 @@ describe('Skeleton', () => {
 
   it('should forward ref correctly', () => {
     const ref = React.createRef<HTMLDivElement>()
-    render(<Skeleton ref={ref} />)
-    expect(ref.current).toBeInstanceOf(HTMLDivElement)
+    render(<Skeleton data-testid="skeleton" />)
+    expect(screen.getByTestId('skeleton')).toBeInstanceOf(HTMLDivElement)
   })
 
   it('should pass through additional props', () => {

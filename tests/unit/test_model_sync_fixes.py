@@ -123,13 +123,20 @@ class TestModelSyncServiceFixes:
     @patch("app.services.model_sync_service.httpx.AsyncClient")
     def test_fetch_models_uses_master_key_auth(self, mock_client, service):
         """Test that model fetching uses the master key for authentication."""
+        # Mock the /health/readiness response (needed for health check)
+        health_response = MagicMock()
+        health_response.status_code = 200
+        health_response.raise_for_status = MagicMock()
+
         # Mock the /v1/models response
         models_response = MagicMock()
+        models_response.status_code = 200
         models_response.json.return_value = {"data": [{"id": "gpt-4"}]}
         models_response.raise_for_status = MagicMock()
 
         # Mock the /v1/model/info response
         info_response = MagicMock()
+        info_response.status_code = 200
         info_response.json.return_value = {
             "data": [{"model_name": "gpt-4", "litellm_provider": "openai"}]
         }
@@ -137,7 +144,11 @@ class TestModelSyncServiceFixes:
 
         mock_client_instance = AsyncMock()
         # Return different responses for different URLs
-        mock_client_instance.get.side_effect = [models_response, info_response]
+        mock_client_instance.get.side_effect = [
+            health_response,
+            models_response,
+            info_response,
+        ]
         mock_client.return_value.__aenter__.return_value = mock_client_instance
 
         import asyncio
@@ -146,9 +157,9 @@ class TestModelSyncServiceFixes:
 
         # Verify requests were made with correct authentication
         calls = mock_client_instance.get.call_args_list
-        assert len(calls) == 2  # Two API calls made
+        assert len(calls) == 3  # Health check + two API calls made
 
-        # Check that Authorization header is set correctly
+        # Check that Authorization header is set correctly for all calls
         for call in calls:
             headers = call[1]["headers"]
             assert headers["Authorization"] == "Bearer sk-1234"

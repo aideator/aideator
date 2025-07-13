@@ -89,25 +89,37 @@ class TestModelSyncService:
             mock_instance = AsyncMock()
             mock_client.return_value.__aenter__.return_value = mock_instance
 
-            # Mock the two API calls
+            # Mock the health check response (first call)
+            health_response = Mock()
+            health_response.status_code = 200
+            health_response.raise_for_status = Mock()
+
+            # Mock the three API calls: health, models, model_info
+            models_response = Mock()
+            models_response.status_code = 200
+            models_response.json = Mock(return_value=mock_litellm_response["models"])
+            models_response.raise_for_status = Mock()
+
+            model_info_response = Mock()
+            model_info_response.status_code = 200
+            model_info_response.json = Mock(
+                return_value=mock_litellm_response["model_info"]
+            )
+            model_info_response.raise_for_status = Mock()
+
             mock_instance.get = AsyncMock(
                 side_effect=[
-                    Mock(
-                        json=Mock(return_value=mock_litellm_response["models"]),
-                        raise_for_status=Mock(),
-                    ),
-                    Mock(
-                        json=Mock(return_value=mock_litellm_response["model_info"]),
-                        raise_for_status=Mock(),
-                    ),
+                    health_response,
+                    models_response,
+                    model_info_response,
                 ]
             )
 
             # Call the method
             models = await sync_service._fetch_models_from_proxy()
 
-            # Verify API calls were made
-            assert mock_instance.get.call_count == 2
+            # Verify API calls were made (health check + 2 data calls)
+            assert mock_instance.get.call_count == 3
 
             # The method merges models from both endpoints
             # It should have the 2 from model_info plus gemini-pro from models

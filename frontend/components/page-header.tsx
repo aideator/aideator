@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button"
 import { apiClient } from "@/lib/api"
 import { Session } from "@/lib/types"
 import { useState, useEffect } from "react"
-import { AccountDropdown } from "@/components/account-dropdown"
-import { useAuth } from "@/lib/auth-context"
+// import { AccountDropdown } from "@/components/account-dropdown"
+// import { useAuth } from "@/lib/auth-context"
 
 export function PageHeader() {
   const pathname = usePathname()

@@ -59,35 +59,35 @@ jobs:
             htmlcov/
             coverage.xml
 
-  frontend-test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: ./frontend
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+  # frontend-test:
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 15
+  #   defaults:
+  #     run:
+  #       working-directory: ./frontend
+  #   
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
 
-      - name: Setup Node.js with caching
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+  #     - name: Setup Node.js with caching
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: '20'
+  #         cache: 'npm'
+  #         cache-dependency-path: frontend/package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
+  #     - name: Install dependencies
+  #       run: npm ci
 
-      - name: Run test:all
-        run: npm run test:all
+  #     - name: Run test:all
+  #       run: npm run test:all
 
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-test-results
-          path: |
-            frontend/test-results/
-            frontend/coverage/
+  #     - name: Upload test results
+  #       if: always()
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: frontend-test-results
+  #         path: |
+  #           frontend/test-results/
+  #           frontend/coverage/

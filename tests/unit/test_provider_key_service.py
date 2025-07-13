@@ -90,8 +90,8 @@ class TestProviderKeyService:
             assert result.provider == "openai"
             assert result.name == "My OpenAI Key"
             mock_db_session.add.assert_called()
-            mock_db_session.commit.assert_called_once()
-            mock_db_session.refresh.assert_called_once()
+            # Note: internal method doesn't commit - session manager handles it
+            mock_db_session.commit.assert_not_called()
             service.encryption.encrypt_api_key.assert_called_once_with("sk-test-123")
 
     @pytest.mark.asyncio
@@ -246,7 +246,8 @@ class TestProviderKeyService:
 
             # Assert
             assert result.name == "New Name"
-            mock_sync_session.commit.assert_called_once()
+            # Note: service doesn't commit - session manager handles it
+            mock_sync_session.commit.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_delete_provider_key(self, service, mock_user):
@@ -283,7 +284,8 @@ class TestProviderKeyService:
             # Assert
             assert result is True
             assert mock_key.is_active is False
-            mock_sync_session.commit.assert_called_once()
+            # Note: service doesn't commit - session manager handles it
+            mock_sync_session.commit.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_get_key_for_model(self, service, mock_user, mock_db_session):
@@ -310,7 +312,8 @@ class TestProviderKeyService:
             # Assert
             assert result == model_specific_key
             assert model_specific_key.total_requests == 6
-            mock_db_session.commit.assert_called_once()
+            # Note: service doesn't commit - session manager handles it
+            mock_db_session.commit.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_validate_provider_key(self, service, mock_user, mock_db_session):
@@ -335,7 +338,8 @@ class TestProviderKeyService:
         # Assert
         assert result is True
         assert mock_key.is_valid is True
-        mock_db_session.commit.assert_called_once()
+        # Note: service doesn't commit - session manager handles it
+        mock_db_session.commit.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_validate_provider_key_invalid_short(
@@ -366,7 +370,8 @@ class TestProviderKeyService:
             assert result is False
             assert mock_key.is_valid is False
             assert mock_key.last_error == "Key appears to be too short"
-            mock_db_session.commit.assert_called_once()
+            # Note: service doesn't commit - session manager handles it
+            mock_db_session.commit.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_validate_provider_key_decryption_error(
@@ -394,7 +399,8 @@ class TestProviderKeyService:
         assert result is False
         assert mock_key.is_valid is False
         assert mock_key.last_error == "Decryption failed"
-        mock_db_session.commit.assert_called_once()
+        # Note: service doesn't commit - session manager handles it
+        mock_db_session.commit.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_validate_provider_key_not_found(
@@ -467,7 +473,8 @@ class TestProviderKeyService:
                 # Assert
                 assert result == provider_key
                 assert provider_key.total_requests == 11
-                mock_db_session.commit.assert_called_once()
+                # Note: service doesn't commit - session manager handles it
+                mock_db_session.commit.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_get_key_for_model_not_found(
@@ -509,7 +516,8 @@ class TestProviderKeyService:
         )  # Handle floating point precision
         assert mock_key.total_requests == 6
         assert mock_key.last_used_at is not None
-        mock_db_session.commit.assert_called_once()
+        # Note: service doesn't commit - session manager handles it
+        mock_db_session.commit.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_track_usage_key_not_found(self, service, mock_db_session):
@@ -788,7 +796,8 @@ class TestProviderKeyService:
             # Assert
             assert result.name == "New Name"
             assert result.is_active is False
-            mock_db_session.commit.assert_called_once()
+            # Note: internal method doesn't commit - session manager handles it
+            mock_db_session.commit.assert_not_called()
             mock_db_session.refresh.assert_called_once()
 
     @pytest.mark.asyncio
@@ -869,7 +878,8 @@ class TestProviderKeyService:
             # Assert
             assert result is True
             assert mock_key.is_active is False
-            mock_db_session.commit.assert_called_once()
+            # Note: internal method doesn't commit - session manager handles it
+            mock_db_session.commit.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_delete_provider_key_internal_not_found(

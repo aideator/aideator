@@ -43,8 +43,9 @@ def test_github_oauth():
                         github_button = page.locator(selector).first
                         print(f"Found GitHub button with selector: {selector}")
                         break
-                except Exception:
+                except Exception as e:
                     # Ignore locator errors and try next selector
+                    print(f"Selector {selector} failed: {e}")
                     continue
 
             if not github_button:
@@ -63,8 +64,9 @@ def test_github_oauth():
                             github_button = button
                             print(f"Found GitHub button: {text}")
                             break
-                    except Exception:
+                    except Exception as e:
                         # Ignore button text extraction errors
+                        print(f"Button {i} text extraction failed: {e}")
                         continue
 
             if github_button:

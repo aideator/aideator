@@ -1,6 +1,10 @@
 import { apiClient } from '@/lib/api'
 import { ProviderAPIKey, ProviderAPIKeyCreate, ProviderAPIKeyUpdate, Provider } from '@/lib/types'
 
+// Mock fetch
+const mockFetch = jest.fn()
+global.fetch = mockFetch
+
 describe('API Client - Provider Key Methods', () => {
   const mockProviders: Provider[] = [
     { name: 'openai', display_name: 'OpenAI', requires_api_key: true },
@@ -29,20 +33,30 @@ describe('API Client - Provider Key Methods', () => {
   }
 
   beforeEach(() => {
+    mockFetch.mockClear()
     jest.clearAllMocks()
+    
+    // Reset auth token to avoid auto-auth calls
+    apiClient.setAuthToken('')
   })
 
   describe('getProviders', () => {
     it('fetches list of providers', async () => {
-      jest.spyOn(global, 'fetch').mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockProviders,
-      } as Response)
+      // Mock dev credentials call and then the actual API call
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ providers: mockProviders }),
+        })
 
       const result = await apiClient.getProviders()
 
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/v1/providers/list'),
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v1/provider-keys/providers/list'),
         expect.objectContaining({
           headers: expect.objectContaining({
             'Content-Type': 'application/json',
@@ -53,11 +67,17 @@ describe('API Client - Provider Key Methods', () => {
     })
 
     it('handles provider fetch error', async () => {
-      jest.spyOn(global, 'fetch').mockResolvedValueOnce({
-        ok: false,
-        statusText: 'Internal Server Error',
-        json: async () => ({ detail: 'Server error' }),
-      } as Response)
+      // Mock dev credentials success and then API error
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          statusText: 'Internal Server Error',
+          json: async () => ({ detail: 'Server error' }),
+        })
 
       await expect(apiClient.getProviders()).rejects.toEqual({
         detail: 'Server error',
@@ -68,14 +88,20 @@ describe('API Client - Provider Key Methods', () => {
   describe('getProviderKeys', () => {
     it('fetches user provider keys', async () => {
       const mockKeys = [mockProviderKey]
-      jest.spyOn(global, 'fetch').mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockKeys,
-      } as Response)
+      
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => mockKeys,
+        })
 
       const result = await apiClient.getProviderKeys()
 
-      expect(global.fetch).toHaveBeenCalledWith(
+      expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/api/v1/provider-keys/'),
         expect.objectContaining({
           headers: expect.objectContaining({
@@ -96,14 +122,19 @@ describe('API Client - Provider Key Methods', () => {
         description: 'Test description',
       }
 
-      jest.spyOn(global, 'fetch').mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockProviderKey,
-      } as Response)
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => mockProviderKey,
+        })
 
       const result = await apiClient.createProviderKey(newKey)
 
-      expect(global.fetch).toHaveBeenCalledWith(
+      expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/api/v1/provider-keys/'),
         expect.objectContaining({
           method: 'POST',
@@ -122,16 +153,21 @@ describe('API Client - Provider Key Methods', () => {
         api_key: 'invalid-key',
       }
 
-      jest.spyOn(global, 'fetch').mockResolvedValueOnce({
-        ok: false,
-        statusText: 'Bad Request',
-        json: async () => ({ 
-          detail: { 
-            message: 'Invalid API key format',
-            suggestion: 'OpenAI keys should start with sk-'
-          } 
-        }),
-      } as Response)
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          statusText: 'Bad Request',
+          json: async () => ({ 
+            detail: { 
+              message: 'Invalid API key format',
+              suggestion: 'OpenAI keys should start with sk-'
+            } 
+          }),
+        })
 
       await expect(apiClient.createProviderKey(newKey)).rejects.toEqual({
         detail: 'Invalid API key format',
@@ -146,14 +182,19 @@ describe('API Client - Provider Key Methods', () => {
         description: 'Updated description',
       }
 
-      jest.spyOn(global, 'fetch').mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ ...mockProviderKey, ...updates }),
-      } as Response)
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ ...mockProviderKey, ...updates }),
+        })
 
       const result = await apiClient.updateProviderKey('provkey_123', updates)
 
-      expect(global.fetch).toHaveBeenCalledWith(
+      expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/api/v1/provider-keys/provkey_123'),
         expect.objectContaining({
           method: 'PUT',
@@ -170,14 +211,19 @@ describe('API Client - Provider Key Methods', () => {
 
   describe('deleteProviderKey', () => {
     it('deletes a provider key', async () => {
-      jest.spyOn(global, 'fetch').mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({}),
-      } as Response)
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({}),
+        })
 
       await apiClient.deleteProviderKey('provkey_123')
 
-      expect(global.fetch).toHaveBeenCalledWith(
+      expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/api/v1/provider-keys/provkey_123'),
         expect.objectContaining({
           method: 'DELETE',
@@ -189,11 +235,16 @@ describe('API Client - Provider Key Methods', () => {
     })
 
     it('handles delete error', async () => {
-      jest.spyOn(global, 'fetch').mockResolvedValueOnce({
-        ok: false,
-        statusText: 'Forbidden',
-        json: async () => ({ detail: 'Cannot delete active key' }),
-      } as Response)
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          statusText: 'Forbidden',
+          json: async () => ({ detail: 'Cannot delete active key' }),
+        })
 
       await expect(apiClient.deleteProviderKey('provkey_123')).rejects.toEqual({
         detail: 'Cannot delete active key',
@@ -203,14 +254,19 @@ describe('API Client - Provider Key Methods', () => {
 
   describe('validateProviderKey', () => {
     it('validates a provider key successfully', async () => {
-      jest.spyOn(global, 'fetch').mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ valid: true }),
-      } as Response)
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ valid: true }),
+        })
 
       const result = await apiClient.validateProviderKey('provkey_123')
 
-      expect(global.fetch).toHaveBeenCalledWith(
+      expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/api/v1/provider-keys/provkey_123/validate'),
         expect.objectContaining({
           method: 'POST',
@@ -223,10 +279,15 @@ describe('API Client - Provider Key Methods', () => {
     })
 
     it('handles validation failure', async () => {
-      jest.spyOn(global, 'fetch').mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ valid: false, error: 'Invalid API key' }),
-      } as Response)
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ valid: false, error: 'Invalid API key' }),
+        })
 
       const result = await apiClient.validateProviderKey('provkey_123')
 
@@ -234,11 +295,16 @@ describe('API Client - Provider Key Methods', () => {
     })
 
     it('handles validation request error', async () => {
-      jest.spyOn(global, 'fetch').mockResolvedValueOnce({
-        ok: false,
-        statusText: 'Service Unavailable',
-        json: async () => ({ detail: 'Provider service unavailable' }),
-      } as Response)
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          statusText: 'Service Unavailable',
+          json: async () => ({ detail: 'Provider service unavailable' }),
+        })
 
       await expect(apiClient.validateProviderKey('provkey_123')).rejects.toEqual({
         detail: 'Provider service unavailable',
@@ -252,27 +318,27 @@ describe('API Client - Provider Key Methods', () => {
       apiClient.setAuthToken('')
       apiClient.setApiKey('')
 
-      // Mock auth call
-      jest.spyOn(global, 'fetch')
+      // Mock auth call then the actual API call
+      mockFetch
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ access_token: 'new-token', api_key: 'new-api-key' }),
-        } as Response)
+        })
         .mockResolvedValueOnce({
           ok: true,
           json: async () => [mockProviderKey],
-        } as Response)
+        })
 
       await apiClient.getProviderKeys()
 
       // Should have called auth endpoint first
-      const authCall = (global.fetch as jest.Mock).mock.calls.find(call => 
+      const authCall = mockFetch.mock.calls.find(call => 
         call[0].includes('/auth/dev/test-login')
       )
       expect(authCall).toBeDefined()
 
       // Then called provider keys with auth header
-      expect(global.fetch).toHaveBeenCalledWith(
+      expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/provider-keys/'),
         expect.objectContaining({
           headers: expect.objectContaining({

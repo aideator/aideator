@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -21,13 +21,7 @@ export default function SessionPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (sessionId) {
-      loadSessionData()
-    }
-  }, [sessionId])
-
-  const loadSessionData = async () => {
+  const loadSessionData = useCallback(async () => {
     try {
       setIsLoading(true)
       const [sessionResponse, turnsResponse] = await Promise.all([
@@ -43,7 +37,13 @@ export default function SessionPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [sessionId])
+
+  useEffect(() => {
+    if (sessionId) {
+      loadSessionData()
+    }
+  }, [sessionId, loadSessionData])
 
   const handleNewTurn = () => {
     // Navigate back to home with session context for creating new turn
@@ -159,7 +159,7 @@ export default function SessionPage() {
                 </Button>
               </div>
             ) : (
-              turns.map((turn, index) => (
+              turns.map((turn) => (
                 <div
                   key={turn.id}
                   className="bg-gray-900/30 border border-gray-800 rounded-lg p-4 hover:bg-gray-900/50 transition-colors"

@@ -48,7 +48,7 @@ export default function AuthCallbackPage() {
           } else {
             throw new Error("Invalid auth data structure")
           }
-        } catch (err) {
+        } catch {
           setError("Failed to process authentication data")
           setTimeout(() => {
             router.push("/signin?error=auth_failed")
@@ -59,7 +59,6 @@ export default function AuthCallbackPage() {
 
       // Legacy flow - shouldn't happen with current setup
       const code = searchParams.get("code")
-      const state = searchParams.get("state")
 
       if (!code) {
         setError("No authorization code received")

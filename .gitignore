@@ -193,3 +193,4 @@ next-env.d.ts
 
 # Documentation features (work in progress)
 _docs/features/*.md
+frontend/playwright-report/

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { AutoResizeTextarea } from "@/components/auto-resize-textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -25,7 +25,7 @@ export default function Home() {
   const [availableModels, setAvailableModels] = useState<string[]>([])
   const [isLoadingRepos, setIsLoadingRepos] = useState(false)
   const [isLoadingBranches, setIsLoadingBranches] = useState(false)
-  const [isLoadingModels, setIsLoadingModels] = useState(false)
+  const [, setIsLoadingModels] = useState(false)
   
   const router = useRouter()
 
@@ -34,12 +34,6 @@ export default function Home() {
     loadPopularRepositories()
     loadModelDefinitions()
   }, [])
-
-  useEffect(() => {
-    if (selectedRepo) {
-      loadBranches()
-    }
-  }, [selectedRepo])
 
   const loadSessions = async () => {
     try {
@@ -76,7 +70,7 @@ export default function Home() {
     setIsLoadingRepos(false)
   }
 
-  const loadBranches = async () => {
+  const loadBranches = useCallback(async () => {
     if (!selectedRepo) return
     
     // Default to main branch for octocat/Hello-World
@@ -94,7 +88,13 @@ export default function Home() {
     setBranches(defaultBranches)
     setSelectedBranch('main')
     setIsLoadingBranches(false)
-  }
+  }, [selectedRepo])
+
+  useEffect(() => {
+    if (selectedRepo) {
+      loadBranches()
+    }
+  }, [selectedRepo, loadBranches])
 
   const loadModelDefinitions = async () => {
     try {

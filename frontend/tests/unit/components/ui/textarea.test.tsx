@@ -22,29 +22,14 @@ describe('Textarea', () => {
     render(<Textarea data-testid="textarea" />)
     const textarea = screen.getByTestId('textarea')
     
-    expect(textarea).toHaveClass(
-      'flex',
-      'min-h-[80px]',
-      'w-full',
-      'rounded-md',
-      'border',
-      'border-input',
-      'bg-background',
-      'px-3',
-      'py-2'
-    )
+    expect(textarea).toHaveClass('flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2')
   })
 
   it('should apply focus styling classes', () => {
     render(<Textarea data-testid="textarea" />)
     const textarea = screen.getByTestId('textarea')
     
-    expect(textarea).toHaveClass(
-      'focus-visible:outline-none',
-      'focus-visible:ring-2',
-      'focus-visible:ring-ring',
-      'focus-visible:ring-offset-2'
-    )
+    expect(textarea).toHaveClass('focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2')
   })
 
   it('should apply disabled styling when disabled', () => {

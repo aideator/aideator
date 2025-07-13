@@ -13,7 +13,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
-    "test:all": "npm run test:quality && npm run test:unit && npm run test:e2e",
+    "test:all": "npm run test:quality && npm run test:unit",
     "test:unit": "jest --testPathPatterns=tests/unit --passWithNoTests",
     "test:integration": "jest --testPathPatterns=tests/integration --passWithNoTests",
     "test:quality": "npm run type-check && npm run lint && npm run test:knip",

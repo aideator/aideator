@@ -1,5 +1,6 @@
 import React from 'react'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 
 describe('Tabs Components', () => {
@@ -35,16 +36,7 @@ describe('Tabs Components', () => {
     )
     
     const tabsList = screen.getByTestId('tabs-list')
-    expect(tabsList).toHaveClass(
-      'inline-flex',
-      'h-10',
-      'items-center',
-      'justify-center',
-      'rounded-md',
-      'bg-muted',
-      'p-1',
-      'text-muted-foreground'
-    )
+    expect(tabsList).toHaveClass('inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground')
   })
 
   it('should apply TabsTrigger styling classes', () => {
@@ -57,18 +49,7 @@ describe('Tabs Components', () => {
     )
     
     const trigger = screen.getByTestId('tab-trigger')
-    expect(trigger).toHaveClass(
-      'inline-flex',
-      'items-center',
-      'justify-center',
-      'whitespace-nowrap',
-      'rounded-sm',
-      'px-3',
-      'py-1.5',
-      'text-sm',
-      'font-medium',
-      'ring-offset-background'
-    )
+    expect(trigger).toHaveClass('inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background')
   })
 
   it('should apply TabsContent styling classes', () => {
@@ -79,17 +60,10 @@ describe('Tabs Components', () => {
     )
     
     const content = screen.getByTestId('tab-content')
-    expect(content).toHaveClass(
-      'mt-2',
-      'ring-offset-background',
-      'focus-visible:outline-none',
-      'focus-visible:ring-2',
-      'focus-visible:ring-ring',
-      'focus-visible:ring-offset-2'
-    )
+    expect(content).toHaveClass('mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2')
   })
 
-  it('should switch tabs when triggers are clicked', () => {
+  it('should switch tabs when triggers are clicked', async () => {
     render(<BasicTabs />)
     
     // Initially Tab 1 content should be visible
@@ -98,8 +72,9 @@ describe('Tabs Components', () => {
     // Click Tab 2
     fireEvent.click(screen.getByText('Tab 2'))
     
-    // Now Tab 2 content should be visible (Tab 1 might still be in DOM but hidden)
-    expect(screen.getByText('Content for Tab 2')).toBeInTheDocument()
+    // Now Tab 2 content should be visible and Tab 1 should be gone
+    await screen.findByText('Content for Tab 2')
+    expect(screen.queryByText('Content for Tab 1')).not.toBeInTheDocument()
   })
 
   it('should handle controlled tabs', () => {

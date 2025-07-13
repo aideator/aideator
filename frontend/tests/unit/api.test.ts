@@ -136,15 +136,22 @@ describe('APIClient', () => {
         detail: 'Session not found',
       }
 
-      // Mock auth failure
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        statusText: 'Not Found',
-        json: async () => errorResponse,
-      })
+      // Mock dev credentials failure (auto-auth attempt) and then the actual API call
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          statusText: 'Unauthorized',
+          json: async () => ({ detail: 'Failed to get development credentials' }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 404,
+          statusText: 'Not Found',
+          json: async () => errorResponse,
+        })
 
-      await expect(apiClient.getSession('invalid-id')).rejects.toThrow('Failed to get development credentials')
+      await expect(apiClient.getSession('invalid-id')).rejects.toHaveProperty('detail', 'Session not found')
     })
   })
 

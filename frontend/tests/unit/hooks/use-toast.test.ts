@@ -1,3 +1,4 @@
+import React from 'react'
 import { renderHook, act } from '@testing-library/react'
 import { useToast, toast } from '@/hooks/use-toast'
 
@@ -36,8 +37,8 @@ describe('useToast', () => {
   it('should generate unique IDs for toasts', () => {
     const { result } = renderHook(() => useToast())
     
-    let firstToastId: string
-    let secondToastId: string
+    let firstToastId = ''
+    let secondToastId = ''
     
     act(() => {
       const firstToast = result.current.toast({ title: 'Toast 1' })
@@ -139,10 +140,7 @@ describe('useToast', () => {
     act(() => {
       result.current.toast({
         title: 'Toast with Action',
-        action: {
-          altText: 'Action',
-          onClick: actionHandler
-        }
+        action: actionHandler as any
       })
     })
     
