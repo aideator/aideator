@@ -1,52 +1,52 @@
 apiVersion: ctlptl.dev/v1alpha1
-kind: Cluster
-name: aideator
-product: k3d
-registry: ctlptl-registry
-minorVersion: 25
-k3d:
-  extraPortMappings:
-    # API Server
-    - port: 8000
-      containerPort: 8000
-      hostPort: 8000
-      protocol: tcp
-    # Redis
-    - port: 6379
-      containerPort: 6379
-      hostPort: 6379
-      protocol: tcp
-    # PostgreSQL
-    - port: 5432
-      containerPort: 5432
-      hostPort: 5432
-      protocol: tcp
-    # LiteLLM
-    - port: 4000
-      containerPort: 4000
-      hostPort: 4000
-      protocol: tcp
-    # Traefik (for ingress)
-    - port: 80
-      containerPort: 80
-      hostPort: 80
-      protocol: tcp
-    - port: 443
-      containerPort: 443
-      hostPort: 443
-      protocol: tcp
-  
-  extraK3sArgs:
-    - --disable=traefik  # We'll use our own ingress if needed
-  
-  registries:
-    use:
-      - ctlptl-registry:5000
-    
-  network: ctlptl  # Use the ctlptl network for registry access
-
----
-apiVersion: ctlptl.dev/v1alpha1
 kind: Registry
 name: ctlptl-registry
 port: 5005
+---
+apiVersion: ctlptl.dev/v1alpha1
+kind: Cluster
+name: k3d-aideator
+product: k3d
+registry: ctlptl-registry
+k3d:
+  v1alpha5Simple:
+    metadata:
+      name: aideator
+    servers: 1
+    agents: 2
+    ports:
+      # API Server
+      - port: 8000:8000
+        nodeFilters:
+          - loadbalancer
+      # Redis
+      - port: 6379:6379
+        nodeFilters:
+          - loadbalancer
+      # PostgreSQL
+      - port: 5432:5432
+        nodeFilters:
+          - loadbalancer
+      # LiteLLM
+      - port: 4000:4000
+        nodeFilters:
+          - loadbalancer
+      # HTTP/HTTPS (for ingress if needed)
+      - port: 80:80
+        nodeFilters:
+          - loadbalancer
+      - port: 443:443
+        nodeFilters:
+          - loadbalancer
+    options:
+      k3s:
+        extraArgs:
+          - arg: --disable=traefik
+            nodeFilters:
+              - server:*
+    registries:
+      config: |
+        mirrors:
+          "localhost:5005":
+            endpoint:
+              - http://ctlptl-registry:5000
