@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { ArrowLeft, Play, Square, Clock, DollarSign, Users, Terminal, FileText, Zap } from "lucide-react"
+import { ArrowLeft, Play, Square, Clock, DollarSign, Users, Terminal, FileText, Zap, Bug } from "lucide-react"
 import Link from "next/link"
 import { apiClient, WebSocketClient } from "@/lib/api"
 import { Session, Turn, Run, AgentOutput } from "@/lib/types"
@@ -26,7 +26,9 @@ export default function RunPage() {
   const [error, setError] = useState<string | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
   const [wsClient, setWsClient] = useState<WebSocketClient | null>(null)
-  const [selectedVariation, setSelectedVariation] = useState<number>(1)
+  const [debugWsClient, setDebugWsClient] = useState<WebSocketClient | null>(null)
+  const [debugOutputs, setDebugOutputs] = useState<AgentOutput[]>([])
+  const [showDebugView, setShowDebugView] = useState(false)
 
   const outputsEndRef = useRef<HTMLDivElement>(null)
 
@@ -58,9 +60,10 @@ export default function RunPage() {
       setOutputs(outputsResponse)
       setError(null)
 
-      // If run is still active, start WebSocket connection
+      // If run is still active, start WebSocket connections
       if (runResponse.status === "running") {
         startWebSocketConnection()
+        startDebugWebSocketConnection()
       }
     } catch (err) {
       console.error('Failed to load run data:', err)
@@ -72,16 +75,17 @@ export default function RunPage() {
 
   const startWebSocketConnection = () => {
     try {
-      const wsUrl = `ws://localhost:8000/ws/runs/${runId}`
+      const apiKey = apiClient.getApiKey()
+      const wsUrl = `ws://localhost:8000/ws/runs/${runId}${apiKey ? `?api_key=${apiKey}` : ''}`
       const client = new WebSocketClient(wsUrl)
       client.connect({
         onMessage: (message) => {
-          // Handle incoming WebSocket messages
+          // Handle incoming WebSocket messages for parsed/clean output
           if (message.type === "llm" || message.type === "stdout" || message.type === "stderr") {
             const newOutput: AgentOutput = {
-              id: Date.now(), // Temporary ID
+              id: Date.now() + Math.random(), // Temporary ID
               run_id: runId,
-              variation_id: selectedVariation,
+              variation_id: parseInt(message.data.variation_id) || 1,
               content: message.data.content || "",
               timestamp: message.data.timestamp,
               output_type: message.type,
@@ -104,11 +108,48 @@ export default function RunPage() {
     }
   }
 
+  const startDebugWebSocketConnection = () => {
+    try {
+      const apiKey = apiClient.getApiKey()
+      const debugWsUrl = `ws://localhost:8000/ws/runs/${runId}/debug${apiKey ? `?api_key=${apiKey}` : ''}`
+      const debugClient = new WebSocketClient(debugWsUrl)
+      debugClient.connect({
+        onMessage: (message) => {
+          // Handle debug messages (raw logs)
+          if (message.type === "stdout") {
+            const newOutput: AgentOutput = {
+              id: Date.now() + Math.random(), // Temporary ID
+              run_id: runId,
+              variation_id: parseInt(message.data.variation_id) || 1,
+              content: message.data.content || "",
+              timestamp: message.data.timestamp,
+              output_type: "stdout",
+            }
+            setDebugOutputs(prev => [...prev, newOutput])
+          }
+        },
+        onError: (error) => {
+          console.error('Debug WebSocket error:', error)
+        },
+        onClose: () => {
+          console.log('Debug WebSocket closed')
+        }
+      })
+      setDebugWsClient(debugClient)
+    } catch (err) {
+      console.error('Failed to start debug WebSocket connection:', err)
+    }
+  }
+
   const stopWebSocketConnection = () => {
     if (wsClient) {
       wsClient.close()
       setWsClient(null)
       setIsStreaming(false)
+    }
+    if (debugWsClient) {
+      debugWsClient.close()
+      setDebugWsClient(null)
     }
   }
 
@@ -151,9 +192,6 @@ export default function RunPage() {
     }
   }
 
-  const filteredOutputs = outputs.filter(output => 
-    selectedVariation === -1 || output.variation_id === selectedVariation
-  )
 
   const getOutputIcon = (type: string) => {
     switch (type) {
@@ -332,88 +370,82 @@ export default function RunPage() {
           )}
         </div>
 
-        <Tabs defaultValue="outputs" className="w-full">
+        <Tabs defaultValue="variation-1" className="w-full">
           <div className="flex items-center justify-between mb-4">
             <TabsList className="bg-gray-900/50 border border-gray-800">
-              <TabsTrigger value="outputs">Live Output</TabsTrigger>
+              {Array.from({ length: run.variations }, (_, i) => i + 1).map((variation) => (
+                <TabsTrigger key={variation} value={`variation-${variation}`}>
+                  Model {variation}
+                </TabsTrigger>
+              ))}
               <TabsTrigger value="results">Results</TabsTrigger>
               <TabsTrigger value="config">Configuration</TabsTrigger>
             </TabsList>
             
-            {run.variations > 1 && (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-400">View:</span>
-                <Button
-                  variant={selectedVariation === -1 ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSelectedVariation(-1)}
-                >
-                  All Variations
-                </Button>
-                {Array.from({ length: run.variations }, (_, i) => i + 1).map((variation) => (
-                  <Button
-                    key={variation}
-                    variant={selectedVariation === variation ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setSelectedVariation(variation)}
-                  >
-                    Variation {variation}
-                  </Button>
-                ))}
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              <Button
+                variant={showDebugView ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowDebugView(!showDebugView)}
+                className="gap-2"
+              >
+                <Bug className="w-4 h-4" />
+                Debug {showDebugView ? 'On' : 'Off'}
+              </Button>
+            </div>
           </div>
 
-          <TabsContent value="outputs" className="space-y-4">
-            <div className="bg-gray-900/30 border border-gray-800 rounded-lg">
-              <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-                <h3 className="font-medium">Real-time Output</h3>
-                <div className="flex items-center gap-2">
-                  {isStreaming && (
-                    <div className="flex items-center gap-2 text-sm text-green-400">
-                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                      Live
+          {Array.from({ length: run.variations }, (_, i) => i + 1).map((variation) => (
+            <TabsContent key={variation} value={`variation-${variation}`} className="space-y-4">
+              <div className="bg-gray-900/30 border border-gray-800 rounded-lg">
+                <div className="p-4 border-b border-gray-800 flex items-center justify-between">
+                  <h3 className="font-medium">Model {variation} Output</h3>
+                  <div className="flex items-center gap-2">
+                    {isStreaming && (
+                      <div className="flex items-center gap-2 text-sm text-green-400">
+                        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                        Live
+                      </div>
+                    )}
+                    <Badge variant="outline" className="text-xs">
+                      {(showDebugView ? debugOutputs : outputs).filter(o => o.variation_id === variation).length} messages
+                    </Badge>
+                  </div>
+                </div>
+                
+                <div className="max-h-96 overflow-y-auto p-4 space-y-2">
+                  {(showDebugView ? debugOutputs : outputs).filter(o => o.variation_id === variation).length === 0 ? (
+                    <div className="text-center py-8 text-gray-400">
+                      {run.status === "pending" ? "Waiting for run to start..." : "No output yet"}
                     </div>
+                  ) : (
+                    (showDebugView ? debugOutputs : outputs)
+                      .filter(o => o.variation_id === variation)
+                      .map((output) => (
+                        <div
+                          key={output.id}
+                          className={`p-3 rounded border ${getOutputBgColor(output.output_type)}`}
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            {getOutputIcon(output.output_type)}
+                            <Badge variant="outline" className="text-xs">
+                              {output.output_type}
+                            </Badge>
+                            <span className="text-xs text-gray-400">
+                              {new Date(output.timestamp).toLocaleTimeString()}
+                            </span>
+                          </div>
+                          <pre className="text-sm whitespace-pre-wrap font-mono">
+                            {output.content}
+                          </pre>
+                        </div>
+                      ))
                   )}
-                  <Badge variant="outline" className="text-xs">
-                    {filteredOutputs.length} messages
-                  </Badge>
+                  <div ref={outputsEndRef} />
                 </div>
               </div>
-              
-              <div className="max-h-96 overflow-y-auto p-4 space-y-2">
-                {filteredOutputs.length === 0 ? (
-                  <div className="text-center py-8 text-gray-400">
-                    {run.status === "pending" ? "Waiting for run to start..." : "No output yet"}
-                  </div>
-                ) : (
-                  filteredOutputs.map((output) => (
-                    <div
-                      key={output.id}
-                      className={`p-3 rounded border ${getOutputBgColor(output.output_type)}`}
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        {getOutputIcon(output.output_type)}
-                        <Badge variant="outline" className="text-xs">
-                          Variation {output.variation_id}
-                        </Badge>
-                        <Badge variant="outline" className="text-xs">
-                          {output.output_type}
-                        </Badge>
-                        <span className="text-xs text-gray-400">
-                          {new Date(output.timestamp).toLocaleTimeString()}
-                        </span>
-                      </div>
-                      <pre className="text-sm whitespace-pre-wrap font-mono">
-                        {output.content}
-                      </pre>
-                    </div>
-                  ))
-                )}
-                <div ref={outputsEndRef} />
-              </div>
-            </div>
-          </TabsContent>
+            </TabsContent>
+          ))}
 
           <TabsContent value="results" className="space-y-4">
             <div className="bg-gray-900/30 border border-gray-800 rounded-lg p-6">

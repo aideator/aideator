@@ -60,6 +60,7 @@ export function ProviderKeyForm({ providerKey, onSubmit, onCancel }: ProviderKey
         // Create new key
         if (!formData.provider || !formData.api_key) {
           setError('Provider and API key are required')
+          setIsSubmitting(false)
           return
         }
         const newKey: ProviderAPIKeyCreate = {

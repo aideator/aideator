@@ -278,6 +278,23 @@ export interface Provider {
   supports_models?: string[]
 }
 
+// Code execution types
+export interface CodeRequest {
+  prompt: string
+  context?: string
+  models: string[]
+  max_models: number
+}
+
+export interface CodeResponse {
+  turn_id: string
+  run_id: string
+  websocket_url: string
+  debug_websocket_url: string
+  status: string
+  models_used: string[]
+}
+
 // Legacy types for migration (to be phased out)
 export type DiffLine = {
   type: "add" | "del" | "normal"

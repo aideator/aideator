@@ -1,15 +1,21 @@
 from datetime import datetime
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
+from app.core.config import get_settings
 from app.core.database import get_session
 from app.core.dependencies import CurrentUser
+from app.core.deps import get_orchestrator
+from app.models.run import Run, RunStatus
 from app.models.session import Preference, Session, Turn
+from app.services.agent_orchestrator import AgentOrchestrator
 from app.schemas.session import (
+    CodeRequest,
+    CodeResponse,
     PreferenceCreate,
     PreferenceResponse,
     SessionAnalytics,
@@ -437,4 +443,108 @@ async def export_session(
         turns=[TurnResponse.model_validate(turn) for turn in turns],
         preferences=[PreferenceResponse.model_validate(pref) for pref in preferences],
         export_format=export_format,
+    )
+
+
+@router.post("/{session_id}/turns/{turn_id}/code", response_model=CodeResponse)
+async def execute_code(
+    session_id: str,
+    turn_id: str,
+    request: CodeRequest,
+    background_tasks: BackgroundTasks,
+    current_user: CurrentUser,
+    orchestrator: AgentOrchestrator = Depends(get_orchestrator),
+    db: AsyncSession = Depends(get_session),
+) -> CodeResponse:
+    """
+    Execute code with the specified models for a given turn.
+    
+    This endpoint kicks off agent jobs for coding tasks and returns
+    streaming URLs for both parsed results and debug logs.
+    """
+    settings = get_settings()
+    
+    # Verify session ownership
+    session_query = select(Session).where(
+        and_(col(Session.id) == session_id, col(Session.user_id) == current_user.id)
+    )
+    session_result = await db.execute(session_query)
+    session = session_result.scalar_one_or_none()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Verify turn exists and belongs to session
+    turn_query = select(Turn).where(
+        and_(col(Turn.id) == turn_id, col(Turn.session_id) == session_id)
+    )
+    turn_result = await db.execute(turn_query)
+    turn = turn_result.scalar_one_or_none()
+
+    if not turn:
+        raise HTTPException(status_code=404, detail="Turn not found")
+
+    # Update turn with new prompt if provided
+    if turn.prompt != request.prompt:
+        turn.prompt = request.prompt
+        turn.context = request.context
+        turn.models_requested = request.models[:request.max_models]
+        turn.status = "streaming"
+
+    # Generate run ID for the coding job
+    run_id = f"run-{uuid4().hex}"
+
+    # Create run record
+    run = Run(
+        id=run_id,
+        github_url=request.context or "https://github.com/temp/repo",  # Placeholder for now
+        prompt=request.prompt,
+        variations=len(request.models[:request.max_models]),
+        agent_config={
+            "model_variants": [
+                {"model_definition_id": model, "agent_mode": "code"}
+                for model in request.models[:request.max_models]
+            ],
+            "use_claude_code": True,
+            "agent_mode": "code",
+            "session_id": session_id,
+            "turn_id": turn_id,
+        },
+        user_id=current_user.id,
+        status=RunStatus.PENDING,
+    )
+
+    db.add(run)
+    
+    # Update session
+    session.last_activity_at = datetime.utcnow()
+    session.updated_at = datetime.utcnow()
+    
+    await db.commit()
+
+    # Schedule background orchestration for coding task
+    background_tasks.add_task(
+        orchestrator.execute_variations,
+        run_id=run_id,
+        repo_url=request.context or "https://github.com/temp/repo",
+        prompt=request.prompt,
+        variations=len(request.models[:request.max_models]),
+        agent_config=None,  # Config is stored in run record
+        agent_mode="code",
+        db_session=db,
+    )
+
+    # Return response with streaming URLs
+    # Use localhost for frontend WebSocket connections instead of 0.0.0.0
+    base_url = f"localhost:{settings.port}"
+    websocket_url = f"ws://{base_url}/ws/runs/{run_id}"
+    debug_websocket_url = f"ws://{base_url}/ws/runs/{run_id}/debug"
+
+    return CodeResponse(
+        turn_id=turn_id,
+        run_id=run_id,
+        websocket_url=websocket_url,
+        debug_websocket_url=debug_websocket_url,
+        status="accepted",
+        models_used=request.models[:request.max_models],
     )

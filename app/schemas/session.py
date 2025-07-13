@@ -165,3 +165,23 @@ class SessionExport(BaseModel):
     turns: list[TurnResponse]
     preferences: list[PreferenceResponse]
     export_format: str = Field(default="json")  # json, markdown, csv
+
+
+class CodeRequest(BaseModel):
+    """Schema for code execution request."""
+
+    prompt: str = Field(..., min_length=1, description="The coding prompt/instruction")
+    context: str | None = Field(None, description="Additional context or codebase URL")
+    models: list[str] = Field(default=["claude-3-5-sonnet-20241022"], description="List of model IDs to use")
+    max_models: int = Field(default=5, ge=1, le=5, description="Maximum number of models to run")
+
+
+class CodeResponse(BaseModel):
+    """Schema for code execution response."""
+
+    turn_id: str = Field(..., description="ID of the created turn")
+    run_id: str = Field(..., description="ID of the created run")
+    websocket_url: str = Field(..., description="WebSocket URL for streaming results")
+    debug_websocket_url: str = Field(..., description="WebSocket URL for debug logs")
+    status: str = Field(default="accepted", description="Initial status")
+    models_used: list[str] = Field(..., description="List of models that will be executed")

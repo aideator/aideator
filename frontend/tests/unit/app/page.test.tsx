@@ -102,8 +102,16 @@ describe('Home Page', () => {
     render(<Home />)
     
     await waitFor(() => {
-      expect(screen.getByDisplayValue('3')).toBeInTheDocument()
+      // Look for the Layers icon which is part of the agent count selector
+      expect(screen.getByText('What are we coding next?')).toBeInTheDocument()
     })
+    
+    // Check that the agent count selector (with Layers icon) is rendered
+    const layersIcons = document.querySelectorAll('svg')
+    const hasLayersIcon = Array.from(layersIcons).some(icon => 
+      icon.classList.contains('lucide-layers')
+    )
+    expect(hasLayersIcon).toBe(true)
   })
 
   it('should handle repository selection', async () => {
@@ -177,6 +185,15 @@ describe('Home Page', () => {
   it('should show Ask and Code buttons', async () => {
     render(<Home />)
     
+    // First wait for the component to load
+    await waitFor(() => {
+      expect(screen.getByText('What are we coding next?')).toBeInTheDocument()
+    })
+    
+    // Add text to make the buttons appear (they only show when taskText is not empty)
+    const textarea = screen.getByPlaceholderText('Describe a task')
+    fireEvent.change(textarea, { target: { value: 'Test task' } })
+    
     await waitFor(() => {
       expect(screen.getByText('Ask')).toBeInTheDocument()
       expect(screen.getByText('Code')).toBeInTheDocument()
@@ -184,14 +201,44 @@ describe('Home Page', () => {
   })
 
   it('should handle form submission', async () => {
-    mockApiClient.createRun.mockResolvedValue({
+    mockApiClient.createSession.mockResolvedValue({
+      id: 'session-123',
+      user_id: 'user-1',
+      title: 'Test session',
+      description: 'Test description',
+      is_active: true,
+      is_archived: false,
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+      last_activity_at: '2024-01-01T00:00:00Z',
+      models_used: ['gpt-4', 'claude-3-sonnet'],
+      total_turns: 0,
+      total_cost: 0
+    })
+    
+    mockApiClient.createTurn.mockResolvedValue({
+      id: 'turn-123',
+      session_id: 'session-123',
+      user_id: 'user-1',
+      turn_number: 1,
+      prompt: 'Test task',
+      context: 'https://github.com/octocat/Hello-World',
+      model: 'gpt-4',
+      models_requested: ['gpt-4', 'claude-3-sonnet'],
+      responses: {},
+      started_at: '2024-01-01T00:00:00Z',
+      completed_at: '2024-01-01T00:00:00Z',
+      total_cost: 0,
+      status: 'pending'
+    })
+    
+    mockApiClient.executeCode.mockResolvedValue({
+      turn_id: 'turn-123',
       run_id: 'run-123',
       websocket_url: 'ws://localhost:8000/ws/runs/run-123',
-      polling_url: 'http://localhost:8000/api/v1/runs/run-123',
+      debug_websocket_url: 'ws://localhost:8000/ws/debug/run-123',
       status: 'pending',
-      estimated_duration_seconds: 300,
-      session_id: 'session-123',
-      turn_id: 'turn-123'
+      models_used: ['gpt-4', 'claude-3-sonnet']
     })
     
     render(<Home />)
@@ -211,17 +258,15 @@ describe('Home Page', () => {
     })
   })
 
-  it('should show validation error for empty task', async () => {
+  it('should not show Code button for empty task', async () => {
     render(<Home />)
     
     await waitFor(() => {
-      expect(screen.getByText('Code')).toBeInTheDocument()
+      expect(screen.getByText('What are we coding next?')).toBeInTheDocument()
     })
     
-    const codeButton = screen.getByText('Code')
-    fireEvent.click(codeButton)
-    
-    // Should show some form of validation feedback
-    expect(screen.getByText('Code')).toBeInTheDocument()
+    // Code button should not be visible when task is empty
+    expect(screen.queryByText('Code')).not.toBeInTheDocument()
+    expect(screen.queryByText('Ask')).not.toBeInTheDocument()
   })
 })

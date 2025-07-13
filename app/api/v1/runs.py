@@ -18,7 +18,6 @@ from app.schemas.common import PaginatedResponse
 from app.schemas.runs import (
     CreateRunRequest,
     CreateRunResponse,
-    RunDetails,
     RunListItem,
     SelectWinnerRequest,
 )
@@ -207,7 +206,8 @@ async def create_run(
         db_session=db,
     )
 
-    stream_url = f"ws://{settings.host}:{settings.port}/ws/runs/{run_id}"
+    # Use localhost for frontend WebSocket connections instead of 0.0.0.0
+    stream_url = f"ws://localhost:{settings.port}/ws/runs/{run_id}"
     return CreateRunResponse(
         run_id=run_id,
         websocket_url=stream_url,
@@ -269,7 +269,7 @@ async def list_runs(
 
 @router.get(
     "/{run_id}",
-    response_model=RunDetails,
+    response_model=Run,
     summary="Get run details",
 )
 async def get_run(
@@ -294,7 +294,7 @@ async def get_run(
 
 @router.post(
     "/{run_id}/select",
-    response_model=RunDetails,
+    response_model=Run,
     summary="Select winning variation",
 )
 async def select_winner(
