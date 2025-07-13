@@ -22,7 +22,7 @@ export function ProviderKeyCard({ providerKey, onEdit, onDelete, onRefresh }: Pr
   const handleValidate = async () => {
     setIsValidating(true)
     try {
-      const result = await apiClient.validateProviderKey(providerKey.id)
+      await apiClient.validateProviderKey(providerKey.id)
       // Always refresh to show updated validation status
       onRefresh()
     } catch (error) {

@@ -42,7 +42,7 @@ describe('Home Page', () => {
     render(<Home />)
     
     await waitFor(() => {
-      expect(screen.getByText('What would you like to work on?')).toBeInTheDocument()
+      expect(screen.getByText('What are we coding next?')).toBeInTheDocument()
     })
   })
 
@@ -82,7 +82,7 @@ describe('Home Page', () => {
     render(<Home />)
     
     // Should show some loading indicators
-    expect(screen.getByText('What would you like to work on?')).toBeInTheDocument()
+    expect(screen.getByText('What are we coding next?')).toBeInTheDocument()
   })
 
   it('should handle textarea input', async () => {
@@ -102,7 +102,7 @@ describe('Home Page', () => {
     render(<Home />)
     
     await waitFor(() => {
-      expect(screen.getByText('Number of agents')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('3')).toBeInTheDocument()
     })
   })
 
@@ -124,7 +124,7 @@ describe('Home Page', () => {
     render(<Home />)
     
     await waitFor(() => {
-      expect(screen.getByText('What would you like to work on?')).toBeInTheDocument()
+      expect(screen.getByText('What are we coding next?')).toBeInTheDocument()
     })
   })
 

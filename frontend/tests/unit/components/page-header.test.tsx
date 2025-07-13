@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import { usePathname } from 'next/navigation'
 import { PageHeader } from '@/components/page-header'
 import { apiClient } from '@/lib/api'
@@ -44,7 +44,9 @@ describe('PageHeader', () => {
       total_cost: 0.50
     })
     
-    render(<PageHeader />)
+    await act(async () => {
+      render(<PageHeader />)
+    })
     
     await waitFor(() => {
       expect(screen.getByText('Test Session Title')).toBeInTheDocument()
@@ -61,7 +63,9 @@ describe('PageHeader', () => {
     
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
     
-    render(<PageHeader />)
+    await act(async () => {
+      render(<PageHeader />)
+    })
     
     await waitFor(() => {
       expect(consoleSpy).toHaveBeenCalledWith('Failed to load session:', expect.any(Error))

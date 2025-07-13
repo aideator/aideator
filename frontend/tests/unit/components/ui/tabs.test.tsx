@@ -64,16 +64,21 @@ describe('Tabs Components', () => {
   })
 
   it('should switch tabs when triggers are clicked', async () => {
+    const user = userEvent.setup()
     render(<BasicTabs />)
     
     // Initially Tab 1 content should be visible
     expect(screen.getByText('Content for Tab 1')).toBeInTheDocument()
     
     // Click Tab 2
-    fireEvent.click(screen.getByText('Tab 2'))
+    await user.click(screen.getByText('Tab 2'))
     
-    // Now Tab 2 content should be visible and Tab 1 should be gone
-    await screen.findByText('Content for Tab 2')
+    // Wait for Tab 2 content to appear
+    await waitFor(() => {
+      expect(screen.getByText('Content for Tab 2')).toBeInTheDocument()
+    })
+    
+    // Tab 1 content should no longer be visible
     expect(screen.queryByText('Content for Tab 1')).not.toBeInTheDocument()
   })
 
