@@ -46,63 +46,74 @@ class DatabaseStreamWriter:
         self.stream_type = stream_type  # 'stdout' or 'stderr'
         self.agent = agent
         self.buffer = ""
+        self.line_buffer = []  # Buffer multiple lines before writing
+        self.max_lines = 10  # Batch up to 10 lines
+        self.last_write_time = datetime.now(UTC)
         
     def write(self, text: str) -> int:
         """Write to both original stream and database."""
         # Write to original stream first
         result = self.original_stream.write(text)
         
-        # Buffer text and write complete lines to database
+        # Buffer text and collect complete lines
         self.buffer += text
         while '\n' in self.buffer:
             line, self.buffer = self.buffer.split('\n', 1)
-            if line.strip() and self.agent.db_service:
-                # Schedule async write in background
-                try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        task = loop.create_task(
-                            self.agent.db_service.write_agent_output(
-                                run_id=self.agent.run_id,
-                                variation_id=int(self.agent.variation_id),
-                                content=line,
-                                output_type=self.stream_type,
-                                metadata={"source": "python_print"}
-                            )
-                        )
-                        # Add to background tasks
-                        if not hasattr(self.agent, '_bg_tasks'):
-                            self.agent._bg_tasks = set()
-                        self.agent._bg_tasks.add(task)
-                        task.add_done_callback(self.agent._bg_tasks.discard)
-                except Exception:
-                    # Silently ignore if no event loop
-                    pass
+            if line.strip():
+                self.line_buffer.append(line)
+                
+                # Check if we should write batch
+                current_time = datetime.now(UTC)
+                time_elapsed = (current_time - self.last_write_time).total_seconds()
+                
+                if len(self.line_buffer) >= self.max_lines or time_elapsed > 1.0:
+                    self._write_batch()
+                    self.last_write_time = current_time
                     
         return result
+    
+    def _write_batch(self):
+        """Write buffered lines as a single database entry."""
+        if not self.line_buffer or not self.agent.db_service:
+            return
+            
+        # Combine lines into a single content block
+        combined_content = '\n'.join(self.line_buffer)
+        line_count = len(self.line_buffer)
+        self.line_buffer = []
+        
+        # Schedule async write in background
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                task = loop.create_task(
+                    self.agent.db_service.write_agent_output(
+                        run_id=self.agent.run_id,
+                        variation_id=int(self.agent.variation_id),
+                        content=combined_content,
+                        output_type=self.stream_type,
+                        metadata={"source": "python_print", "line_count": line_count}
+                    )
+                )
+                # Add to background tasks
+                if not hasattr(self.agent, '_bg_tasks'):
+                    self.agent._bg_tasks = set()
+                self.agent._bg_tasks.add(task)
+                task.add_done_callback(self.agent._bg_tasks.discard)
+        except Exception:
+            # Silently ignore if no event loop
+            pass
         
     def flush(self):
         """Flush the stream."""
-        # Flush any remaining buffer
-        if self.buffer.strip() and self.agent.db_service:
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    task = loop.create_task(
-                        self.agent.db_service.write_agent_output(
-                            run_id=self.agent.run_id,
-                            variation_id=int(self.agent.variation_id),
-                            content=self.buffer,
-                            output_type=self.stream_type,
-                            metadata={"source": "python_print", "partial": True}
-                        )
-                    )
-                    if not hasattr(self.agent, '_bg_tasks'):
-                        self.agent._bg_tasks = set()
-                    self.agent._bg_tasks.add(task)
-                    task.add_done_callback(self.agent._bg_tasks.discard)
-            except Exception:
-                pass
+        # Flush any remaining complete lines
+        if self.line_buffer:
+            self._write_batch()
+            
+        # Flush any remaining partial buffer
+        if self.buffer.strip():
+            self.line_buffer.append(self.buffer)
+            self._write_batch()
             self.buffer = ""
             
         return self.original_stream.flush()
@@ -1862,6 +1873,11 @@ async def main():
         agent.log("⏱️ Sleeping for 600 seconds before exit", "INFO")
         await asyncio.sleep(600)
 
+        # Wait for any background tasks to complete
+        if hasattr(agent, '_bg_tasks') and agent._bg_tasks:
+            agent.log(f"⏳ Waiting for {len(agent._bg_tasks)} background tasks to complete", "INFO")
+            await asyncio.gather(*agent._bg_tasks, return_exceptions=True)
+        
         # Clean up connections
         if agent.redis_client:
             await agent.redis_client.close()
@@ -1883,6 +1899,13 @@ async def main():
         if isinstance(sys.stderr, DatabaseStreamWriter):
             sys.stderr.flush()
             sys.stderr = sys.stderr.original_stream
+        
+        # Wait for any remaining background tasks
+        if hasattr(agent, '_bg_tasks') and agent._bg_tasks:
+            try:
+                await asyncio.gather(*agent._bg_tasks, return_exceptions=True)
+            except Exception:
+                pass  # Best effort
             
         # Clean up temp directory
         if hasattr(agent, "work_dir") and agent.work_dir.exists():

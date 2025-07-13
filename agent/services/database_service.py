@@ -1,5 +1,6 @@
 """Database service for agent dual-write functionality."""
 
+import asyncio
 import logging
 import os
 from datetime import datetime
@@ -40,6 +41,14 @@ class AgentDatabaseService:
             expire_on_commit=False,
             autoflush=False,
         )
+        
+        # Batching configuration
+        self._write_queue: list[dict[str, Any]] = []
+        self._write_lock = asyncio.Lock()
+        self._batch_task: asyncio.Task | None = None
+        self._batch_size = 50  # Write in batches of 50
+        self._batch_interval = 1.0  # Write every 1 second
+        self._shutdown = False
 
     async def connect(self) -> None:
         """Connect to database and test connection."""
@@ -53,7 +62,25 @@ class AgentDatabaseService:
                 raise RuntimeError(f"Database connection failed: {e}")
 
     async def disconnect(self) -> None:
-        """Disconnect from database."""
+        """Disconnect from database and flush pending writes."""
+        # Stop accepting new writes
+        self._shutdown = True
+        
+        # Flush any remaining items
+        async with self._write_lock:
+            if self._write_queue:
+                logger.info(f"[DB-FLUSH] Flushing {len(self._write_queue)} pending writes")
+                await self._write_batch(self._write_queue)
+                self._write_queue = []
+        
+        # Cancel batch task
+        if self._batch_task and not self._batch_task.done():
+            self._batch_task.cancel()
+            try:
+                await self._batch_task
+            except asyncio.CancelledError:
+                pass
+        
         await self.engine.dispose()
 
     async def write_agent_output(
@@ -64,7 +91,7 @@ class AgentDatabaseService:
         output_type: str = "llm",
         metadata: dict[str, Any] | None = None,
     ) -> None:
-        """Write agent output to database.
+        """Queue agent output for batched writing to database.
 
         Args:
             run_id: The run ID
@@ -73,35 +100,79 @@ class AgentDatabaseService:
             output_type: Type of output (llm, stdout, status, etc.)
             metadata: Optional metadata
         """
-        # Create a new session for this operation to avoid concurrency issues
+        # Add to queue
+        async with self._write_lock:
+            self._write_queue.append({
+                "run_id": run_id,
+                "variation_id": variation_id,
+                "content": content,
+                "output_type": output_type,
+                "timestamp": datetime.utcnow(),
+                "metadata": metadata
+            })
+            
+            # Start batch writer if not running
+            if self._batch_task is None or self._batch_task.done():
+                self._batch_task = asyncio.create_task(self._batch_writer())
+    
+    async def _batch_writer(self):
+        """Background task that writes batched outputs to database."""
+        while not self._shutdown:
+            try:
+                # Wait for batch interval or until we have enough items
+                await asyncio.sleep(self._batch_interval)
+                
+                # Get items to write
+                async with self._write_lock:
+                    if not self._write_queue:
+                        continue
+                        
+                    # Take up to batch_size items
+                    items_to_write = self._write_queue[:self._batch_size]
+                    self._write_queue = self._write_queue[self._batch_size:]
+                
+                # Write batch to database
+                await self._write_batch(items_to_write)
+                
+            except Exception as e:
+                logger.error(f"[BATCH-WRITER] Error in batch writer: {e}")
+                await asyncio.sleep(1)  # Brief pause before retrying
+    
+    async def _write_batch(self, items: list[dict[str, Any]]) -> None:
+        """Write a batch of outputs to the database."""
+        if not items:
+            return
+            
         async with self.async_session_maker() as session:
             try:
                 # Import here to avoid circular imports
                 from app.models.run import AgentOutput
-
-                output = AgentOutput(
-                    run_id=run_id,
-                    variation_id=variation_id,
-                    content=content,
-                    output_type=output_type,
-                    timestamp=datetime.utcnow(),
-                )
-
-                session.add(output)
+                
+                # Create all output objects
+                outputs = [
+                    AgentOutput(
+                        run_id=item["run_id"],
+                        variation_id=item["variation_id"],
+                        content=item["content"],
+                        output_type=item["output_type"],
+                        timestamp=item["timestamp"],
+                    )
+                    for item in items
+                ]
+                
+                # Add all at once
+                session.add_all(outputs)
                 await session.commit()
-
+                
                 logger.debug(
-                    f"[DB-WRITE] Wrote {output_type} output to database: "
-                    f"run_id={run_id}, variation_id={variation_id}, "
-                    f"content_length={len(content)}"
+                    f"[DB-BATCH] Wrote batch of {len(items)} outputs to database"
                 )
-
+                
             except Exception as e:
                 logger.error(
-                    f"[DB-WRITE] Failed to write {output_type} output to database: {e}"
+                    f"[DB-BATCH] Failed to write batch of {len(items)} outputs: {e}"
                 )
                 await session.rollback()
-                # Don't raise - agent should continue even if DB write fails
 
     async def update_run_status(
         self,
