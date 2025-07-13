@@ -41,7 +41,7 @@ if "postgresql" in settings.database_url_async:
             "pool_size": settings.database_pool_size,
             "pool_recycle": settings.database_pool_recycle,
             "pool_timeout": 30,
-            "max_overflow": 20,  # Increased to handle burst traffic
+            "max_overflow": 30,  # Increased to handle WebSocket burst traffic
         }
     )
 

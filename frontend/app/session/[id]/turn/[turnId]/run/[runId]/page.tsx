@@ -47,10 +47,10 @@ export default function RunPage() {
 
   // Auto-start streaming when run data is loaded
   useEffect(() => {
-    if (run && (run.status === 'running' || run.status === 'pending')) {
+    if (run && (run.status === 'running' || run.status === 'pending') && !wsClient) {
       startWebSocketConnection()
     }
-  }, [run])
+  }, [run, wsClient])
   
   // Auto-scroll to bottom when new outputs arrive
   useEffect(() => {
@@ -81,6 +81,13 @@ export default function RunPage() {
 
   const startWebSocketConnection = () => {
     try {
+      // Close existing connection if any
+      if (wsClient) {
+        wsClient.close()
+        setWsClient(null)
+        setIsStreaming(false)
+      }
+      
       const wsUrl = `ws://localhost:8000/api/v1/ws/runs/${runId}`
       const client = createWebSocketClient(wsUrl)
       client.connect({
@@ -89,7 +96,7 @@ export default function RunPage() {
           // Only accept LLM output messages, not stdout/stderr which contain logging
           if (message.type === "llm") {
             const newOutput: AgentOutput = {
-              id: `${message.message_id || Date.now()}-${message.data.variation_id}-${messageIdCounter.current++}`,
+              id: `msg-${Date.now()}-${Math.random()}-${message.data.variation_id}-${messageIdCounter.current++}`,
               run_id: runId,
               variation_id: parseInt(message.data.variation_id) || 1,
               content: message.data.content || "",

@@ -1267,28 +1267,12 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                                             print(text_content, end="", flush=True)
                                             # Stream to Redis immediately
                                             await self.publish_output(text_content)
-                                            # Also persist stdout to database
-                                            if self.db_service:
-                                                await self.db_service.write_agent_output(
-                                                    run_id=self.run_id,
-                                                    variation_id=int(self.variation_id),
-                                                    content=text_content,
-                                                    output_type="stdout",
-                                                    metadata={"source": "claude_cli", "message_type": "assistant"}
-                                                )
+                                            # Note: stdout database writing is handled by DatabaseStreamWriter
                                             collected_output.append(text_content)
                                         elif content_item.get("type") == "tool_use":
                                             tool_info = f"🔧 Using tool: {content_item.get('name', 'unknown')}"
                                             print(tool_info, flush=True)
-                                            # Persist tool use to database
-                                            if self.db_service:
-                                                await self.db_service.write_agent_output(
-                                                    run_id=self.run_id,
-                                                    variation_id=int(self.variation_id),
-                                                    content=tool_info,
-                                                    output_type="stdout",
-                                                    metadata={"source": "claude_cli", "message_type": "tool_use", "tool_name": content_item.get('name', 'unknown')}
-                                                )
+                                            # Note: stdout database writing is handled by DatabaseStreamWriter
                                             collected_output.append(tool_info + "\n")
 
                             except json.JSONDecodeError:

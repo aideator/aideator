@@ -29,6 +29,8 @@ export function DebugWindow({ runId, isOpen, onClose }: DebugWindowProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { createWebSocketClient } = useAuthenticatedWebSocket('ws://localhost:8000')
   const wsClientRef = useRef<any>(null)
+  const messageCounterRef = useRef(0)
+  const seenMessageIds = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     if (!isOpen) return
@@ -40,8 +42,17 @@ export function DebugWindow({ runId, isOpen, onClose }: DebugWindowProps) {
     client.connect({
       onMessage: (message) => {
         if (!isPaused && message.type === "debug") {
+          // Generate unique ID using message_id or fallback to timestamp + counter
+          const uniqueId = message.message_id || `${Date.now()}-${messageCounterRef.current++}`
+          
+          // Skip if we've already seen this message ID (handles reconnection duplicates)
+          if (seenMessageIds.current.has(uniqueId)) {
+            return
+          }
+          seenMessageIds.current.add(uniqueId)
+          
           const debugMessage: DebugMessage = {
-            id: message.message_id || Date.now().toString(),
+            id: uniqueId,
             timestamp: message.data.timestamp,
             content: message.data.content,
             source: message.data.source,
@@ -84,6 +95,8 @@ export function DebugWindow({ runId, isOpen, onClose }: DebugWindowProps) {
 
   const handleClear = () => {
     setMessages([])
+    seenMessageIds.current.clear()
+    messageCounterRef.current = 0
   }
 
   const handleExport = () => {
