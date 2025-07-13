@@ -2411,11 +2411,18 @@ If the problem persists, contact support with the error details above.
             # Change to repository directory
             os.chdir(self.repo_dir)
             
-            # Get list of changed files using git status
-            result = subprocess.run(['git', 'status', '--porcelain'], 
-                                  capture_output=True, text=True)
-            lines = result.stdout.strip().split('\n')
-            changed_files = [line[3:] for line in lines if line.strip()]
+            # Get list of unstaged changed files (Claude won't commit, so only check unstaged)
+            diff_result = subprocess.run(['git', 'diff', '--name-only'], 
+                                       capture_output=True, text=True)
+            self.log(f"🔍 Git diff output: {repr(diff_result.stdout)}", "DEBUG")
+            
+            # Parse git diff --name-only output (unstaged changes only)
+            changed_files = []
+            for line in diff_result.stdout.strip().split('\n'):
+                if line.strip():
+                    changed_files.append(line.strip())
+            
+            self.log(f"🔍 Detected unstaged changed files: {changed_files}", "DEBUG")
             
             if not changed_files:
                 self.log("📝 No file changes detected", "INFO")
@@ -2486,6 +2493,18 @@ If the problem persists, contact support with the error details above.
                     }
                 )
                 self.log("💾 Diffs saved to database successfully", "INFO")
+                
+                # Notify frontend that diffs are ready
+                await self.publish_status(
+                    "diffs_ready", 
+                    {
+                        "variation_id": int(self.variation_id),
+                        "file_count": len(diff_array),
+                        "diff_size": len(diff_json)
+                    }
+                )
+                self.log("📡 Published diffs_ready notification", "INFO")
+                
             else:
                 self.log("⚠️ Database service not available, diffs not saved", "WARNING")
                 

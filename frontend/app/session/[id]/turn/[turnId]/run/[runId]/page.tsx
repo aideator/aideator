@@ -105,7 +105,7 @@ export default function RunPage() {
             seenMessageIds.current.add(messageId)
             
             const newOutput: AgentOutput = {
-              id: `${messageId}-${message.data.variation_id}-${messageIdCounter.current++}`,
+              id: messageIdCounter.current++,
               run_id: runId,
               variation_id: parseInt(message.data.variation_id) ?? 0,
               content: message.data.content || "",
@@ -383,7 +383,8 @@ export default function RunPage() {
     
     {run && (
       <DebugWindow 
-        runId={runId} 
+        runId={runId}
+        variations={run.variations}
         isOpen={showSystemDebug} 
         onClose={() => setShowSystemDebug(false)} 
       />
