@@ -5,7 +5,7 @@ These tests verify that the database initialization gracefully handles
 existing schema conflicts, specifically the duplicate index issue.
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 import sqlalchemy.exc
@@ -23,6 +23,14 @@ class TestDatabaseInitializationFix:
             mock_conn = AsyncMock()
             mock_engine.begin.return_value.__aenter__.return_value = mock_conn
             mock_engine.begin.return_value.__aexit__.return_value = None
+
+            # Mock the execute result
+            mock_result = Mock()  # Not AsyncMock since fetchall() is sync
+            mock_result.fetchall.return_value = [
+                ("model_sync_logs",),
+                ("model_definitions",),
+            ]
+            mock_conn.execute.return_value = mock_result
 
             await create_db_and_tables()
 
@@ -140,6 +148,14 @@ class TestDatabaseInitializationFix:
             mock_conn = AsyncMock()
             mock_engine.begin.return_value.__aenter__.return_value = mock_conn
             mock_engine.begin.return_value.__aexit__.return_value = None
+
+            # Mock the execute result
+            mock_result = Mock()  # Not AsyncMock since fetchall() is sync
+            mock_result.fetchall.return_value = [
+                ("model_sync_logs",),
+                ("model_definitions",),
+            ]
+            mock_conn.execute.return_value = mock_result
 
             with caplog.at_level(logging.INFO):
                 await create_db_and_tables()
