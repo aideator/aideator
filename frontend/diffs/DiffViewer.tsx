@@ -21,6 +21,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
   const [diffFiles, setDiffFiles] = useState<ProcessedDiffFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [collapsedFiles, setCollapsedFiles] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     const loadDiff = async () => {
@@ -60,14 +61,27 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
     return null;
   }
 
-  const showFileHeaders = diffFiles.length > 1;
+  const toggleFileCollapse = (index: number) => {
+    setCollapsedFiles(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.add(index);
+      }
+      return newSet;
+    });
+  };
 
   return (
     <div style={{ height: "100%", overflow: "auto" }}>
-      {diffFiles.map((file, index) => (
-        <div key={index} style={{ marginBottom: index < diffFiles.length - 1 ? "40px" : 0 }}>
-          {showFileHeaders && (
+      {diffFiles.map((file, index) => {
+        const isCollapsed = collapsedFiles.has(index);
+        return (
+          <div key={index} style={{ marginBottom: index < diffFiles.length - 1 ? "40px" : 0 }}>
             <div style={{ 
+              display: "flex",
+              alignItems: "center",
               padding: "10px 20px", 
               backgroundColor: options.theme === "dark" ? "#1e1e1e" : "#f5f5f5",
               borderBottom: `1px solid ${options.theme === "dark" ? "#333" : "#ddd"}`,
@@ -75,19 +89,34 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
               fontSize: "14px",
               fontWeight: "bold"
             }}>
+              <button
+                onClick={() => toggleFileCollapse(index)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "0 8px 0 0",
+                  fontSize: "12px",
+                  color: options.theme === "dark" ? "#aaa" : "#666"
+                }}
+              >
+                {isCollapsed ? "▶" : "▼"}
+              </button>
               {file.fileName}
             </div>
-          )}
-          <DiffView
-            diffFile={file.diffFile}
-            diffViewMode={options.mode === "unified" ? DiffModeEnum.Unified : DiffModeEnum.Split}
-            diffViewWrap={options.wrap}
-            diffViewHighlight={options.highlight}
-            diffViewTheme={options.theme}
-            diffViewFontSize={options.fontSize}
-          />
-        </div>
-      ))}
+            {!isCollapsed && (
+              <DiffView
+                diffFile={file.diffFile}
+                diffViewMode={options.mode === "unified" ? DiffModeEnum.Unified : DiffModeEnum.Split}
+                diffViewWrap={options.wrap}
+                diffViewHighlight={options.highlight}
+                diffViewTheme={options.theme}
+                diffViewFontSize={options.fontSize}
+              />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 };
