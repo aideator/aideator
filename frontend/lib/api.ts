@@ -19,6 +19,8 @@ import {
   ProviderAPIKeyCreate,
   ProviderAPIKeyUpdate,
   Provider,
+  CodeRequest,
+  CodeResponse,
 } from './types'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -38,6 +40,10 @@ class APIClient {
 
   setApiKey(key: string) {
     this.apiKey = key
+  }
+
+  getApiKey(): string | undefined {
+    return this.apiKey
   }
 
   // GitHub API methods
@@ -217,6 +223,14 @@ class APIClient {
 
   async getTurn(sessionId: string, turnId: string): Promise<Turn> {
     return this.request<Turn>(`/api/v1/sessions/${sessionId}/turns/${turnId}`)
+  }
+
+  // Code execution API
+  async executeCode(sessionId: string, turnId: string, request: CodeRequest): Promise<CodeResponse> {
+    return this.request<CodeResponse>(`/api/v1/sessions/${sessionId}/turns/${turnId}/code`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    })
   }
 
   // Run API
@@ -465,4 +479,3 @@ export class WebSocketClient {
 
 // Export singleton instance
 export const apiClient = new APIClient()
-export default apiClient

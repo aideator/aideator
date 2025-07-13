@@ -9,7 +9,7 @@ import { GitBranch, Layers, Mic, Github, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { apiClient } from "@/lib/api"
-import { Session, CreateRunRequest, GitHubRepository, GitHubBranch } from "@/lib/types"
+import { Session, GitHubRepository, GitHubBranch, CodeRequest } from "@/lib/types"
 
 export default function Home() {
   const [taskText, setTaskText] = useState("")
@@ -130,35 +130,35 @@ export default function Home() {
     try {
       setIsCreatingRun(true)
       
-      // Create run request with multiple model variants
-      const agentCount = parseInt(selectedAgentCount)
-      const modelVariants = Array.from({ length: agentCount }, (_, i) => {
-        // Use different models if available, otherwise vary parameters
-        const modelId = availableModels[i % availableModels.length] || 'gpt-4-turbo'
-        return {
-          model_definition_id: modelId,
-          model_parameters: { 
-            temperature: 0.7 + (i * 0.1), // Vary temperature slightly
-            max_tokens: 4096,
-          },
-        }
+      // Create session first
+      const newSession = await apiClient.createSession({
+        title: taskText.slice(0, 50) + (taskText.length > 50 ? '...' : ''),
+        description: `Code session: ${taskText}`,
+        models_used: availableModels.slice(0, parseInt(selectedAgentCount))
       })
-
-      const runRequest: CreateRunRequest = {
-        github_url: `https://github.com/${selectedRepo}`,
+      
+      // Create turn
+      const newTurn = await apiClient.createTurn(newSession.id, {
         prompt: taskText,
-        model_variants: modelVariants,
-        agent_mode: 'litellm',
-        use_claude_code: false,
+        context: `https://github.com/${selectedRepo}`,
+        models_requested: availableModels.slice(0, parseInt(selectedAgentCount))
+      })
+      
+      // Execute code with streamlined API
+      const codeRequest: CodeRequest = {
+        prompt: taskText,
+        context: `https://github.com/${selectedRepo}`,
+        models: availableModels.slice(0, parseInt(selectedAgentCount)),
+        max_models: parseInt(selectedAgentCount)
       }
 
-      const response = await apiClient.createRun(runRequest)
+      const response = await apiClient.executeCode(newSession.id, newTurn.id, codeRequest)
       
-      // Navigate to the run page via session/turn structure
-      router.push(`/session/${response.session_id}/turn/${response.turn_id}/run/${response.run_id}`)
+      // Navigate to the streaming page
+      router.push(`/session/${newSession.id}/turn/${newTurn.id}/run/${response.run_id}`)
     } catch (err) {
-      console.error('Failed to create run:', err)
-      alert('Failed to create run. Please try again.')
+      console.error('Failed to create code session:', err)
+      alert('Failed to create code session. Please try again.')
     } finally {
       setIsCreatingRun(false)
     }

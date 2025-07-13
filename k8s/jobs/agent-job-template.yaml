@@ -109,12 +109,7 @@ spec:
           volumeMounts:
             - name: workspace
               mountPath: /workspace
-            - name: data
-              mountPath: /app/data
       volumes:
         - name: workspace
           emptyDir:
             sizeLimit: 1Gi
-        - name: data
-          persistentVolumeClaim:
-            claimName: aideator-data

@@ -1,27 +1,52 @@
 import React from 'react'
 import { render, screen, waitFor, act } from '@testing-library/react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/page-header'
 import { apiClient } from '@/lib/api'
+import { AuthProvider } from '@/lib/auth-context'
 
 // Setup mocks
+const mockPush = jest.fn()
+const mockReplace = jest.fn()
+
 jest.mock('next/navigation', () => ({
   usePathname: jest.fn(() => '/'),
+  useRouter: jest.fn(() => ({
+    push: mockPush,
+    replace: mockReplace,
+  })),
 }))
 jest.mock('@/lib/api')
+
+// Mock localStorage
+const localStorageMock = {
+  getItem: jest.fn(),
+  setItem: jest.fn(),
+  removeItem: jest.fn(),
+  clear: jest.fn(),
+}
+Object.defineProperty(window, 'localStorage', {
+  value: localStorageMock,
+})
 
 const mockUsePathname = jest.mocked(usePathname)
 const mockApiClient = apiClient as jest.Mocked<typeof apiClient>
 
+// Test wrapper component
+const TestWrapper = ({ children }: { children: React.ReactNode }) => (
+  <AuthProvider>{children}</AuthProvider>
+)
+
 describe('PageHeader', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    localStorageMock.getItem.mockReturnValue(null)
   })
 
   it('should render default header for home page', () => {
     mockUsePathname.mockReturnValue('/')
     
-    render(<PageHeader />)
+    render(<PageHeader />, { wrapper: TestWrapper })
     
     expect(screen.getByText('AIdeator')).toBeInTheDocument()
     expect(screen.getByText('API Docs')).toBeInTheDocument()
@@ -45,7 +70,7 @@ describe('PageHeader', () => {
     })
     
     await act(async () => {
-      render(<PageHeader />)
+      render(<PageHeader />, { wrapper: TestWrapper })
     })
     
     await waitFor(() => {
@@ -64,7 +89,7 @@ describe('PageHeader', () => {
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
     
     await act(async () => {
-      render(<PageHeader />)
+      render(<PageHeader />, { wrapper: TestWrapper })
     })
     
     await waitFor(() => {
@@ -94,7 +119,7 @@ describe('PageHeader', () => {
       total_cost: 1.25
     })
     
-    render(<PageHeader />)
+    render(<PageHeader />, { wrapper: TestWrapper })
     
     expect(mockApiClient.getSession).toHaveBeenCalledWith('abc-123-def')
   })
@@ -102,7 +127,7 @@ describe('PageHeader', () => {
   it('should not match invalid session paths', () => {
     mockUsePathname.mockReturnValue('/session/test-id/turn/123')
     
-    render(<PageHeader />)
+    render(<PageHeader />, { wrapper: TestWrapper })
     
     expect(mockApiClient.getSession).not.toHaveBeenCalled()
     expect(screen.getByText('AIdeator')).toBeInTheDocument()
@@ -111,7 +136,7 @@ describe('PageHeader', () => {
   it('should include API docs link with correct URL', () => {
     mockUsePathname.mockReturnValue('/')
     
-    render(<PageHeader />)
+    render(<PageHeader />, { wrapper: TestWrapper })
     
     const apiDocsLink = screen.getByText('API Docs').closest('a')
     expect(apiDocsLink).toHaveAttribute('href', 'http://localhost:8000/docs')
@@ -125,7 +150,7 @@ describe('PageHeader', () => {
     
     mockUsePathname.mockReturnValue('/')
     
-    render(<PageHeader />)
+    render(<PageHeader />, { wrapper: TestWrapper })
     
     const apiDocsLink = screen.getByText('API Docs').closest('a')
     expect(apiDocsLink).toHaveAttribute('href', 'https://api.example.com/docs')
@@ -134,7 +159,7 @@ describe('PageHeader', () => {
   })
 
   it('should reset session state when navigating away from session page', () => {
-    const { rerender } = render(<PageHeader />)
+    const { rerender } = render(<PageHeader />, { wrapper: TestWrapper })
     
     // First render on session page
     mockUsePathname.mockReturnValue('/session/test-id')

@@ -3,7 +3,7 @@
 import json
 from typing import Any
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, WebSocketException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +11,7 @@ from app.core.database import get_session
 from app.core.dependencies import get_current_user_from_websocket
 from app.core.logging import get_logger
 from app.models.run import Run
+from app.models.user import User
 from app.services.kubernetes_service import KubernetesService
 from app.services.redis_service import redis_service
 
@@ -47,10 +48,28 @@ def format_stream_message(message: dict[str, Any]) -> dict[str, Any]:
     return {"type": websocket_type, "data": data}
 
 
+async def get_websocket_user(
+    websocket: WebSocket,
+    api_key: str | None = Query(None),
+    db: AsyncSession = Depends(get_session),
+):
+    """Get user from WebSocket query parameters."""
+    if not api_key:
+        raise WebSocketException(code=1008, reason="API key required")
+    
+    from app.core.auth import get_user_from_api_key
+    user = await get_user_from_api_key(api_key, db)
+    if not user or not user.is_active:
+        raise WebSocketException(code=1008, reason="Invalid API key")
+    
+    return user
+
+
 @router.websocket("/ws/runs/{run_id}")
 async def websocket_stream_run(
     websocket: WebSocket,
     run_id: str,
+    current_user: User = Depends(get_websocket_user),
     db: AsyncSession = Depends(get_session),
 ):
     """
@@ -60,16 +79,10 @@ async def websocket_stream_run(
     Supports bidirectional communication for control commands.
     """
     await websocket.accept()
-    logger.info(f"WebSocket connected for run {run_id}")
-
-    # Get user from WebSocket (optional for now)
-    current_user = await get_current_user_from_websocket(websocket, db)
+    logger.info(f"WebSocket connected for run {run_id} by user {current_user.id}")
 
     # Verify run exists and user has access
-    query = select(Run).where(Run.id == run_id)
-    if current_user:
-        query = query.where(Run.user_id == current_user.id)
-
+    query = select(Run).where(Run.id == run_id, Run.user_id == current_user.id)
     result = await db.execute(query)
     run = result.scalar_one_or_none()
 
@@ -226,22 +239,17 @@ async def websocket_debug_stream(
     websocket: WebSocket,
     run_id: str,
     variation_id: int = 0,
+    current_user: User = Depends(get_websocket_user),
     db: AsyncSession = Depends(get_session),
 ):
     """
     WebSocket endpoint for debugging - streams only stdout logs.
     """
     await websocket.accept()
-    logger.info(f"Debug WebSocket connected for run {run_id}, variation {variation_id}")
-
-    # Get user from WebSocket (optional for now)
-    current_user = await get_current_user_from_websocket(websocket, db)
+    logger.info(f"Debug WebSocket connected for run {run_id}, variation {variation_id} by user {current_user.id}")
 
     # Verify run exists and user has access
-    query = select(Run).where(Run.id == run_id)
-    if current_user:
-        query = query.where(Run.user_id == current_user.id)
-
+    query = select(Run).where(Run.id == run_id, Run.user_id == current_user.id)
     result = await db.execute(query)
     run = result.scalar_one_or_none()
 

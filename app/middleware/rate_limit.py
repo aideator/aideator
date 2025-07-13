@@ -70,8 +70,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         """Apply rate limiting."""
-        # Skip rate limiting for health checks and metrics
-        if request.url.path in ["/health", "/metrics", "/"]:
+        # Skip rate limiting for health checks, metrics, and WebSocket endpoints
+        if request.url.path in ["/health", "/metrics", "/"] or request.url.path.startswith("/ws/"):
             return await call_next(request)
 
         # Periodic cleanup

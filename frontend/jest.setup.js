@@ -52,3 +52,29 @@ global.IntersectionObserver = jest.fn().mockImplementation(() => ({
   unobserve: jest.fn(),
   disconnect: jest.fn(),
 }))
+
+// Mock Element.hasPointerCapture for Radix UI components
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = jest.fn()
+}
+
+// Mock Element.releasePointerCapture for Radix UI components
+if (!Element.prototype.releasePointerCapture) {
+  Element.prototype.releasePointerCapture = jest.fn()
+}
+
+// Mock Element.setPointerCapture for Radix UI components
+if (!Element.prototype.setPointerCapture) {
+  Element.prototype.setPointerCapture = jest.fn()
+}
+
+// Mock Element.scrollIntoView for Radix UI components
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = jest.fn()
+}
+
+// Mock window.alert
+global.alert = jest.fn()
+
+// Mock window.confirm
+global.confirm = jest.fn(() => true)
