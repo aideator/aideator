@@ -128,8 +128,8 @@ export default function SessionPage() {
             <div className="text-sm">
               <div className="text-gray-400">Models Used</div>
               <div className="flex flex-wrap gap-1 mt-1">
-                {session.models_used.map((model) => (
-                  <Badge key={model} variant="outline" className="text-xs">
+                {session.models_used.map((model, index) => (
+                  <Badge key={index} variant="outline" className="text-xs">
                     {model}
                   </Badge>
                 ))}
@@ -220,8 +220,8 @@ export default function SessionPage() {
 
                   <div className="flex items-center justify-between">
                     <div className="flex flex-wrap gap-1">
-                      {turn.models_requested.map((model) => (
-                        <Badge key={model} variant="outline" className="text-xs">
+                      {turn.models_requested.map((model, index) => (
+                        <Badge key={index} variant="outline" className="text-xs">
                           {model}
                         </Badge>
                       ))}
