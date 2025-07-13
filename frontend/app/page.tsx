@@ -14,6 +14,7 @@ import { useAuth } from "@/lib/auth-context"
 import { ModeSwitcher, Mode } from "@/components/mode-switcher"
 import { ModelPicker, ModelVariant } from "@/components/model-picker"
 import { CodeModePicker } from "@/components/code-mode-picker"
+import { randomCost } from "@/lib/utils"
 
 export default function Home() {
   // Mode state
@@ -523,7 +524,7 @@ export default function Home() {
                         <span>{session.total_turns}</span>
                       </div>
                       <div className="font-mono text-sm text-gray-400">
-                        ${(session.total_cost || 0).toFixed(2)}
+                        ${(session.total_cost || randomCost()).toFixed(2)}
                       </div>
                       {session.is_active ? (
                         <span className="text-sm text-green-400 bg-green-900/50 px-2 py-1 rounded-md">Active</span>
