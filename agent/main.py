@@ -693,8 +693,7 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
 
     async def publish_output(self, content: str):
         """Publish agent output with dual write to Redis Streams and PostgreSQL."""
-        # CRITICAL: Also immediately log the content to ensure visibility
-        self.log(f"LLM_OUTPUT: {content}", "INFO", output_type="llm_content")
+        # Don't log LLM output as it creates duplicate content in logs
         
         # Dual write: Write to both Redis and database
         success_redis = False
@@ -1578,48 +1577,30 @@ Be thorough but concise in your response.
                     # Add to buffer
                     buffer += chunk_text
 
-                    # Stream output more frequently for smoother experience
-                    # Output smaller chunks (10-20 chars) instead of waiting for lines
-                    while len(buffer) >= 15:
-                        # Take a chunk, preferring to break at word boundaries
-                        chunk_size = 15
-                        output_chunk = buffer[:chunk_size]
+                    # Stream output in reasonable chunks
+                    # Wait for complete lines or reasonable amount of content
+                    while len(buffer) >= 200 or '\n' in buffer[:200]:
+                        # If we have a newline, output up to that
+                        newline_pos = buffer.find('\n')
+                        if newline_pos != -1 and newline_pos < 200:
+                            output_chunk = buffer[:newline_pos + 1]
+                        else:
+                            # Otherwise take a reasonable chunk
+                            chunk_size = min(200, len(buffer))
+                            output_chunk = buffer[:chunk_size]
+                            
+                            # Try to break at word boundary
+                            space_pos = output_chunk.rfind(" ")
+                            if space_pos > 100:  # Only adjust if we have substantial content
+                                output_chunk = buffer[: space_pos + 1]
 
-                        # Adjust chunk to end at word boundary if possible
-                        space_pos = output_chunk.rfind(" ")
-                        if space_pos > 8:  # Only adjust if we have a reasonable word
-                            output_chunk = buffer[: space_pos + 1]
-
-                        # Force stdout output using multiple methods
-                        import sys
+                        # Output to stdout
+                        print(output_chunk, end="", flush=True)
                         
-                        # Method 1: Direct stdout write
-                        sys.stdout.write(output_chunk)
-                        sys.stdout.flush()
-                        
-                        # Method 2: os.write to stdout file descriptor
-                        os.write(1, output_chunk.encode('utf-8'))
-                        
-                        # Method 3: Print with explicit file descriptor
-                        print(output_chunk, end="", flush=True, file=sys.stdout)
-                        
-                        # Stream to Redis immediately
+                        # Stream to Redis/database
                         await self.publish_output(output_chunk)
                         buffer = buffer[len(output_chunk) :]
 
-                    # Also check for newlines to maintain structure
-                    if "\n" in buffer:
-                        lines = buffer.split("\n")
-                        for line in lines[:-1]:  # All complete lines
-                            # Force stdout output for newlines too
-                            import sys
-                            sys.stdout.write(line + "\n")
-                            sys.stdout.flush()
-                            os.write(1, (line + "\n").encode('utf-8'))
-                            print(line, flush=True, file=sys.stdout)
-                            # Stream to Redis immediately
-                            await self.publish_output(line + "\n")
-                        buffer = lines[-1]  # Keep the incomplete line
 
             # Add debug logging after streaming loop
             self.log(f"🔧 Streaming loop completed, processed {chunk_count} chunks", "DEBUG")
@@ -1629,13 +1610,10 @@ Be thorough but concise in your response.
                 self.log(f"🔧 Outputting remaining buffer: '{buffer[:50]}...'", "DEBUG")
                 import sys
                 
-                # Force stdout output for remaining buffer
-                sys.stdout.write(buffer)
-                sys.stdout.flush()
-                os.write(1, buffer.encode('utf-8'))
-                print(buffer, end="", flush=True, file=sys.stdout)
+                # Output remaining buffer
+                print(buffer, end="", flush=True)
                 
-                # Stream to Redis immediately
+                # Stream to Redis/database
                 await self.publish_output(buffer)
 
             # Extract usage data from collected chunks
@@ -1869,9 +1847,9 @@ async def main():
             "variation_completed", {"variation_id": agent.variation_id, "success": True}
         )
 
-        # Sleep for 600 seconds (10 minutes) before exit on success
-        agent.log("⏱️ Sleeping for 600 seconds before exit", "INFO")
-        await asyncio.sleep(600)
+        # Sleep for 30 seconds before exit on success (to allow final logs to flush)
+        agent.log("⏱️ Sleeping for 30 seconds before exit", "INFO")
+        await asyncio.sleep(30)
 
         # Wait for any background tasks to complete
         if hasattr(agent, '_bg_tasks') and agent._bg_tasks:

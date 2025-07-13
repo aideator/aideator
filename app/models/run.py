@@ -44,6 +44,10 @@ class Run(SQLModel, table=True):
     user_id: str | None = Field(default=None, index=True)
     api_key_id: str | None = Field(default=None, index=True)
 
+    # Turn association
+    session_id: str | None = Field(default=None, index=True)
+    turn_id: str | None = Field(default=None, index=True)
+
     # Results
     results: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     error_message: str | None = Field(default=None)

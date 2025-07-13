@@ -144,7 +144,13 @@ export default function SessionPage() {
               <TabsTrigger value="turns">Turns</TabsTrigger>
               <TabsTrigger value="analytics">Analytics</TabsTrigger>
             </TabsList>
-            <Button onClick={handleNewTurn} size="sm" className="gap-2">
+            <Button 
+              onClick={handleNewTurn} 
+              size="sm" 
+              className="gap-2" 
+              disabled
+              title="Multiple turns not yet supported"
+            >
               <Plus className="w-4 h-4" />
               New Turn
             </Button>
@@ -154,7 +160,12 @@ export default function SessionPage() {
             {turns.length === 0 ? (
               <div className="text-center py-12 bg-gray-900/30 border border-gray-800 rounded-lg">
                 <p className="text-gray-400 mb-4">No turns in this session yet.</p>
-                <Button onClick={handleNewTurn} variant="outline">
+                <Button 
+                  onClick={handleNewTurn} 
+                  variant="outline"
+                  disabled
+                  title="Multiple turns not yet supported"
+                >
                   Create First Turn
                 </Button>
               </div>

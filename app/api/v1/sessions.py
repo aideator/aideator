@@ -446,6 +446,44 @@ async def export_session(
     )
 
 
+@router.get("/{session_id}/turns/{turn_id}/runs")
+async def get_turn_runs(
+    session_id: str,
+    turn_id: str,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_session),
+) -> list[Run]:
+    """Get all runs for a specific turn."""
+    # Verify session ownership
+    session_query = select(Session).where(
+        and_(col(Session.id) == session_id, col(Session.user_id) == current_user.id)
+    )
+    session_result = await db.execute(session_query)
+    session = session_result.scalar_one_or_none()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Verify turn exists
+    turn_query = select(Turn).where(
+        and_(col(Turn.id) == turn_id, col(Turn.session_id) == session_id)
+    )
+    turn_result = await db.execute(turn_query)
+    turn = turn_result.scalar_one_or_none()
+
+    if not turn:
+        raise HTTPException(status_code=404, detail="Turn not found")
+
+    # Get runs for this turn
+    runs_query = (
+        select(Run)
+        .where(and_(col(Run.turn_id) == turn_id, col(Run.session_id) == session_id))
+        .order_by(col(Run.created_at))
+    )
+    runs_result = await db.execute(runs_query)
+    return runs_result.scalars().all()
+
+
 @router.post("/{session_id}/turns/{turn_id}/code", response_model=CodeResponse)
 async def execute_code(
     session_id: str,
@@ -512,10 +550,10 @@ async def execute_code(
             ],
             "use_claude_code": True,
             "agent_mode": "code",
-            "session_id": session_id,
-            "turn_id": turn_id,
         },
         user_id=current_user.id,
+        session_id=session_id,
+        turn_id=turn_id,
         status=RunStatus.PENDING,
     )
 

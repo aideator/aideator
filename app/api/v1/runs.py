@@ -181,6 +181,8 @@ async def create_run(
             "turn_id": turn_id,
         },
         user_id=current_user.id,
+        session_id=session_id,
+        turn_id=turn_id,
         status=RunStatus.PENDING,
     )
 

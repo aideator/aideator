@@ -86,9 +86,10 @@ export default function RunPage() {
       client.connect({
         onMessage: (message) => {
           // Handle incoming WebSocket messages
-          if (message.type === "llm" || message.type === "stdout" || message.type === "stderr") {
+          // Only accept LLM output messages, not stdout/stderr which contain logging
+          if (message.type === "llm") {
             const newOutput: AgentOutput = {
-              id: message.message_id || `${Date.now()}-${messageIdCounter.current++}`,
+              id: `${message.message_id || Date.now()}-${message.data.variation_id}-${messageIdCounter.current++}`,
               run_id: runId,
               variation_id: parseInt(message.data.variation_id) || 1,
               content: message.data.content || "",
@@ -311,35 +312,10 @@ export default function RunPage() {
                       {outputs
                         .filter(o => o.variation_id === variation)
                         .map((output) => {
-                          // Format content based on type
-                          let displayContent = output.content;
-                          let contentClass = "text-gray-300";
-                          
-                          if (output.output_type === "stdout" && output.content.startsWith("{")) {
-                            try {
-                              const parsed = JSON.parse(output.content);
-                              const emoji = {
-                                'DEBUG': '🔧',
-                                'INFO': 'ℹ️',
-                                'WARNING': '⚠️',
-                                'ERROR': '❌'
-                              }[parsed.level] || '📝';
-                              
-                              displayContent = `${emoji} [${parsed.level}] ${parsed.message}`;
-                              
-                              if (parsed.level === 'ERROR') contentClass = "text-red-400";
-                              else if (parsed.level === 'WARNING') contentClass = "text-yellow-400";
-                              else if (parsed.level === 'DEBUG') contentClass = "text-gray-500";
-                            } catch {
-                              // If not JSON, display as-is
-                            }
-                          } else if (output.output_type === "llm") {
-                            contentClass = "text-green-400";
-                          }
-                          
+                          // Only showing LLM output now
                           return (
-                            <div key={output.id} className={contentClass}>
-                              {displayContent}
+                            <div key={output.id} className="text-green-400">
+                              {output.content}
                             </div>
                           );
                         })}
