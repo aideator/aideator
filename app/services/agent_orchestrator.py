@@ -169,22 +169,24 @@ class AgentOrchestrator:
         # Create individual jobs with secure job tokens
         jobs = []
         for i in range(variations):
-            # Get model name for this variation
-            model_name = None
+            # Get model name and agent mode for this variation
+            litellm_model_name = None
+            variant_agent_mode = agent_mode  # Default fallback
             if i < len(model_variants):
-                model_name = model_variants[i].get("model_definition_id")
+                litellm_model_name = model_variants[i].get("model_definition_id")  # Now contains real LiteLLM name
+                variant_agent_mode = model_variants[i].get("agent_mode", agent_mode)
             elif agent_config:
-                model_name = agent_config.model
+                litellm_model_name = agent_config.model
             
-            # Log the model being used
-            logger.info(f"Creating job for variation {i} with model: {model_name}")
+            # Log the model and agent mode being used
+            logger.info(f"Creating job for variation {i} with litellm_model_name: {litellm_model_name}, agent_mode: {variant_agent_mode}")
             
             # Generate job token for secure API key retrieval
             job_token = generate_job_token(
                 user_id=user_id,
                 run_id=run_id,
                 variation_id=i,
-                model_name=model_name,
+                model_name=litellm_model_name,
                 expires_minutes=120  # 2 hours for job completion
             )
             
@@ -194,8 +196,8 @@ class AgentOrchestrator:
                 repo_url=repo_url,
                 prompt=prompt,
                 job_token=job_token,
-                model=model_name,
-                agent_mode=agent_mode,
+                model=litellm_model_name,
+                agent_mode=variant_agent_mode,
             )
             jobs.append((job_name, i))
 
@@ -330,3 +332,4 @@ class AgentOrchestrator:
         except Exception as e:
             logger.error(f"Failed to update run status: {e}")
             await db_session.rollback()
+

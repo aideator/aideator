@@ -182,7 +182,7 @@ export default function Home() {
       const chatRequest: CodeRequest = {
         prompt: taskText,
         context: 'Chat conversation',
-        models: selectedModels.map(v => v.model_definition_id),
+        model_variants: selectedModels,
         max_models: selectedModels.length
       }
       
@@ -263,7 +263,11 @@ export default function Home() {
       const codeRequest: CodeRequest = {
         prompt: taskText,
         context: repoUrl,
-        models: codeModels,
+        model_variants: codeModels.map((model, index) => ({
+          id: `code_variant_${index}`,
+          model_definition_id: model,
+          model_parameters: { temperature: 0.7, max_tokens: 1000 }
+        })),
         max_models: parseInt(selectedAgentCount)
       }
       
@@ -326,12 +330,28 @@ export default function Home() {
   }
   
   const canSubmit = () => {
-    if (!taskText.trim() || isCreatingRun) return false
+    const hasText = !!taskText.trim()
+    const notCreating = !isCreatingRun
+    const hasModels = selectedModels.length > 0
+    const hasRepo = !!(selectedRepo || customRepoUrl)
+    const hasCodeModel = !!selectedCodeModel
+    
+    console.log('canSubmit check:', { 
+      mode, 
+      hasText, 
+      notCreating, 
+      hasModels, 
+      selectedModelsCount: selectedModels.length,
+      hasRepo, 
+      hasCodeModel 
+    })
+    
+    if (!hasText || !notCreating) return false
     
     if (mode === "chat") {
-      return selectedModels.length > 0
+      return hasModels
     } else {
-      return (selectedRepo || customRepoUrl) && selectedCodeModel
+      return hasRepo && hasCodeModel
     }
   }
 

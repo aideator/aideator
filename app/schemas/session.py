@@ -167,12 +167,20 @@ class SessionExport(BaseModel):
     export_format: str = Field(default="json")  # json, markdown, csv
 
 
+class ModelVariantRequest(BaseModel):
+    """Schema for model variant in request."""
+    
+    id: str = Field(..., description="Unique variant ID")
+    model_definition_id: str = Field(..., description="Model definition ID")
+    model_parameters: dict[str, Any] = Field(default_factory=dict, description="Model parameters like temperature, max_tokens, etc.")
+
+
 class CodeRequest(BaseModel):
     """Schema for code execution request."""
 
     prompt: str = Field(..., min_length=1, description="The coding prompt/instruction")
     context: str | None = Field(None, description="Additional context or codebase URL")
-    models: list[str] = Field(default=["claude-3-5-sonnet-20241022"], description="List of model IDs to use")
+    model_variants: list[ModelVariantRequest] = Field(..., description="List of model variants with parameters")
     max_models: int = Field(default=5, ge=1, le=5, description="Maximum number of models to run")
 
 

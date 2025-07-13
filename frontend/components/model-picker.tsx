@@ -90,15 +90,19 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
 
   // Load models - wait for auth to complete
   useEffect(() => {
+    console.log('ModelPicker: Auth state changed', { authLoading, user: !!user })
     if (!authLoading && user) {
       const loadModels = async () => {
         try {
+          console.log('ModelPicker: Loading models...')
           setLoading(true)
           const data = await apiClient.getModelCatalog()
+          console.log('ModelPicker: Models loaded', data.models?.length, 'models,', data.providers?.length, 'providers')
           setModels(data.models || [])
           setProviders(data.providers || [])
           setError(null)
         } catch (err) {
+          console.error('ModelPicker: Failed to load models', err)
           setError(err instanceof Error ? err.message : 'Failed to load models')
         } finally {
           setLoading(false)
@@ -107,6 +111,7 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
 
       loadModels()
     } else if (!authLoading && !user) {
+      console.log('ModelPicker: User not authenticated')
       setModels([])
       setLoading(false)
       setError('Please sign in to view available models')
@@ -189,13 +194,13 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
     }
     
     // Create variant with slightly randomized parameters to differentiate multiple instances
-    const existingModelCount = selectedVariants.filter(v => v.model_definition_id === model.id).length
+    const existingModelCount = selectedVariants.filter(v => v.model_definition_id === model.litellm_model_name).length
     const baseTemp = 0.7
     const tempVariation = existingModelCount * 0.1 // Vary temperature for multiple instances
     
     const newVariant: ModelVariant = {
       id: `variant_${Date.now()}_${Math.random()}`,
-      model_definition_id: model.id,
+      model_definition_id: model.litellm_model_name,
       model_parameters: {
         temperature: Math.min(2.0, baseTemp + tempVariation),
         max_tokens: 1000,
@@ -236,7 +241,12 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
     setEditingVariant(null)
   }
 
-  const getModelById = (id: string) => models.find(m => m.id === id)
+  const getModelById = (id: string) => models.find(m => m.litellm_model_name === id)
+  
+  const getUniqueModelCount = () => {
+    const uniqueModels = new Set(selectedVariants.map(v => v.model_definition_id))
+    return uniqueModels.size
+  }
 
   if (loading && authLoading) {
     return (
@@ -259,9 +269,16 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
       {/* Selected Models Display */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label className="text-sm text-gray-400">
-            Selected Models ({selectedVariants.length}/{maxVariants})
-          </Label>
+          <div className="flex items-center gap-2">
+            <Label className="text-sm text-gray-400">
+              AI Agents ({selectedVariants.length}/{maxVariants})
+            </Label>
+            {selectedVariants.length > 0 && (
+              <span className="text-xs text-gray-500">
+                • {getUniqueModelCount()} unique model{getUniqueModelCount() !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
           <Button
             variant="outline"
             size="sm"
@@ -270,7 +287,7 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
             className="gap-2 text-xs"
           >
             <Plus className="w-3 h-3" />
-            Add Model
+            {selectedVariants.length === 0 ? 'Add Agent' : 'Add Another'}
             <ChevronDown className={cn("w-3 h-3 transition-transform", showModelList && "rotate-180")} />
           </Button>
         </div>
@@ -278,12 +295,17 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
         {/* Selected Model Chips */}
         {selectedVariants.length > 0 && (
           <div className="flex flex-wrap gap-2">
-            {selectedVariants.map(variant => {
+            {selectedVariants.map((variant, index) => {
               const model = getModelById(variant.model_definition_id)
               if (!model) return null
               
               const providerEmoji = PROVIDER_EMOJIS[model.provider as keyof typeof PROVIDER_EMOJIS] || '⚪'
               const isAvailable = isModelAvailable(model)
+              
+              // Count instances of this model for numbering
+              const modelInstances = selectedVariants.filter(v => v.model_definition_id === variant.model_definition_id)
+              const instanceNumber = modelInstances.findIndex(v => v.id === variant.id) + 1
+              const showInstanceNumber = modelInstances.length > 1
               
               return (
                 <div key={variant.id} className={cn(
@@ -298,12 +320,15 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
                     isAvailable ? "text-gray-200" : "text-amber-200"
                   )}>
                     {model.display_name}
+                    {showInstanceNumber && (
+                      <span className="text-xs ml-1 opacity-75">#{instanceNumber}</span>
+                    )}
                   </span>
                   {!isAvailable && (
                     <AlertCircle className="w-3 h-3 text-amber-400" />
                   )}
                   <span className="text-xs text-gray-400">
-                    T:{variant.model_parameters.temperature || 0.7}
+                    T:{Number(variant.model_parameters.temperature || 0.7).toFixed(1)}
                   </span>
                   <Button
                     variant="ghost"
@@ -329,7 +354,7 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
 
         {selectedVariants.length === 0 && (
           <div className="text-center py-4 text-gray-500 text-sm border border-dashed border-gray-700 rounded-lg">
-            No models selected. Click "Add Model" to get started.
+            No AI agents configured. Click &quot;Add Agent&quot; to get started.
           </div>
         )}
 
@@ -455,20 +480,18 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
                     {isExpanded && (
                       <div className="border-t border-gray-700 space-y-1 p-2">
                         {providerModels.map(model => {
-                          const isSelected = selectedVariants.some(v => v.model_definition_id === model.id)
+                          const existingVariants = selectedVariants.filter(v => v.model_definition_id === model.id)
                           const isAvailable = isModelAvailable(model)
-                          const isDisabled = isSelected || selectedVariants.length >= maxVariants || !isAvailable
+                          const canAdd = selectedVariants.length < maxVariants && isAvailable
                           
                           return (
                             <button
                               key={model.id}
-                              onClick={() => isAvailable && addModelVariant(model)}
-                              disabled={isDisabled}
+                              onClick={() => canAdd && addModelVariant(model)}
+                              disabled={!canAdd}
                               className={cn(
                                 "w-full flex items-center gap-3 p-2 text-left rounded border transition-all",
-                                isSelected 
-                                  ? "bg-green-900/20 border-green-800 text-green-300 cursor-not-allowed"
-                                  : !isAvailable
+                                !isAvailable
                                   ? "bg-amber-900/20 border-amber-800/60 text-amber-200 cursor-not-allowed"
                                   : selectedVariants.length >= maxVariants
                                   ? "bg-gray-800/30 border-gray-600 text-gray-500 cursor-not-allowed"
@@ -481,12 +504,20 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
                                   {!isAvailable && (
                                     <AlertCircle className="w-3 h-3 text-amber-400" />
                                   )}
+                                  {existingVariants.length > 0 && (
+                                    <span className="text-xs bg-blue-600 text-white px-1.5 py-0.5 rounded">
+                                      {existingVariants.length}
+                                    </span>
+                                  )}
                                 </div>
                                 {model.description && (
                                   <div className="text-xs text-gray-400 truncate">{model.description}</div>
                                 )}
                                 {!isAvailable && (
                                   <div className="text-xs text-amber-400">Requires API key</div>
+                                )}
+                                {existingVariants.length > 0 && canAdd && (
+                                  <div className="text-xs text-blue-400">Click to add another variant</div>
                                 )}
                               </div>
                               <div className="text-xs text-gray-400">
@@ -495,10 +526,10 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
                                   : 'Free'
                                 }
                               </div>
-                              {isSelected && (
-                                <Badge variant="outline" className="text-xs text-green-400 border-green-400">
-                                  ✓
-                                </Badge>
+                              {existingVariants.length > 0 && (
+                                <div className="text-xs text-blue-400">
+                                  +
+                                </div>
                               )}
                             </button>
                           )

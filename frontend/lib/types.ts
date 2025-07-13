@@ -278,11 +278,22 @@ export interface Provider {
   supports_models?: string[]
 }
 
+// Model variant types
+export interface ModelVariantRequest {
+  id: string
+  model_definition_id: string
+  model_parameters: {
+    temperature?: number
+    max_tokens?: number
+    top_p?: number
+  }
+}
+
 // Code execution types
 export interface CodeRequest {
   prompt: string
   context?: string
-  models: string[]
+  model_variants: ModelVariantRequest[]
   max_models: number
 }
 

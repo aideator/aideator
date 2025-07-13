@@ -55,20 +55,6 @@ export default function RunPage() {
     }
   }, [])
 
-  // Auto-start streaming when run data is loaded
-  useEffect(() => {
-    if (run && (run.status === 'running' || run.status === 'pending') && !wsClient) {
-      startWebSocketConnection()
-    }
-  }, [run, wsClient, startWebSocketConnection])
-  
-  // Auto-scroll to bottom when new outputs arrive
-  useEffect(() => {
-    if (outputsEndRef.current) {
-      outputsEndRef.current.scrollIntoView({ behavior: "smooth" })
-    }
-  }, [outputs])
-
   const loadRunData = async () => {
     try {
       setIsLoading(true)
@@ -144,6 +130,19 @@ export default function RunPage() {
     }
   }, [wsClient, createWebSocketClient, runId, messageIdCounter, seenMessageIds])
 
+  // Auto-start streaming when run data is loaded
+  useEffect(() => {
+    if (run && (run.status === 'running' || run.status === 'pending') && !wsClient) {
+      startWebSocketConnection()
+    }
+  }, [run, wsClient, startWebSocketConnection])
+  
+  // Auto-scroll to bottom when new outputs arrive
+  useEffect(() => {
+    if (outputsEndRef.current) {
+      outputsEndRef.current.scrollIntoView({ behavior: "smooth" })
+    }
+  }, [outputs])
 
   const stopWebSocketConnection = () => {
     if (wsClient) {

@@ -3,13 +3,15 @@ FROM cgr.dev/chainguard/wolfi-base:latest AS agent
 
 USER root
 
-# Install runtime dependencies (minimal set for agent)
+# Install runtime dependencies (including Node.js for CLI tools)
 RUN apk --no-cache --update upgrade && apk --no-cache add \
     python-3.12 \
     bash \
     git \
     ca-certificates \
-    openssl
+    openssl \
+    nodejs \
+    npm
 
 # Create nonroot user and directories
 RUN adduser -D -u 1000 agentuser
@@ -23,6 +25,9 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Copy and install minimal Python requirements for agent
 COPY agent/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Install AI CLI tools globally
+RUN npm install -g @anthropic-ai/claude-code @openai/codex
 
 # Copy agent code only
 COPY --chown=agentuser:agentuser agent/ ./agent/

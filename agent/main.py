@@ -173,7 +173,7 @@ class AIdeatorAgent:
             print(
                 json.dumps(
                     {
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(UTC).isoformat(),
                         "run_id": self.run_id,
                         "variation_id": self.variation_id,
                         "level": "ERROR",
@@ -192,7 +192,7 @@ class AIdeatorAgent:
             print(
                 json.dumps(
                     {
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(UTC).isoformat(),
                         "run_id": self.run_id,
                         "variation_id": self.variation_id,
                         "level": "ERROR",
@@ -232,28 +232,28 @@ class AIdeatorAgent:
         """Initialize database connection in async context."""
         try:
             print(json.dumps({
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "level": "DEBUG",
                 "message": "🔧 About to import AgentDatabaseService"
             }), flush=True)
             from agent.services.database_service import AgentDatabaseService
 
             print(json.dumps({
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "level": "DEBUG",
                 "message": "🔧 About to create AgentDatabaseService instance"
             }), flush=True)
             self.db_service = AgentDatabaseService()
             
             print(json.dumps({
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "level": "DEBUG",
                 "message": "🔧 About to call db_service.connect()"
             }), flush=True)
             await self.db_service.connect()
             
             print(json.dumps({
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "level": "DEBUG",
                 "message": "🔧 Database connection successful"
             }), flush=True)
@@ -261,7 +261,7 @@ class AIdeatorAgent:
 
         except Exception as e:
             print(json.dumps({
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "level": "ERROR",
                 "message": f"🔧 Database connection failed: {e}",
                 "exception_type": type(e).__name__,
@@ -313,7 +313,7 @@ class AIdeatorAgent:
             print(
                 json.dumps(
                     {
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(UTC).isoformat(),
                         "run_id": self.run_id,
                         "variation_id": self.variation_id,
                         "level": "WARNING",
@@ -347,7 +347,7 @@ class AIdeatorAgent:
                 print(
                     json.dumps(
                         {
-                            "timestamp": datetime.utcnow().isoformat(),
+                            "timestamp": datetime.now(UTC).isoformat(),
                             "run_id": self.run_id,
                             "variation_id": self.variation_id,
                             "level": "INFO",
@@ -360,7 +360,7 @@ class AIdeatorAgent:
                 print(
                     json.dumps(
                         {
-                            "timestamp": datetime.utcnow().isoformat(),
+                            "timestamp": datetime.now(UTC).isoformat(),
                             "run_id": self.run_id,
                             "variation_id": self.variation_id,
                             "level": "ERROR",
@@ -373,7 +373,7 @@ class AIdeatorAgent:
             print(
                 json.dumps(
                     {
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(UTC).isoformat(),
                         "run_id": self.run_id,
                         "variation_id": self.variation_id,
                         "level": "ERROR",
@@ -473,6 +473,7 @@ class AIdeatorAgent:
             return "deepseek"
         # Default to openai for unknown models
         return "openai"
+
 
     def _validate_model_credentials(self, model_name: str) -> tuple[bool, str]:
         """Validate that credentials are available for the requested model.
@@ -872,7 +873,7 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
     async def run(self) -> None:
         """Main agent execution flow."""
         print(json.dumps({
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": "DEBUG",
             "message": "🔧 Entered agent.run() method"
         }), flush=True)
@@ -881,14 +882,14 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
 
         # Initialize Redis and Database connections
         print(json.dumps({
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": "DEBUG",
             "message": "🔧 About to initialize Redis"
         }), flush=True)
         await self._init_redis()
         
         print(json.dumps({
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": "DEBUG",
             "message": "🔧 About to initialize Database"
         }), flush=True)
@@ -902,14 +903,14 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
 
         # Fetch API keys from orchestrator
         print(json.dumps({
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": "DEBUG",
             "message": "🔧 About to fetch API keys (async method)"
         }), flush=True)
         await self._fetch_api_keys()
 
         print(json.dumps({
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": "DEBUG",
             "message": "🔧 API keys fetched, about to log availability"
         }), flush=True)
@@ -951,6 +952,13 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                     f"💎 Gemini CLI version: {gemini_version}",
                     "INFO",
                     gemini_version=gemini_version,
+                )
+            elif agent_mode == "openai-codex":
+                codex_version = self._get_cli_version("codex")
+                self.log(
+                    f"🔥 OpenAI Codex CLI version: {codex_version}",
+                    "INFO",
+                    codex_version=codex_version,
                 )
 
         # Log LiteLLM Gateway configuration
@@ -1194,6 +1202,8 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             return await self._generate_claude_cli_response()
         if agent_mode == "gemini-cli":
             return await self._generate_gemini_cli_response()
+        if agent_mode == "openai-codex":
+            return await self._generate_openai_codex_response()
         return await self._generate_litellm_response(codebase_summary)
 
     async def _generate_claude_cli_response(self) -> str:
@@ -1533,6 +1543,134 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             self.log_error("Gemini CLI execution failed", e)
             raise RuntimeError(f"Failed to generate Gemini CLI response: {e}") from e
 
+    async def _generate_openai_codex_response(self) -> str:
+        """Generate response using OpenAI Codex CLI."""
+        self.log_progress(
+            "Generating response using OpenAI Codex CLI",
+            "Executing codex in full-auto quiet mode for one-shot execution",
+        )
+
+        try:
+            # Track start time for analytics
+            request_start_time = datetime.now(UTC)
+            
+            # Change to repository directory for context
+            original_dir = os.getcwd()
+            os.chdir(self.repo_dir)
+
+            # Execute OpenAI Codex CLI
+            self.log_progress(
+                "Executing OpenAI Codex CLI", f"Working directory: {self.repo_dir}"
+            )
+
+            # Use codex in full-auto quiet mode for containerized CI/CD environment
+            result = await asyncio.create_subprocess_exec(
+                "codex",
+                "--full-auto",
+                "--quiet",
+                self.prompt,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=os.environ,  # Includes OPENAI_API_KEY
+            )
+
+            # Wait for completion with timeout (increased for code analysis)
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    result.communicate(), timeout=120.0
+                )
+            except TimeoutError:
+                result.terminate()
+                await result.wait()
+                self.log_error("OpenAI Codex CLI execution timed out after 120 seconds", None)
+                raise RuntimeError("OpenAI Codex CLI execution timed out after 120 seconds")
+
+            # Change back to original directory
+            os.chdir(original_dir)
+
+            # Handle output
+            if result.returncode == 0:
+                response_text = stdout.decode("utf-8")
+                self.log_progress(
+                    "OpenAI Codex CLI completed successfully",
+                    f"Generated {len(response_text)} characters",
+                )
+
+                # Stream the response line by line for consistency with other CLI tools
+                for line in response_text.split("\n"):
+                    if line.strip():
+                        print(f"🔥 {line}", flush=True)
+                
+                # Persist output to database
+                if self.db_service:
+                    await self.db_service.write_agent_output(
+                        run_id=self.run_id,
+                        variation_id=int(self.variation_id),
+                        content=response_text,
+                        output_type="stdout",
+                        metadata={"source": "openai_codex_cli", "exit_code": result.returncode}
+                    )
+
+                # Write analytics data for OpenAI Codex CLI
+                if self.db_service:
+                    try:
+                        request_end_time = datetime.now(UTC)
+                        response_time_ms = int((request_end_time - request_start_time).total_seconds() * 1000)
+                        analytics_data = {
+                            "model": "openai-codex-cli",
+                            "provider": "openai",
+                            "stream": False,
+                            "status": "success",
+                            "request_end_time": request_end_time,
+                            "response_time_ms": response_time_ms,
+                            "metadata": {
+                                "agent_mode": "openai-codex",
+                                "response_length": len(response_text),
+                                "working_directory": str(self.repo_dir),
+                                "codex_flags": ["--full-auto", "--quiet"]
+                            }
+                        }
+                        
+                        await self.db_service.write_litellm_analytics(
+                            run_id=self.run_id,
+                            variation_id=int(self.variation_id),
+                            analytics_data=analytics_data
+                        )
+                        self.log(
+                            "Wrote OpenAI Codex CLI analytics to database",
+                            "INFO",
+                            analytics_summary=analytics_data
+                        )
+                    except Exception as analytics_error:
+                        self.log(
+                            f"Failed to write OpenAI Codex CLI analytics: {analytics_error}",
+                            "ERROR"
+                        )
+                
+                return response_text
+            else:
+                error_msg = stderr.decode("utf-8")
+                self.log_error(
+                    "OpenAI Codex CLI process failed",
+                    f"Exit code: {result.returncode}, Error: {error_msg}",
+                )
+                # Persist stderr to database
+                if self.db_service and error_msg:
+                    await self.db_service.write_agent_output(
+                        run_id=self.run_id,
+                        variation_id=int(self.variation_id),
+                        content=error_msg,
+                        output_type="stderr",
+                        metadata={"source": "openai_codex_cli", "exit_code": result.returncode}
+                    )
+                raise RuntimeError(
+                    f"OpenAI Codex CLI failed with exit code {result.returncode}: {error_msg}"
+                )
+
+        except Exception as e:
+            self.log_error("OpenAI Codex CLI execution failed", e)
+            raise RuntimeError(f"Failed to generate OpenAI Codex CLI response: {e}") from e
+
     async def _generate_litellm_response(self, codebase_summary: str | None) -> str:
         """Generate response using LiteLLM (original implementation)."""
         self.log(
@@ -1582,13 +1720,13 @@ Be thorough but concise in your response.
             api_key = os.getenv(provider_key_env)
             
             print(json.dumps({
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "level": "DEBUG",
                 "message": f"🔧 Using provider={provider}, has_api_key={bool(api_key)}, gateway_key={self.gateway_key}"
             }), flush=True)
             
             print(json.dumps({
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "level": "DEBUG",
                 "message": "🔧 About to prepare completion kwargs"
             }), flush=True)
@@ -1610,7 +1748,7 @@ Be thorough but concise in your response.
                 completion_kwargs["extra_body"] = {"api_key": api_key}
             
             print(json.dumps({
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "level": "DEBUG",
                 "message": f"🔧 About to call acompletion with model={completion_kwargs['model']}"
             }), flush=True)
@@ -1618,21 +1756,21 @@ Be thorough but concise in your response.
             response = await acompletion(**completion_kwargs)
             
             print(json.dumps({
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "level": "DEBUG",
                 "message": "🔧 acompletion call successful, starting to process stream"
             }), flush=True)
             
             # Debug: Verify response object
             print(json.dumps({
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "level": "DEBUG",
                 "message": f"🔧 Response object type: {type(response)}"
             }), flush=True)
 
             # CRITICAL DEBUG: This should appear if we reach here
             print(json.dumps({
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "level": "DEBUG",
                 "message": "🔧 REACHED AFTER acompletion - about to enter streaming loop"
             }), flush=True)
@@ -1983,14 +2121,14 @@ If the problem persists, contact support with the error details above.
 async def main():
     """Main entry point."""
     print(json.dumps({
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "level": "DEBUG",
         "message": "🔧 Starting main() function"
     }), flush=True)
     
     agent = AIdeatorAgent()
     print(json.dumps({
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "level": "DEBUG", 
         "message": "🔧 Agent initialized successfully"
     }), flush=True)
@@ -1998,7 +2136,7 @@ async def main():
     try:
         # Run the agent
         print(json.dumps({
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": "DEBUG",
             "message": "🔧 About to call agent.run()"
         }), flush=True)
