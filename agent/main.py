@@ -21,7 +21,8 @@ from typing import Any
 
 import aiofiles
 import git
-from litellm import acompletion
+import requests
+from litellm import acompletion, completion_cost, stream_chunk_builder
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 # Constants
@@ -43,7 +44,7 @@ class AIdeatorAgent:
     def __init__(self):
         """Initialize agent with configuration from environment."""
         self.run_id = os.getenv("RUN_ID", "local-test")
-        self.variation_id = os.getenv("VARIATION_ID", "0")
+        self.variation_id = int(os.getenv("VARIATION_ID", "0"))
         self.repo_url = os.getenv("REPO_URL", "")
         self.prompt = os.getenv("PROMPT", "Analyze this repository")
 
@@ -60,10 +61,12 @@ class AIdeatorAgent:
         )
         self.gateway_key = os.getenv("LITELLM_GATEWAY_KEY", "sk-1234")
 
-        # API key setup (for direct calls if needed)
-        api_key = os.getenv("OPENAI_API_KEY")
-        if api_key:
-            os.environ["OPENAI_API_KEY"] = api_key
+        # Job token for secure API key retrieval
+        self.job_token = os.getenv("JOB_TOKEN")
+        self.orchestrator_url = os.getenv("ORCHESTRATOR_API_URL", "http://aideator-fastapi:8000/api/v1")
+
+        # API keys will be fetched from orchestrator
+        self.api_keys = {}
 
         # Working directory - use a secure temp directory
         self.work_dir = Path(tempfile.mkdtemp(prefix="agent-workspace-"))
@@ -72,6 +75,9 @@ class AIdeatorAgent:
         # Setup logging to file only (not stdout to avoid mixing with LLM output)
         self.log_file = self.work_dir / f"agent_{self.run_id}_{self.variation_id}.log"
         self._setup_file_logging()
+
+        # Fetch API keys from orchestrator before checking availability
+        self._fetch_api_keys_from_orchestrator()
 
         # Check available API keys for graceful error handling
         self.available_api_keys = self._check_available_api_keys()
@@ -140,15 +146,157 @@ class AIdeatorAgent:
     async def _init_database(self):
         """Initialize database connection in async context."""
         try:
+            print(json.dumps({
+                "timestamp": datetime.utcnow().isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 About to import AgentDatabaseService"
+            }), flush=True)
             from agent.services.database_service import AgentDatabaseService
 
+            print(json.dumps({
+                "timestamp": datetime.utcnow().isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 About to create AgentDatabaseService instance"
+            }), flush=True)
             self.db_service = AgentDatabaseService()
+            
+            print(json.dumps({
+                "timestamp": datetime.utcnow().isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 About to call db_service.connect()"
+            }), flush=True)
             await self.db_service.connect()
+            
+            print(json.dumps({
+                "timestamp": datetime.utcnow().isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 Database connection successful"
+            }), flush=True)
             self.log("[DB-CONNECT] Connected to database", "INFO")
 
         except Exception as e:
+            print(json.dumps({
+                "timestamp": datetime.utcnow().isoformat(),
+                "level": "ERROR",
+                "message": f"🔧 Database connection failed: {e}",
+                "exception_type": type(e).__name__,
+                "exception_str": str(e)
+            }), flush=True)
             self.log(f"[DB-CONNECT] Database connection failed: {e}", "ERROR")
             raise RuntimeError(f"Failed to connect to database: {e}")
+
+    async def _fetch_api_keys(self):
+        """Fetch API keys from orchestrator using job token."""
+        if not self.job_token:
+            self.log("[API-KEYS] No job token provided - skipping API key fetch", "WARNING")
+            return
+
+        try:
+            import aiohttp
+
+            # Make request to orchestrator API
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.orchestrator_url}/jobs/keys",
+                    json={"job_token": self.job_token},
+                    headers={"Content-Type": "application/json"}
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        self.api_keys = data.get("keys", {})
+
+                        # Set environment variables for compatibility
+                        for key, value in self.api_keys.items():
+                            os.environ[key] = value
+
+                        self.log(f"[API-KEYS] Successfully fetched {len(self.api_keys)} API keys", "INFO")
+
+                        # Log which providers are available (without exposing keys)
+                        providers = [key.replace("_API_KEY", "") for key in self.api_keys]
+                        self.log(f"[API-KEYS] Available providers: {providers}", "INFO")
+
+                    else:
+                        error_text = await response.text()
+                        self.log(f"[API-KEYS] Failed to fetch API keys: {response.status} - {error_text}", "ERROR")
+
+        except Exception as e:
+            self.log(f"[API-KEYS] Error fetching API keys: {e}", "ERROR")
+
+    def _fetch_api_keys_from_orchestrator(self):
+        """Fetch API keys from orchestrator using job token."""
+        if not self.job_token:
+            print(
+                json.dumps(
+                    {
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "run_id": self.run_id,
+                        "variation_id": self.variation_id,
+                        "level": "WARNING",
+                        "message": "No job token provided, skipping API key retrieval",
+                    }
+                ),
+                flush=True,
+            )
+            return
+
+        try:
+            import requests
+            
+            response = requests.post(
+                f"{self.orchestrator_url}/jobs/keys",
+                json={"job_token": self.job_token},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                self.api_keys = data.get("keys", {})
+                
+                # Set environment variables for the API keys
+                for key_name, key_value in self.api_keys.items():
+                    os.environ[key_name] = key_value
+                
+                # Update available API keys after setting environment variables
+                self.available_api_keys = self._check_available_api_keys()
+                
+                print(
+                    json.dumps(
+                        {
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "run_id": self.run_id,
+                            "variation_id": self.variation_id,
+                            "level": "INFO",
+                            "message": f"✅ Successfully fetched {len(self.api_keys)} API keys from orchestrator",
+                        }
+                    ),
+                    flush=True,
+                )
+            else:
+                print(
+                    json.dumps(
+                        {
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "run_id": self.run_id,
+                            "variation_id": self.variation_id,
+                            "level": "ERROR",
+                            "message": f"Failed to fetch API keys: {response.status_code} - {response.text}",
+                        }
+                    ),
+                    flush=True,
+                )
+        except Exception as e:
+            print(
+                json.dumps(
+                    {
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "run_id": self.run_id,
+                        "variation_id": self.variation_id,
+                        "level": "ERROR",
+                        "message": f"Error fetching API keys: {str(e)}",
+                    }
+                ),
+                flush=True,
+            )
 
     def _setup_file_logging(self):
         """Setup file-only logging to avoid stdout pollution."""
@@ -363,9 +511,15 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
+                    # Include run_id and variation_id in kwargs for database
+                    db_kwargs = {
+                        "run_id": self.run_id,
+                        "variation_id": self.variation_id,
+                        **kwargs
+                    }
                     # Schedule as a task if loop is running
                     task = loop.create_task(
-                        self.db_service.publish_log(message, level, **kwargs)
+                        self.db_service.publish_log(message, level, **db_kwargs)
                     )
                     # Store task reference to avoid warning
                     if not hasattr(self, "_bg_tasks"):
@@ -424,6 +578,9 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
 
     async def publish_output(self, content: str):
         """Publish agent output with dual write to Redis Streams and PostgreSQL."""
+        # CRITICAL: Also immediately log the content to ensure visibility
+        self.log(f"LLM_OUTPUT: {content}", "INFO", output_type="llm_content")
+        
         # Dual write: Write to both Redis and database
         success_redis = False
         success_db = False
@@ -574,11 +731,42 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
 
     async def run(self) -> None:
         """Main agent execution flow."""
+        print(json.dumps({
+            "timestamp": datetime.utcnow().isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 Entered agent.run() method"
+        }), flush=True)
+        
         self.log("🚀 Starting AIdeator Agent", "INFO", config=self.config)
 
         # Initialize Redis and Database connections
+        print(json.dumps({
+            "timestamp": datetime.utcnow().isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 About to initialize Redis"
+        }), flush=True)
         await self._init_redis()
+        
+        print(json.dumps({
+            "timestamp": datetime.utcnow().isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 About to initialize Database"
+        }), flush=True)
         await self._init_database()
+
+        # Fetch API keys from orchestrator
+        print(json.dumps({
+            "timestamp": datetime.utcnow().isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 About to fetch API keys (async method)"
+        }), flush=True)
+        await self._fetch_api_keys()
+
+        print(json.dumps({
+            "timestamp": datetime.utcnow().isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 API keys fetched, about to log availability"
+        }), flush=True)
 
         # Log available API keys for debugging
         await self.log_async(
@@ -1136,22 +1324,65 @@ Be thorough but concise in your response.
             response_text = ""
             chunk_count = 0
             buffer = ""
+            collected_chunks = []  # Collect chunks for usage extraction
 
             # Call THROUGH the LiteLLM Gateway
             # The gateway will handle routing to the actual provider
             try:
-                response = await acompletion(
-                    model=self.config[
-                        "model"
-                    ],  # Use model name directly, Gateway handles routing
-                    max_tokens=self.config["max_tokens"],
-                    temperature=self.config["temperature"],
-                    messages=[{"role": "user", "content": full_prompt}],
-                    stream=True,  # Enable streaming
-                    api_base=self.gateway_url,  # Point to LiteLLM Gateway service
-                    api_key=self.gateway_key,  # Use Gateway master key
-                    # The gateway will use its own configured API keys to call providers
-                )
+                # Get the provider API key for this model
+                provider = self._get_model_provider(self.config["model"])
+                provider_key_env = f"{provider.upper()}_API_KEY"
+                api_key = os.getenv(provider_key_env)
+                
+                print(json.dumps({
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "level": "DEBUG",
+                    "message": f"🔧 Using provider={provider}, has_api_key={bool(api_key)}, gateway_key={self.gateway_key}"
+                }), flush=True)
+                
+                print(json.dumps({
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "level": "DEBUG",
+                    "message": "🔧 About to prepare completion kwargs"
+                }), flush=True)
+                
+                # Use LiteLLM Gateway with clientside API key injection
+                completion_kwargs = {
+                    "model": self.config["model"],
+                    "max_tokens": self.config["max_tokens"],
+                    "temperature": self.config["temperature"],
+                    "messages": [{"role": "user", "content": full_prompt}],
+                    "stream": True,
+                    "stream_options": {"include_usage": True},
+                    "api_base": self.gateway_url,  # Point to LiteLLM Gateway
+                    "api_key": self.gateway_key,   # Use Gateway master key for auth
+                }
+                
+                # Pass provider API key via extra_body (clientside auth)
+                if api_key:
+                    completion_kwargs["extra_body"] = {"api_key": api_key}
+                
+                print(json.dumps({
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "level": "DEBUG",
+                    "message": f"🔧 About to call acompletion with model={completion_kwargs['model']}"
+                }), flush=True)
+                
+                response = await acompletion(**completion_kwargs)
+                
+                print(json.dumps({
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "level": "DEBUG",
+                    "message": "🔧 acompletion call successful, starting to process stream"
+                }), flush=True)
+                
+                # Debug: Verify response object
+                print(json.dumps({
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "level": "DEBUG",
+                    "message": f"🔧 Response object type: {type(response)}"
+                }), flush=True)
+                
             except Exception as api_error:
                 # Handle specific API errors with user-friendly messages
                 error_str = str(api_error).lower()
@@ -1249,12 +1480,29 @@ If the problem persists, contact support with the error details above.
                 print(error_message, flush=True)
                 raise RuntimeError(f"API request failed: {api_error}")
 
-            async for chunk in response:
+        # CRITICAL DEBUG: This should appear if we reach here
+        print(json.dumps({
+            "timestamp": datetime.utcnow().isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 REACHED AFTER EXCEPTION BLOCK - about to enter streaming loop"
+        }), flush=True)
+        
+        # Add debug logging before streaming loop
+        self.log("🔧 About to enter async streaming loop", "DEBUG")
+        
+        async for chunk in response:
+                # Collect chunk for usage extraction
+                collected_chunks.append(chunk)
+
                 # Extract text from chunk
                 if chunk.choices and chunk.choices[0].delta.content:
                     chunk_text = chunk.choices[0].delta.content
                     response_text += chunk_text
                     chunk_count += 1
+                    
+                    # Debug log for first few chunks
+                    if chunk_count <= 3:
+                        self.log(f"🔧 Processing chunk #{chunk_count}: '{chunk_text}'", "DEBUG")
 
                     # Add to buffer
                     buffer += chunk_text
@@ -1271,8 +1519,20 @@ If the problem persists, contact support with the error details above.
                         if space_pos > 8:  # Only adjust if we have a reasonable word
                             output_chunk = buffer[: space_pos + 1]
 
-                        # Output the chunk directly without emoji prefix for cleaner parsing
-                        print(output_chunk, end="", flush=True)
+                        # Force stdout output using multiple methods
+                        import sys
+                        import os
+                        
+                        # Method 1: Direct stdout write
+                        sys.stdout.write(output_chunk)
+                        sys.stdout.flush()
+                        
+                        # Method 2: os.write to stdout file descriptor
+                        os.write(1, output_chunk.encode('utf-8'))
+                        
+                        # Method 3: Print with explicit file descriptor
+                        print(output_chunk, end="", flush=True, file=sys.stdout)
+                        
                         # Stream to Redis immediately
                         await self.publish_output(output_chunk)
                         buffer = buffer[len(output_chunk) :]
@@ -1281,16 +1541,125 @@ If the problem persists, contact support with the error details above.
                     if "\n" in buffer:
                         lines = buffer.split("\n")
                         for line in lines[:-1]:  # All complete lines
-                            print(line, flush=True)
+                            # Force stdout output for newlines too
+                            import sys
+                            import os
+                            sys.stdout.write(line + "\n")
+                            sys.stdout.flush()
+                            os.write(1, (line + "\n").encode('utf-8'))
+                            print(line, flush=True, file=sys.stdout)
                             # Stream to Redis immediately
                             await self.publish_output(line + "\n")
                         buffer = lines[-1]  # Keep the incomplete line
 
+            # Add debug logging after streaming loop
+            self.log(f"🔧 Streaming loop completed, processed {chunk_count} chunks", "DEBUG")
+            
             # Output any remaining buffer
             if buffer.strip():
-                print(buffer, end="", flush=True)
+                self.log(f"🔧 Outputting remaining buffer: '{buffer[:50]}...'", "DEBUG")
+                import sys
+                import os
+                
+                # Force stdout output for remaining buffer
+                sys.stdout.write(buffer)
+                sys.stdout.flush()
+                os.write(1, buffer.encode('utf-8'))
+                print(buffer, end="", flush=True, file=sys.stdout)
+                
                 # Stream to Redis immediately
                 await self.publish_output(buffer)
+
+            # Extract usage data from collected chunks
+            tokens_used = None
+            cost_usd = None
+            provider = self._get_model_provider(self.config["model"])
+
+            try:
+                # Try to build complete response from chunks to get usage data
+                if collected_chunks:
+                    # Check if the last chunk has usage information
+                    last_chunk = collected_chunks[-1] if collected_chunks else None
+                    if last_chunk and hasattr(last_chunk, "usage") and last_chunk.usage:
+                        tokens_used = last_chunk.usage.total_tokens
+                        self.log(
+                            "Extracted token usage from stream",
+                            "INFO",
+                            tokens_used=tokens_used,
+                            prompt_tokens=getattr(last_chunk.usage, "prompt_tokens", None),
+                            completion_tokens=getattr(last_chunk.usage, "completion_tokens", None)
+                        )
+
+                        # Try to calculate cost
+                        try:
+                            # Create a mock response object for cost calculation
+                            mock_response = type("obj", (object,), {
+                                "model": self.config["model"],
+                                "usage": last_chunk.usage
+                            })()
+                            cost_usd = completion_cost(completion_response=mock_response)
+                            self.log(
+                                "Calculated completion cost",
+                                "INFO",
+                                cost_usd=cost_usd,
+                                model=self.config["model"]
+                            )
+                        except Exception as cost_error:
+                            self.log(
+                                f"Failed to calculate cost: {cost_error}",
+                                "WARNING"
+                            )
+
+                    # If no usage in last chunk, try to rebuild complete response
+                    if tokens_used is None:
+                        try:
+                            complete_response = stream_chunk_builder(
+                                chunks=collected_chunks,
+                                messages=[{"role": "user", "content": full_prompt}]
+                            )
+                            if hasattr(complete_response, "usage") and complete_response.usage:
+                                tokens_used = complete_response.usage.total_tokens
+                                # Calculate cost from complete response
+                                cost_usd = completion_cost(completion_response=complete_response)
+                                self.log(
+                                    "Extracted usage from rebuilt response",
+                                    "INFO",
+                                    tokens_used=tokens_used,
+                                    cost_usd=cost_usd
+                                )
+                        except Exception as rebuild_error:
+                            self.log(
+                                f"Failed to rebuild response for usage: {rebuild_error}",
+                                "WARNING"
+                            )
+
+            except Exception as usage_error:
+                self.log(
+                    f"Failed to extract usage data: {usage_error}",
+                    "WARNING"
+                )
+
+            # Update run statistics if we have usage data
+            if self.db_service and (tokens_used is not None or cost_usd is not None):
+                try:
+                    await self.db_service.update_run_stats(
+                        run_id=self.run_id,
+                        tokens_used=tokens_used,
+                        cost_usd=cost_usd,
+                        model=self.config["model"],
+                        provider=provider
+                    )
+                    self.log(
+                        "Updated run statistics in database",
+                        "INFO",
+                        tokens_used=tokens_used,
+                        cost_usd=cost_usd
+                    )
+                except Exception as stats_error:
+                    self.log(
+                        f"Failed to update run statistics: {stats_error}",
+                        "ERROR"
+                    )
 
             self.log(
                 "Streaming LLM response complete",
@@ -1298,20 +1667,45 @@ If the problem persists, contact support with the error details above.
                 step="streaming_complete",
                 chunks_received=chunk_count,
                 total_length=len(response_text),
+                tokens_used=tokens_used,
+                cost_usd=cost_usd
             )
 
             return response_text
-
-        except Exception as e:
-            self.log_error("LLM generation failed", e)
-            raise RuntimeError(f"Failed to generate LLM response: {e}") from e
+            
+        except Exception as streaming_error:
+            # Log the streaming error specifically
+            print(json.dumps({
+                "timestamp": datetime.utcnow().isoformat(),
+                "level": "ERROR",
+                "message": f"🔧 STREAMING ERROR: {streaming_error}"
+            }), flush=True)
+            self.log_error("Streaming loop failed", streaming_error)
+            raise RuntimeError(f"Failed to process LLM stream: {streaming_error}") from streaming_error
 
 
 async def main():
     """Main entry point."""
+    print(json.dumps({
+        "timestamp": datetime.utcnow().isoformat(),
+        "level": "DEBUG",
+        "message": "🔧 Starting main() function"
+    }), flush=True)
+    
     agent = AIdeatorAgent()
+    print(json.dumps({
+        "timestamp": datetime.utcnow().isoformat(),
+        "level": "DEBUG", 
+        "message": "🔧 Agent initialized successfully"
+    }), flush=True)
+    
     try:
         # Run the agent
+        print(json.dumps({
+            "timestamp": datetime.utcnow().isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 About to call agent.run()"
+        }), flush=True)
         await agent.run()
 
         # Publish completion status

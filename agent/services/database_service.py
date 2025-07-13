@@ -80,33 +80,35 @@ class AgentDatabaseService:
             output_type: Type of output (llm, stdout, status, etc.)
             metadata: Optional metadata
         """
-        try:
-            # Import here to avoid circular imports
-            from app.models.run import AgentOutput
+        # Create a new session for this operation to avoid concurrency issues
+        async with self.async_session_maker() as session:
+            try:
+                # Import here to avoid circular imports
+                from app.models.run import AgentOutput
 
-            output = AgentOutput(
-                run_id=run_id,
-                variation_id=variation_id,
-                content=content,
-                output_type=output_type,
-                timestamp=datetime.utcnow(),
-            )
+                output = AgentOutput(
+                    run_id=run_id,
+                    variation_id=variation_id,
+                    content=content,
+                    output_type=output_type,
+                    timestamp=datetime.utcnow(),
+                )
 
-            self.session.add(output)
-            await self.session.commit()
+                session.add(output)
+                await session.commit()
 
-            logger.debug(
-                f"[DB-WRITE] Wrote {output_type} output to database: "
-                f"run_id={run_id}, variation_id={variation_id}, "
-                f"content_length={len(content)}"
-            )
+                logger.debug(
+                    f"[DB-WRITE] Wrote {output_type} output to database: "
+                    f"run_id={run_id}, variation_id={variation_id}, "
+                    f"content_length={len(content)}"
+                )
 
-        except Exception as e:
-            logger.error(
-                f"[DB-WRITE] Failed to write {output_type} output to database: {e}"
-            )
-            await self.session.rollback()
-            # Don't raise - agent should continue even if DB write fails
+            except Exception as e:
+                logger.error(
+                    f"[DB-WRITE] Failed to write {output_type} output to database: {e}"
+                )
+                await session.rollback()
+                # Don't raise - agent should continue even if DB write fails
 
     async def update_run_status(
         self,
@@ -180,3 +182,91 @@ class AgentDatabaseService:
         except Exception as e:
             logger.error(f"Database health check failed: {e}")
             return False
+
+    async def publish_log(
+        self, message: str, level: str, **kwargs
+    ) -> None:
+        """Write log entry to database.
+
+        Args:
+            message: Log message
+            level: Log level (INFO, DEBUG, WARNING, ERROR)
+            **kwargs: Additional metadata
+        """
+        await self.write_agent_output(
+            run_id=kwargs.get("run_id", ""),
+            variation_id=kwargs.get("variation_id", 0),
+            content=message,
+            output_type="logging",
+            metadata={"level": level, **kwargs}
+        )
+
+    async def update_run_stats(
+        self,
+        run_id: str,
+        tokens_used: int | None = None,
+        cost_usd: float | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+    ) -> None:
+        """Update run statistics with LiteLLM usage data.
+
+        Args:
+            run_id: The run ID
+            tokens_used: Number of tokens used
+            cost_usd: Cost in USD
+            model: Model name used
+            provider: Provider name (openai, anthropic, etc.)
+        """
+        try:
+            # Import here to avoid circular imports
+            from app.models.run import Run
+
+            # Get the run
+            result = await self.session.execute(select(Run).where(Run.id == run_id))
+            run = result.scalar_one_or_none()
+
+            if run:
+                # Update token usage
+                if tokens_used is not None:
+                    if run.total_tokens_used is None:
+                        run.total_tokens_used = 0
+                    run.total_tokens_used += tokens_used
+
+                # Update cost
+                if cost_usd is not None:
+                    if run.total_cost_usd is None:
+                        run.total_cost_usd = 0.0
+                    run.total_cost_usd += cost_usd
+
+                # Store model and provider info in results
+                if model or provider:
+                    if not run.results:
+                        run.results = {}
+                    if "llm_stats" not in run.results:
+                        run.results["llm_stats"] = []
+
+                    stat_entry = {
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "tokens_used": tokens_used,
+                        "cost_usd": cost_usd,
+                        "model": model,
+                        "provider": provider
+                    }
+                    run.results["llm_stats"].append(stat_entry)
+
+                await self.session.commit()
+
+                logger.info(
+                    f"[DB-WRITE] Updated run stats: run_id={run_id}, "
+                    f"tokens={tokens_used}, cost={cost_usd}, model={model}"
+                )
+            else:
+                logger.warning(
+                    f"[DB-WRITE] Run not found for stats update: run_id={run_id}"
+                )
+
+        except Exception as e:
+            logger.error(f"[DB-WRITE] Failed to update run stats: {e}")
+            await self.session.rollback()
+            # Don't raise - agent should continue even if DB write fails

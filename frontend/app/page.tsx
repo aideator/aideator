@@ -10,6 +10,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { apiClient } from "@/lib/api"
 import { Session, GitHubRepository, GitHubBranch, CodeRequest } from "@/lib/types"
+import { useAuth } from "@/lib/auth-context"
 
 export default function Home() {
   const [taskText, setTaskText] = useState("")
@@ -28,14 +29,25 @@ export default function Home() {
   const [, setIsLoadingModels] = useState(false)
   
   const router = useRouter()
+  const { user, loading: authLoading } = useAuth()
 
+  // Wait for auth to load before making API calls
   useEffect(() => {
-    loadSessions()
-    loadPopularRepositories()
-    loadModelDefinitions()
-  }, [])
+    if (!authLoading && user) {
+      loadSessions()
+      loadPopularRepositories()
+      loadModelDefinitions()
+    }
+  }, [authLoading, user])
 
   const loadSessions = async () => {
+    // Don't make API calls if user is not authenticated
+    if (!user) {
+      setSessions([])
+      setIsLoading(false)
+      return
+    }
+
     try {
       setIsLoading(true)
       const response = await apiClient.getSessions({ limit: 50 })
@@ -110,6 +122,8 @@ export default function Home() {
 
   const handleAsk = async () => {
     // Create session-only interaction for Q&A mode
+    // In ask mode, users can select from any available model
+    // TODO: Implement model picker UI for ask mode
     try {
       const newSession = await apiClient.createSession({
         title: taskText.slice(0, 50) + (taskText.length > 50 ? '...' : ''),
@@ -125,40 +139,81 @@ export default function Home() {
   }
 
   const handleCode = async () => {
-    if (!taskText.trim()) return
+    console.log('🚀 handleCode called')
+    console.log('📝 Task text:', taskText)
+    console.log('🔐 Auth state:', { user: !!user, authLoading })
+    console.log('📦 Available models:', availableModels)
+    
+    if (!taskText.trim()) {
+      console.warn('❌ No task text provided')
+      return
+    }
+    
+    if (!user) {
+      console.error('❌ User not authenticated')
+      alert('Please sign in to use this feature')
+      return
+    }
+    
+    if (availableModels.length === 0) {
+      console.error('❌ No models available')
+      alert('No AI models available. Please try again later.')
+      return
+    }
     
     try {
       setIsCreatingRun(true)
       
       // Create session first
+      console.log('📋 Creating session...')
       const newSession = await apiClient.createSession({
         title: taskText.slice(0, 50) + (taskText.length > 50 ? '...' : ''),
         description: `Code session: ${taskText}`,
         models_used: availableModels.slice(0, parseInt(selectedAgentCount))
       })
+      console.log('✅ Session created:', newSession.id)
       
       // Create turn
+      console.log('🔄 Creating turn...')
       const newTurn = await apiClient.createTurn(newSession.id, {
         prompt: taskText,
         context: `https://github.com/${selectedRepo}`,
         models_requested: availableModels.slice(0, parseInt(selectedAgentCount))
       })
+      console.log('✅ Turn created:', newTurn.id)
       
       // Execute code with streamlined API
+      // TODO: Implement proper model picker for code mode
+      // For now, hardcode GPT-4o for code mode
+      const codeModels = ["gpt-4o", "gpt-4o", "gpt-4o"].slice(0, parseInt(selectedAgentCount))
+      
       const codeRequest: CodeRequest = {
         prompt: taskText,
         context: `https://github.com/${selectedRepo}`,
-        models: availableModels.slice(0, parseInt(selectedAgentCount)),
+        models: codeModels,
         max_models: parseInt(selectedAgentCount)
       }
-
+      
+      console.log('🤖 Executing code request:', codeRequest)
       const response = await apiClient.executeCode(newSession.id, newTurn.id, codeRequest)
+      console.log('✅ Code execution started, run ID:', response.run_id)
       
       // Navigate to the streaming page
+      console.log('🔗 Navigating to run page...')
       router.push(`/session/${newSession.id}/turn/${newTurn.id}/run/${response.run_id}`)
-    } catch (err) {
-      console.error('Failed to create code session:', err)
-      alert('Failed to create code session. Please try again.')
+    } catch (err: any) {
+      console.error('❌ Failed to create code session:', err)
+      console.error('Error details:', err.detail || err.message || err)
+      
+      // More specific error messages
+      if (err.detail?.includes('401') || err.detail?.includes('Unauthorized')) {
+        alert('Authentication error. Please sign in again.')
+        router.push('/signin')
+      } else if (err.detail?.includes('404')) {
+        alert('API endpoint not found. Please check your configuration.')
+      } else {
+        alert(`Failed to create code session: ${err.detail || err.message || 'Unknown error'}`)
+      }
     } finally {
       setIsCreatingRun(false)
     }

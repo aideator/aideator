@@ -12,19 +12,21 @@ RUN apk add --no-cache \
     openssl-dev \
     python3-dev \
     build-base \
-    git
+    git \
+    cargo \
+    rust
 
 # Create virtual environment
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy and install requirements
-COPY requirements.txt .
+COPY agent/requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r requirements.txt
 
 # Build stage for Node.js tools
-FROM node:20-alpine AS node-builder
+FROM node:22-alpine AS node-builder
 
 # Install global Node.js tools
 RUN npm install -g \
@@ -51,8 +53,8 @@ COPY --from=kubectl-builder /kubectl /usr/local/bin/kubectl
 
 # Copy Node.js tools
 COPY --from=node-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
-COPY --from=node-builder /usr/local/bin/claude-code /usr/local/bin/
-COPY --from=node-builder /usr/local/bin/gemini-cli /usr/local/bin/
+COPY --from=node-builder /usr/local/bin/claude /usr/local/bin/
+COPY --from=node-builder /usr/local/bin/gemini /usr/local/bin/
 COPY --from=node-builder /usr/local/bin/codex /usr/local/bin/
 
 # Set working directory
@@ -93,8 +95,8 @@ COPY --from=kubectl-builder /kubectl /usr/local/bin/kubectl
 
 # Copy Node.js tools
 COPY --from=node-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
-COPY --from=node-builder /usr/local/bin/claude-code /usr/local/bin/
-COPY --from=node-builder /usr/local/bin/gemini-cli /usr/local/bin/
+COPY --from=node-builder /usr/local/bin/claude /usr/local/bin/
+COPY --from=node-builder /usr/local/bin/gemini /usr/local/bin/
 COPY --from=node-builder /usr/local/bin/codex /usr/local/bin/
 
 # Create non-root user

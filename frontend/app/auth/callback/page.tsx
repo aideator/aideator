@@ -44,7 +44,7 @@ export default function AuthCallbackPage() {
             localStorage.setItem("user", JSON.stringify(authData.user))
             
             // Use the signIn method to properly set auth state
-            signIn(authData.token, authData.user)
+            await signIn(authData.token, authData.user)
           } else {
             throw new Error("Invalid auth data structure")
           }

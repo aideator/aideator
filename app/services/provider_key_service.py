@@ -427,7 +427,10 @@ class ProviderKeyService:
 
         from app.models.user import User
 
-        user = self.db.get(User, user_id)
+        if isinstance(self.db, AsyncSession):
+            user = await self.db.get(User, user_id)
+        else:
+            user = self.db.get(User, user_id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
@@ -453,7 +456,10 @@ class ProviderKeyService:
 
         from app.models.user import User
 
-        user = self.db.get(User, user_id)
+        if isinstance(self.db, AsyncSession):
+            user = await self.db.get(User, user_id)
+        else:
+            user = self.db.get(User, user_id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 

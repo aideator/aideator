@@ -11,7 +11,7 @@ update_settings(max_parallel_updates=3)
 allow_k8s_contexts(['k3d-aideator', 'docker-desktop', 'kind-aideator'])
 
 # Set up registry
-default_registry('localhost:5005', host_from_cluster='ctlptl-registry:5000')
+default_registry('localhost:5005')
 
 # Create namespace
 namespace_create('aideator')
@@ -38,7 +38,20 @@ docker_build(
     ],
 )
 
-# Agent image removed from Tilt - will be built separately for dynamic job spawning
+# Build agent image - let Tilt handle registry configuration
+docker_build(
+    'aideator-agent',
+    context='.',
+    dockerfile='Dockerfile.agent',
+    only=[
+        'agent/',
+        'app/models/',
+        'app/core/config.py',
+        'requirements.txt',
+        'pyproject.toml',
+        'prompts/',
+    ],
+)
 
 # Ensure cluster is ready before creating secrets
 local_resource(
@@ -71,6 +84,9 @@ k8s_resource('chart-redis-master', port_forwards='6379:6379', labels=['cache'], 
 k8s_resource('chart-aideator-litellm', port_forwards='4000:4000', labels=['ai-gateway'], new_name='litellm', resource_deps=['database'])
 k8s_resource('aideator-fastapi', port_forwards='8000:8000', labels=['backend'], new_name='api', resource_deps=['database', 'litellm'])
 
+# Agent image resource
+k8s_resource('agent-image-build-trigger', labels=['agent'], new_name='agent-image')
+
 # Development user initialization is now handled automatically 
 # by FastAPI startup events when DEBUG=true and GITHUB_TEST_USERNAME is set
 
@@ -90,6 +106,37 @@ local_resource(
     ],
     labels=['frontend'],
 )
+
+# Dummy resource to ensure agent image is built
+k8s_yaml(blob('''
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-image-ref
+  namespace: aideator
+  annotations:
+    tilt.dev/resource: agent-image
+data:
+  image: aideator-agent:dev
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agent-image-build-trigger
+  namespace: aideator
+  annotations:
+    tilt.dev/resource: agent-image
+spec:
+  template:
+    spec:
+      containers:
+      - name: agent
+        image: aideator-agent
+        command: ["echo", "Image built"]
+      restartPolicy: Never
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 10
+'''))
 
 # Development job template for testing agents
 # k8s_yaml('''

@@ -54,15 +54,24 @@ async def get_websocket_user(
     db: AsyncSession = Depends(get_session),
 ):
     """Get user from WebSocket query parameters."""
+    logger.info(f"🔌 WebSocket authentication attempt with API key: {api_key[:10] + '...' if api_key else 'None'}")
+    
     if not api_key:
+        logger.warning("🔌 WebSocket authentication failed: No API key provided")
         raise WebSocketException(code=1008, reason="API key required")
     
     from app.core.auth import get_user_from_api_key
-    user = await get_user_from_api_key(api_key, db)
-    if not user or not user.is_active:
-        raise WebSocketException(code=1008, reason="Invalid API key")
-    
-    return user
+    try:
+        user = await get_user_from_api_key(api_key, db)
+        if not user or not user.is_active:
+            logger.warning(f"🔌 WebSocket authentication failed: Invalid API key {api_key[:10] + '...'}")
+            raise WebSocketException(code=1008, reason="Invalid API key")
+        
+        logger.info(f"🔌 WebSocket authentication successful for user: {user.email}")
+        return user
+    except Exception as e:
+        logger.error(f"🔌 WebSocket authentication error: {e}")
+        raise WebSocketException(code=1008, reason="Authentication failed")
 
 
 @router.websocket("/ws/runs/{run_id}")

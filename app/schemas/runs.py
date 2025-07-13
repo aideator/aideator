@@ -175,8 +175,8 @@ class CreateRunResponse(BaseModel):
         "json_schema_extra": {
             "example": {
                 "run_id": "run_1234567890abcdef",
-                "websocket_url": "ws://localhost:8000/ws/runs/run_1234567890abcdef",
-                "stream_url": "ws://localhost:8000/ws/runs/run_1234567890abcdef",
+                        "websocket_url": "ws://localhost:8000/api/v1/ws/runs/run_1234567890abcdef",
+        "stream_url": "ws://localhost:8000/api/v1/ws/runs/run_1234567890abcdef",
                 "polling_url": "/api/v1/runs/run_1234567890abcdef/outputs",
                 "status": "accepted",
                 "estimated_duration_seconds": 120,

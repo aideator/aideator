@@ -129,6 +129,7 @@ class TestAgentOrchestrator:
                 repo_url=repo_url,
                 prompt=prompt,
                 variations=variations,
+                user_id="test-user-123",  # Add required user_id parameter
             )
 
         # Verify run was stored
@@ -162,6 +163,7 @@ class TestAgentOrchestrator:
                 prompt="Test prompt",
                 variations=2,
                 agent_config=agent_config,
+                user_id="test-user-456",
             )
 
         # Verify agent config was stored
@@ -187,6 +189,7 @@ class TestAgentOrchestrator:
                 prompt="Test prompt",
                 variations=1,
                 db_session=mock_session,
+                user_id="test-user-789",
             )
 
         # Verify database was updated
@@ -206,6 +209,7 @@ class TestAgentOrchestrator:
             repo_url="https://github.com/test/repo",
             prompt="Test prompt",
             variations=2,
+            user_id="test-user-error",
         )
 
         # Verify error status was set
@@ -475,6 +479,7 @@ class TestAgentOrchestrator:
                 repo_url="https://github.com/test/repo",
                 prompt="Test prompt",
                 variations=1,
+                user_id="test-user-redis",
             )
 
         # Verify Redis connect was called

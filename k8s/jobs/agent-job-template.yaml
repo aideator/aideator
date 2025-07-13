@@ -29,54 +29,20 @@ spec:
           image: "ctlptl-registry:5000/aideator-agent:dev"
           imagePullPolicy: Always
           env:
-            - name: OPENAI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: openai-secret
-                  key: api-key
-                  optional: true
-            - name: ANTHROPIC_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: anthropic-secret
-                  key: api-key
-                  optional: true
-            - name: GEMINI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: gemini-secret
-                  key: api-key
-                  optional: true
-            - name: MISTRAL_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: mistral-secret
-                  key: api-key
-                  optional: true
-            - name: COHERE_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: cohere-secret
-                  key: api-key
-                  optional: true
-            - name: GROQ_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: groq-secret
-                  key: api-key
-                  optional: true
-            - name: PERPLEXITY_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: perplexity-secret
-                  key: api-key
-                  optional: true
-            - name: DEEPSEEK_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: deepseek-secret
-                  key: api-key
-                  optional: true
+            # Secure job token for API key retrieval
+            - name: JOB_TOKEN
+              value: {job_token}
+            # Orchestrator API endpoint for key retrieval
+            - name: ORCHESTRATOR_API_URL
+              value: "http://aideator-fastapi-svc:8000/api/v1"
+            # LiteLLM Gateway configuration
+            - name: LITELLM_GATEWAY_URL
+              value: "http://chart-aideator-litellm:4000"
+            - name: LITELLM_GATEWAY_KEY
+              value: "sk-1234"
+            # Model configuration
+            - name: MODEL
+              value: "{model}"
             - name: AGENT_MODE
               value: "{agent_mode}"
             - name: REPO_URL
@@ -94,10 +60,10 @@ spec:
             # SECURITY TRADEOFF: Hardcoded Redis URL for development
             # Production should use service discovery or secrets
             - name: REDIS_URL
-              value: "redis://aideator-redis:6379/0"
+              value: "redis://chart-redis-master:6379/0"
             # Database URL for agent to write outputs
-            - name: DATABASE_URL
-              value: "postgresql://aideator:aideator123@aideator-postgresql:5432/aideator"
+            - name: DATABASE_URL_ASYNC
+              value: "postgresql+asyncpg://aideator:aideator123@chart-aideator-postgresql:5432/aideator"
           command: ["python", "-u", "/app/agent/main.py"]
           resources:
             requests:

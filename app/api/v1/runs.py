@@ -201,13 +201,14 @@ async def create_run(
         repo_url=str(request.github_url),
         prompt=request.prompt,
         variations=len(request.model_variants),
+        user_id=current_user.id,  # Pass user_id for secure API key retrieval
         agent_config=None,  # agent_config is stored in the run record
         agent_mode=request.agent_mode,
         db_session=db,
     )
 
     # Use localhost for frontend WebSocket connections instead of 0.0.0.0
-    stream_url = f"ws://localhost:{settings.port}/ws/runs/{run_id}"
+    stream_url = f"ws://localhost:{settings.port}{settings.api_v1_prefix}/ws/runs/{run_id}"
     return CreateRunResponse(
         run_id=run_id,
         websocket_url=stream_url,

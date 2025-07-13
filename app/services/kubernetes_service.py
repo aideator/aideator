@@ -43,6 +43,8 @@ class KubernetesService:
         variation_id: int,
         repo_url: str,
         prompt: str,
+        job_token: str,
+        model: str,
         agent_config: dict[str, Any] | None = None,
         agent_mode: str | None = None,
     ) -> str:
@@ -60,6 +62,8 @@ class KubernetesService:
             variation_id=variation_id,
             repo_url=repo_url,
             prompt=self._escape_yaml_string(prompt),  # Proper YAML escaping
+            job_token=self._escape_yaml_string(job_token),  # Secure job token
+            model=model,  # Model name for LLM
             agent_mode=agent_mode or "litellm",  # Default to litellm
         )
 

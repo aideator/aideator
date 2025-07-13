@@ -13,6 +13,7 @@ spec:
     metadata:
       labels:
         {{- include "aideator.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: fastapi
     spec:
       serviceAccountName: {{ include "aideator.serviceAccountName" . }}
       securityContext:

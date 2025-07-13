@@ -10,6 +10,7 @@ import { ArrowLeft, Play, Square, Clock, DollarSign, Users, Terminal, FileText, 
 import Link from "next/link"
 import { apiClient, WebSocketClient } from "@/lib/api"
 import { Session, Turn, Run, AgentOutput } from "@/lib/types"
+import { useAuthenticatedWebSocket } from "@/lib/api"
 
 export default function RunPage() {
   const params = useParams()
@@ -17,29 +18,42 @@ export default function RunPage() {
   const sessionId = params.id as string
   const turnId = params.turnId as string
   const runId = params.runId as string
+  
+  // Get authenticated WebSocket client
+  const { createWebSocketClient } = useAuthenticatedWebSocket('ws://localhost:8000')
 
+  // State management
   const [session, setSession] = useState<Session | null>(null)
   const [turn, setTurn] = useState<Turn | null>(null)
   const [run, setRun] = useState<Run | null>(null)
   const [outputs, setOutputs] = useState<AgentOutput[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [wsClient, setWsClient] = useState<WebSocketClient | null>(null)
   const [debugWsClient, setDebugWsClient] = useState<WebSocketClient | null>(null)
-  const [debugOutputs, setDebugOutputs] = useState<AgentOutput[]>([])
   const [showDebugView, setShowDebugView] = useState(false)
-
+  const [debugOutputs, setDebugOutputs] = useState<AgentOutput[]>([])
+  
+  // Ref for auto-scrolling
   const outputsEndRef = useRef<HTMLDivElement>(null)
 
+  // Load data on mount
   useEffect(() => {
     if (sessionId && turnId && runId) {
       loadRunData()
     }
   }, [sessionId, turnId, runId])
 
+  // Auto-start streaming when run data is loaded
   useEffect(() => {
-    // Auto-scroll to bottom when new outputs arrive
+    if (run && (run.status === 'running' || run.status === 'pending')) {
+      startWebSocketConnection()
+    }
+  }, [run])
+  
+  // Auto-scroll to bottom when new outputs arrive
+  useEffect(() => {
     if (outputsEndRef.current) {
       outputsEndRef.current.scrollIntoView({ behavior: "smooth" })
     }
@@ -48,23 +62,15 @@ export default function RunPage() {
   const loadRunData = async () => {
     try {
       setIsLoading(true)
-      const [sessionResponse, turnResponse, runResponse, outputsResponse] = await Promise.all([
+      const [sessionResponse, turnResponse, runResponse] = await Promise.all([
         apiClient.getSession(sessionId),
         apiClient.getTurn(sessionId, turnId),
         apiClient.getRun(runId),
-        apiClient.getRunOutputs(runId, {}),
       ])
       setSession(sessionResponse)
       setTurn(turnResponse)
       setRun(runResponse)
-      setOutputs(outputsResponse)
       setError(null)
-
-      // If run is still active, start WebSocket connections
-      if (runResponse.status === "running") {
-        startWebSocketConnection()
-        startDebugWebSocketConnection()
-      }
     } catch (err) {
       console.error('Failed to load run data:', err)
       setError('Failed to load run data')
@@ -75,9 +81,8 @@ export default function RunPage() {
 
   const startWebSocketConnection = () => {
     try {
-      const apiKey = apiClient.getApiKey()
-      const wsUrl = `ws://localhost:8000/ws/runs/${runId}${apiKey ? `?api_key=${apiKey}` : ''}`
-      const client = new WebSocketClient(wsUrl)
+      const wsUrl = `ws://localhost:8000/api/v1/ws/runs/${runId}`
+      const client = createWebSocketClient(wsUrl)
       client.connect({
         onMessage: (message) => {
           // Handle incoming WebSocket messages for parsed/clean output
@@ -110,9 +115,8 @@ export default function RunPage() {
 
   const startDebugWebSocketConnection = () => {
     try {
-      const apiKey = apiClient.getApiKey()
-      const debugWsUrl = `ws://localhost:8000/ws/runs/${runId}/debug${apiKey ? `?api_key=${apiKey}` : ''}`
-      const debugClient = new WebSocketClient(debugWsUrl)
+      const debugWsUrl = `ws://localhost:8000/api/v1/ws/runs/${runId}/debug`
+      const debugClient = createWebSocketClient(debugWsUrl)
       debugClient.connect({
         onMessage: (message) => {
           // Handle debug messages (raw logs)

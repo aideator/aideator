@@ -464,6 +464,11 @@ async def execute_code(
     """
     settings = get_settings()
     
+    # Log the incoming request
+    from app.core.logging import get_logger
+    logger = get_logger(__name__)
+    logger.info(f"Execute code request - models: {request.models}, max_models: {request.max_models}")
+    
     # Verify session ownership
     session_query = select(Session).where(
         and_(col(Session.id) == session_id, col(Session.user_id) == current_user.id)
@@ -521,24 +526,32 @@ async def execute_code(
     session.updated_at = datetime.utcnow()
     
     await db.commit()
+    await db.refresh(run)  # Ensure run is fully loaded with all fields
 
     # Schedule background orchestration for coding task
-    background_tasks.add_task(
-        orchestrator.execute_variations,
-        run_id=run_id,
-        repo_url=request.context or "https://github.com/temp/repo",
-        prompt=request.prompt,
-        variations=len(request.models[:request.max_models]),
-        agent_config=None,  # Config is stored in run record
-        agent_mode="code",
-        db_session=db,
-    )
+    # Using secure API key retrieval system
+    # Create a new session for the background task
+    from app.core.database import async_session_maker
+    async def execute_with_session():
+        async with async_session_maker() as session:
+            await orchestrator.execute_variations(
+                run_id=run_id,
+                repo_url=request.context or "https://github.com/temp/repo",
+                prompt=request.prompt,
+                variations=len(request.models[:request.max_models]),
+                user_id=current_user.id,  # Add user_id for secure API key retrieval
+                agent_config=None,  # Config is stored in run record
+                agent_mode="code",
+                db_session=session,
+            )
+    
+    background_tasks.add_task(execute_with_session)
 
     # Return response with streaming URLs
     # Use localhost for frontend WebSocket connections instead of 0.0.0.0
     base_url = f"localhost:{settings.port}"
-    websocket_url = f"ws://{base_url}/ws/runs/{run_id}"
-    debug_websocket_url = f"ws://{base_url}/ws/runs/{run_id}/debug"
+    websocket_url = f"ws://{base_url}{settings.api_v1_prefix}/ws/runs/{run_id}"
+    debug_websocket_url = f"ws://{base_url}{settings.api_v1_prefix}/ws/runs/{run_id}/debug"
 
     return CodeResponse(
         turn_id=turn_id,

@@ -44,7 +44,11 @@ data:
                       key: master-key
                 - name: MODEL
                   value: "PLACEHOLDER_MODEL"
-                # API keys will be injected dynamically by FastAPI
+                # API key retrieval system
+                - name: JOB_TOKEN
+                  value: "PLACEHOLDER_JOB_TOKEN"
+                - name: ORCHESTRATOR_API_URL
+                  value: "http://aideator-fastapi-svc:{{ .Values.service.port | default 8000 }}/api/v1"
                 # Job configuration - will be replaced with actual values
                 - name: REPO_URL
                   value: "PLACEHOLDER_REPO_URL"
@@ -58,6 +62,11 @@ data:
                   value: "INFO"
                 - name: PYTHONUNBUFFERED
                   value: "1"
+                # Required service connections
+                - name: REDIS_URL
+                  value: "redis://chart-redis-master:6379"
+                - name: DATABASE_URL_ASYNC
+                  value: "postgresql+asyncpg://aideator:aideator123@chart-aideator-postgresql:5432/aideator"
               command: ["python", "-u", "/app/agent/main.py"]
               resources:
                 {{- toYaml .Values.agents.resources | nindent 16 }}
