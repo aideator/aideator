@@ -11,6 +11,7 @@ import Link from "next/link"
 import { apiClient, WebSocketClient } from "@/lib/api"
 import { Session, Turn, Run, AgentOutput } from "@/lib/types"
 import { useAuthenticatedWebSocket } from "@/lib/api"
+import { DebugWindow } from "@/components/debug-window"
 
 export default function RunPage() {
   const params = useParams()
@@ -34,6 +35,7 @@ export default function RunPage() {
   const [debugWsClient, setDebugWsClient] = useState<WebSocketClient | null>(null)
   const [showDebugView, setShowDebugView] = useState(false)
   const [debugOutputs, setDebugOutputs] = useState<AgentOutput[]>([])
+  const [showSystemDebug, setShowSystemDebug] = useState(false)
   
   // Ref for auto-scrolling
   const outputsEndRef = useRef<HTMLDivElement>(null)
@@ -251,8 +253,9 @@ export default function RunPage() {
   }
 
   return (
-    <div className="bg-gray-950 text-gray-50 min-h-screen">
-      <div className="container mx-auto max-w-6xl py-8">
+    <>
+      <div className="bg-gray-950 text-gray-50 min-h-screen">
+        <div className="container mx-auto max-w-6xl py-8">
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
           <Button
@@ -289,90 +292,6 @@ export default function RunPage() {
           </div>
         </div>
 
-        {/* Run Status and Controls */}
-        <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6 mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-4">
-              <div className="text-sm">
-                <div className="text-gray-400">Status</div>
-                <div className="text-lg font-medium">{run.status}</div>
-              </div>
-              <div className="w-64">
-                <Progress value={getProgress()} className="h-2" />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {run.status === "running" && (
-                <>
-                  {isStreaming ? (
-                    <Button onClick={stopWebSocketConnection} variant="outline" size="sm">
-                      <Square className="w-4 h-4 mr-2" />
-                      Stop Streaming
-                    </Button>
-                  ) : (
-                    <Button onClick={startWebSocketConnection} variant="outline" size="sm">
-                      <Play className="w-4 h-4 mr-2" />
-                      Start Streaming
-                    </Button>
-                  )}
-                  <Button onClick={handleCancelRun} variant="destructive" size="sm">
-                    Cancel Run
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-gray-400" />
-              <div className="text-sm">
-                <div className="text-gray-400">Created</div>
-                <div>{new Date(run.created_at).toLocaleString()}</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Users className="w-4 h-4 text-gray-400" />
-              <div className="text-sm">
-                <div className="text-gray-400">Variations</div>
-                <div>{run.variations}</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <DollarSign className="w-4 h-4 text-gray-400" />
-              <div className="text-sm">
-                <div className="text-gray-400">Cost</div>
-                <div>${run.total_cost_usd?.toFixed(3) || '0.000'}</div>
-              </div>
-            </div>
-            <div className="text-sm">
-              <div className="text-gray-400">Tokens</div>
-              <div>{run.total_tokens_used?.toLocaleString() || '0'}</div>
-            </div>
-          </div>
-
-          {run.github_url && (
-            <div className="mt-4 pt-4 border-t border-gray-800">
-              <div className="text-sm text-gray-400 mb-1">Repository</div>
-              <a
-                href={run.github_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:text-blue-300 text-sm"
-              >
-                {run.github_url}
-              </a>
-            </div>
-          )}
-
-          {run.error_message && (
-            <div className="mt-4 pt-4 border-t border-gray-800">
-              <div className="p-3 bg-red-900/20 border border-red-800 rounded text-sm text-red-300">
-                <strong>Error:</strong> {run.error_message}
-              </div>
-            </div>
-          )}
-        </div>
 
         <Tabs defaultValue="variation-1" className="w-full">
           <div className="flex items-center justify-between mb-4">
@@ -396,6 +315,17 @@ export default function RunPage() {
                 <Bug className="w-4 h-4" />
                 Debug {showDebugView ? 'On' : 'Off'}
               </Button>
+              {process.env.NODE_ENV === 'development' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowSystemDebug(!showSystemDebug)}
+                  className="gap-2"
+                >
+                  <Terminal className="w-4 h-4" />
+                  System Debug
+                </Button>
+              )}
             </div>
           </div>
 
@@ -475,5 +405,14 @@ export default function RunPage() {
         </Tabs>
       </div>
     </div>
+    
+    {run && (
+      <DebugWindow 
+        runId={runId} 
+        isOpen={showSystemDebug} 
+        onClose={() => setShowSystemDebug(false)} 
+      />
+    )}
+    </>
   )
 }

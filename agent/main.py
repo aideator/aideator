@@ -1423,7 +1423,6 @@ Be thorough but concise in your response.
 
                         # Force stdout output using multiple methods
                         import sys
-                        import os
                         
                         # Method 1: Direct stdout write
                         sys.stdout.write(output_chunk)
@@ -1445,7 +1444,6 @@ Be thorough but concise in your response.
                         for line in lines[:-1]:  # All complete lines
                             # Force stdout output for newlines too
                             import sys
-                            import os
                             sys.stdout.write(line + "\n")
                             sys.stdout.flush()
                             os.write(1, (line + "\n").encode('utf-8'))
@@ -1461,7 +1459,6 @@ Be thorough but concise in your response.
             if buffer.strip():
                 self.log(f"🔧 Outputting remaining buffer: '{buffer[:50]}...'", "DEBUG")
                 import sys
-                import os
                 
                 # Force stdout output for remaining buffer
                 sys.stdout.write(buffer)

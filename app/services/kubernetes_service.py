@@ -13,6 +13,7 @@ from typing import Any
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.services.log_watcher_service import log_watcher_service
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -91,6 +92,16 @@ class KubernetesService:
             logger.info(
                 f"Created job {job_name} for run {run_id}, variation {variation_id}"
             )
+            
+            # Start log watcher for this job (only in dev mode)
+            if settings.debug or os.getenv("AIDEATOR_DEV_MODE") == "true":
+                try:
+                    await log_watcher_service.start_log_watcher(run_id, job_name)
+                    logger.info(f"Started log watcher for job {job_name}")
+                except Exception as e:
+                    logger.error(f"Failed to start log watcher: {e}")
+                    # Don't fail the job creation if log watcher fails
+            
             return job_name
 
         finally:

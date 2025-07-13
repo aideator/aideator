@@ -139,6 +139,8 @@ spec:
               value: {{ .Values.config.logLevel }}
             - name: DEBUG
               value: "{{ .Values.config.debug }}"
+            - name: AIDEATOR_DEV_MODE
+              value: "{{ .Values.config.debug }}"
             - name: API_V1_PREFIX
               value: {{ .Values.config.apiV1Prefix }}
             - name: MAX_VARIATIONS

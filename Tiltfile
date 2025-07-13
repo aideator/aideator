@@ -95,6 +95,7 @@ local_resource(
     serve_cmd='cd frontend && npm run dev',
     serve_env={
         'NEXT_PUBLIC_API_URL': 'http://localhost:8000',
+        'PORT': '3000',
     },
     deps=['frontend/'],
     ignore=[

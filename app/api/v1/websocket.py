@@ -1,12 +1,15 @@
 """WebSocket endpoints for streaming agent outputs."""
 
 import json
+import os
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, WebSocketException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.database import get_session
 from app.core.dependencies import get_current_user_from_websocket
 from app.core.logging import get_logger
@@ -14,6 +17,8 @@ from app.models.run import Run
 from app.models.user import User
 from app.services.kubernetes_service import KubernetesService
 from app.services.redis_service import redis_service
+
+settings = get_settings()
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -295,3 +300,72 @@ async def websocket_debug_stream(
         logger.error(f"Debug WebSocket error for run {run_id}: {e}")
     finally:
         logger.info(f"Debug WebSocket connection closed for run {run_id}")
+
+
+@router.websocket("/ws/runs/{run_id}/system-debug")
+async def websocket_system_debug_stream(
+    websocket: WebSocket,
+    run_id: str,
+    current_user: User = Depends(get_websocket_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """
+    WebSocket endpoint for system debugging - streams kubectl logs and system output.
+    Available only in dev mode.
+    """
+    # Check if dev mode is enabled
+    if not (settings.debug or os.getenv("AIDEATOR_DEV_MODE") == "true"):
+        await websocket.close(
+            code=status.WS_1008_POLICY_VIOLATION, reason="Dev mode only"
+        )
+        return
+    
+    await websocket.accept()
+    logger.info(f"System Debug WebSocket connected for run {run_id} by user {current_user.id}")
+
+    # Verify run exists and user has access
+    query = select(Run).where(Run.id == run_id, Run.user_id == current_user.id)
+    result = await db.execute(query)
+    run = result.scalar_one_or_none()
+
+    if not run:
+        await websocket.close(
+            code=status.WS_1008_POLICY_VIOLATION, reason="Run not found"
+        )
+        return
+
+    # Initialize Redis connection
+    if not await redis_service.health_check():
+        await websocket.close(
+            code=status.WS_1011_INTERNAL_ERROR, reason="Redis unavailable"
+        )
+        return
+
+    try:
+        # Stream debug logs from kubectl
+        last_ids = {"debug": "0-0"}
+        
+        # Send initial message
+        await websocket.send_json({
+            "type": "system",
+            "data": {
+                "message": "System debug stream connected",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        })
+        
+        # Read from debug stream
+        async for message in redis_service.read_run_streams(run_id, last_ids):
+            if message["type"] == "debug":
+                await websocket.send_json({
+                    "type": "debug",
+                    "message_id": message["message_id"],
+                    "data": message["data"],
+                })
+
+    except WebSocketDisconnect:
+        logger.info(f"System Debug WebSocket disconnected for run {run_id}")
+    except Exception as e:
+        logger.error(f"System Debug WebSocket error for run {run_id}: {e}")
+    finally:
+        logger.info(f"System Debug WebSocket connection closed for run {run_id}")
