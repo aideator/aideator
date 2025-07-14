@@ -48,7 +48,7 @@ describe('PageHeader', () => {
     
     render(<PageHeader />, { wrapper: TestWrapper })
     
-    expect(screen.getByText('AIdeator')).toBeInTheDocument()
+    expect(screen.getByText('DevSwarm')).toBeInTheDocument()
     expect(screen.getByText('API Docs')).toBeInTheDocument()
   })
 
@@ -69,9 +69,7 @@ describe('PageHeader', () => {
       total_cost: 0.50
     })
     
-    await act(async () => {
-      render(<PageHeader />, { wrapper: TestWrapper })
-    })
+    render(<PageHeader />, { wrapper: TestWrapper })
     
     await waitFor(() => {
       expect(screen.getByText('Test Session Title')).toBeInTheDocument()
@@ -86,18 +84,20 @@ describe('PageHeader', () => {
     mockUsePathname.mockReturnValue('/session/invalid-session-id')
     mockApiClient.getSession.mockRejectedValue(new Error('Session not found'))
     
+    // Temporarily disable the console.error override for this specific test
+    const originalSetup = require('../../../jest.setup.js')
+    console.error = originalSetup.originalError || console.error
+    
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
     
-    await act(async () => {
-      render(<PageHeader />, { wrapper: TestWrapper })
-    })
+    render(<PageHeader />, { wrapper: TestWrapper })
     
     await waitFor(() => {
       expect(consoleSpy).toHaveBeenCalledWith('Failed to load session:', expect.any(Error))
     })
     
     // Should still render default header when session fails to load
-    expect(screen.getByText('AIdeator')).toBeInTheDocument()
+    expect(screen.getByText('DevSwarm')).toBeInTheDocument()
     
     consoleSpy.mockRestore()
   })
@@ -130,7 +130,7 @@ describe('PageHeader', () => {
     render(<PageHeader />, { wrapper: TestWrapper })
     
     expect(mockApiClient.getSession).not.toHaveBeenCalled()
-    expect(screen.getByText('AIdeator')).toBeInTheDocument()
+    expect(screen.getByText('DevSwarm')).toBeInTheDocument()
   })
 
   it('should include API docs link with correct URL', () => {
@@ -169,6 +169,6 @@ describe('PageHeader', () => {
     mockUsePathname.mockReturnValue('/')
     rerender(<PageHeader />)
     
-    expect(screen.getByText('AIdeator')).toBeInTheDocument()
+    expect(screen.getByText('DevSwarm')).toBeInTheDocument()
   })
 })

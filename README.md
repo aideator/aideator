@@ -1,4 +1,4 @@
-# AIdeator 🚀
+# DevSwarm (FKA `DevSwarm`) 🚀
 
 **Multi-Agent AI Orchestration Platform** - Run multiple AI agents in parallel, compare their outputs, and select the best solution.
 
@@ -6,16 +6,20 @@
 ![Frontend](https://img.shields.io/badge/Frontend-Next.js%2015-black)
 ![Backend](https://img.shields.io/badge/Backend-FastAPI-green)
 
-## What is AIdeator?
+## What is DevSwarm?
 
-AIdeator runs multiple AI agents simultaneously in isolated Kubernetes containers, streaming their thought processes in real-time via WebSocket + Redis Streams. Compare different approaches in a tabbed interface and select the best solution.
+DevSwarm runs multiple AI agents simultaneously in isolated Kubernetes containers, streaming their thought processes in real-time via WebSocket + Redis Streams. Compare different approaches in a tabbed interface and select the best solution.
 
 ## Quick Start
 
-### Prerequisites
-- Docker (required)
+### Prerequisites (will be installed by ./bootstrap.sh if not already installed)
+- [docker](https://www.docker.com/)
+- [k3d](https://k3d.io/stable/)
+- [ctlptl](https://github.com/tilt-dev/ctlptl)
+- [helm](https://helm.sh/)
 
-Everything else will be installed automatically!
+Developers additionally will need a Node.js (via npm or bun etc) or Python runtime (via uv) if they want to run test suites.
+
 
 > **Note**: The setup uses `ctlptl` for local registry management. If you already have a k3d cluster or ctlptl registry, the bootstrap script will reuse them.
 
@@ -25,8 +29,8 @@ Everything else will be installed automatically!
 
 ```bash
 # Clone the repo
-git clone https://github.com/yourusername/aideator.git
-cd aideator
+git clone https://github.com/yourusername/devswarm.git
+cd devswarm
 
 # Run bootstrap (creates .env, installs dependencies)
 ./bootstrap.sh
@@ -66,8 +70,8 @@ tilt up
 cd frontend && npm run dev
 
 # Run tests
-pytest                    # Backend tests
-cd frontend && npm test   # Frontend tests
+uv run test-all             # Backend tests
+cd frontend && npm test:all # Frontend tests
 
 # Stop everything
 tilt down
@@ -88,11 +92,11 @@ If you encounter "image not found" errors:
    tilt up
    
    # Option 2: Manually build and tag if Tilt uses dynamic tags
-   docker build -t localhost:5005/aideator-api:dev --target api .
-   docker push localhost:5005/aideator-api:dev
+   docker build -t localhost:5005/DevSwarm-api:dev --target api .
+   docker push localhost:5005/DevSwarm-api:dev
    
-   docker build -t localhost:5005/aideator-agent:dev --target agent .
-   docker push localhost:5005/aideator-agent:dev
+   docker build -t localhost:5005/DevSwarm-agent:dev --target agent .
+   docker push localhost:5005/DevSwarm-agent:dev
    ```
 
 2. **Verify registry is running**:
@@ -113,7 +117,7 @@ If you encounter "image not found" errors:
 
 5. **Reset everything**:
    ```bash
-   k3d cluster delete aideator
+   k3d cluster delete DevSwarm
    docker rm -f ctlptl-registry
    ./bootstrap.sh
    tilt up

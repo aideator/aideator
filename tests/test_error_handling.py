@@ -23,8 +23,15 @@ except ImportError as e:
 
 @pytest.fixture(autouse=True)
 def mock_redis_env():
-    """Automatically provide Redis URL for all agent tests."""
-    with patch.dict(os.environ, {"REDIS_URL": "redis://localhost:6379"}, clear=False):
+    """Automatically provide Redis and Database URLs for all agent tests."""
+    with patch.dict(
+        os.environ,
+        {
+            "REDIS_URL": "redis://localhost:6379",
+            "DATABASE_URL_ASYNC": "postgresql+asyncpg://test:test@localhost:5432/test",
+        },
+        clear=False,
+    ):
         yield
 
 
@@ -36,7 +43,14 @@ class TestModelValidation:
         agent = AIdeatorAgent()
 
         # Mock environment with no API keys
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(
+            os.environ,
+            {
+                "REDIS_URL": "redis://localhost:6379",
+                "DATABASE_URL_ASYNC": "postgresql+asyncpg://test:test@localhost:5432/test",
+            },
+            clear=True,
+        ):
             available_keys = agent._check_available_api_keys()
 
         assert available_keys["openai"] is False
@@ -52,6 +66,7 @@ class TestModelValidation:
         mock_env = {
             "OPENAI_API_KEY": "sk-test123456789",
             "REDIS_URL": "redis://localhost:6379/1",
+            "DATABASE_URL_ASYNC": "postgresql+asyncpg://test:test@localhost:5432/test",
         }
 
         with patch.dict(os.environ, mock_env, clear=True):
@@ -71,6 +86,7 @@ class TestModelValidation:
             "GEMINI_API_KEY": "AIzatest123456789",
             "MISTRAL_API_KEY": "test123456789",
             "REDIS_URL": "redis://localhost:6379/1",
+            "DATABASE_URL_ASYNC": "postgresql+asyncpg://test:test@localhost:5432/test",
         }
 
         with patch.dict(os.environ, mock_env, clear=True):
@@ -194,9 +210,23 @@ class TestModelCatalogValidation:
         """Test validation when API key is available."""
         available_keys = {"openai": True}
 
-        is_valid, error_msg = model_catalog.validate_model_access(
-            "gpt-4", available_keys
+        # Mock the model catalog to have gpt-4
+        from app.models.provider import ProviderType
+        from app.services.model_catalog import ModelInfo
+
+        mock_model = ModelInfo(
+            provider=ProviderType.OPENAI,
+            model_name="gpt-4",
+            litellm_model_name="gpt-4",
+            display_name="GPT-4",
+            requires_api_key=True,
         )
+
+        with patch.object(model_catalog, "_models", {"gpt-4": mock_model}):
+            with patch.object(model_catalog, "_models_loaded", True):
+                is_valid, error_msg = model_catalog.validate_model_access(
+                    "gpt-4", available_keys
+                )
 
         assert is_valid is True
         assert error_msg == ""
@@ -205,16 +235,50 @@ class TestModelCatalogValidation:
         """Test getting available models based on API keys."""
         available_keys = {"openai": True, "anthropic": False}
 
-        available_models = model_catalog.get_available_models_for_keys(available_keys)
+        # Mock the model catalog
+        from app.models.provider import ProviderType
+        from app.services.model_catalog import ModelInfo
 
-        # Should include OpenAI models but not Anthropic models
-        openai_models = [m for m in available_models if m.provider.value == "openai"]
-        anthropic_models = [
-            m for m in available_models if m.provider.value == "anthropic"
-        ]
+        mock_models = {
+            "gpt-4": ModelInfo(
+                provider=ProviderType.OPENAI,
+                model_name="gpt-4",
+                litellm_model_name="gpt-4",
+                display_name="GPT-4",
+                requires_api_key=True,
+            ),
+            "gpt-3.5-turbo": ModelInfo(
+                provider=ProviderType.OPENAI,
+                model_name="gpt-3.5-turbo",
+                litellm_model_name="gpt-3.5-turbo",
+                display_name="GPT-3.5 Turbo",
+                requires_api_key=True,
+            ),
+            "claude-3": ModelInfo(
+                provider=ProviderType.ANTHROPIC,
+                model_name="claude-3",
+                litellm_model_name="claude-3",
+                display_name="Claude 3",
+                requires_api_key=True,
+            ),
+        }
 
-        assert len(openai_models) > 0
-        assert len(anthropic_models) == 0
+        with patch.object(model_catalog, "_models", mock_models):
+            with patch.object(model_catalog, "_models_loaded", True):
+                available_models = model_catalog.get_available_models_for_keys(
+                    available_keys
+                )
+
+                # Should include OpenAI models but not Anthropic models
+                openai_models = [
+                    m for m in available_models if m.provider.value == "openai"
+                ]
+                anthropic_models = [
+                    m for m in available_models if m.provider.value == "anthropic"
+                ]
+
+                assert len(openai_models) > 0
+                assert len(anthropic_models) == 0
 
 
 @pytest.mark.asyncio
@@ -224,15 +288,35 @@ class TestAgentErrorHandling:
     async def test_agent_run_missing_api_key(self):
         """Test agent fails gracefully when API key is missing."""
         # Mock environment with no API keys
-        mock_env = {"MODEL": "claude-3-sonnet", "REDIS_URL": "redis://localhost:6379/1"}
+        mock_env = {
+            "MODEL": "claude-3-sonnet",
+            "REDIS_URL": "redis://localhost:6379/1",
+            "DATABASE_URL_ASYNC": "postgresql+asyncpg://test:test@localhost:5432/test",
+        }
 
         with patch.dict(os.environ, mock_env, clear=True):
             agent = AIdeatorAgent()
 
-            with pytest.raises(RuntimeError) as exc_info:
-                await agent.run()
+            # Mock the database connection
+            with patch(
+                "agent.services.database_service.AgentDatabaseService.connect"
+            ) as mock_db_connect:
+                mock_db_connect.return_value = None
 
-            assert "Missing API key for model claude-3-sonnet" in str(exc_info.value)
+                # Mock Redis connection
+                with patch("redis.asyncio.from_url") as mock_redis:
+                    mock_redis_client = AsyncMock()
+                    mock_redis.return_value = mock_redis_client
+                    mock_redis_client.ping.return_value = "PONG"
+                    mock_redis_client.xadd.return_value = "1234567890-0"
+                    mock_redis_client.xread.return_value = []
+
+                    with pytest.raises(RuntimeError) as exc_info:
+                        await agent.run()
+
+                    assert "Missing API key for model claude-3-sonnet" in str(
+                        exc_info.value
+                    )
 
     async def test_agent_run_api_key_available(self):
         """Test agent proceeds when API key is available."""
@@ -242,19 +326,38 @@ class TestAgentErrorHandling:
             "AGENT_MODE": "litellm",
             "REDIS_URL": "redis://localhost:6379/1",
             "PROMPT": "test prompt",
+            "DATABASE_URL_ASYNC": "postgresql+asyncpg://test:test@localhost:5432/test",
         }
 
         with patch.dict(os.environ, mock_env, clear=True):
             agent = AIdeatorAgent()
 
-            # Mock the LLM API call to avoid actual API requests
-            with patch("agent.main.acompletion") as mock_completion:
-                mock_response = AsyncMock()
-                mock_response.__aiter__.return_value = []
-                mock_completion.return_value = mock_response
+            # Mock the database connection
+            with patch(
+                "agent.services.database_service.AgentDatabaseService.connect"
+            ) as mock_db_connect:
+                mock_db_connect.return_value = None
 
-                # Should not raise an error
-                await agent.run()
+                # Mock Redis connection
+                with patch("redis.asyncio.from_url") as mock_redis:
+                    mock_redis_client = AsyncMock()
+                    mock_redis.return_value = mock_redis_client
+                    mock_redis_client.ping.return_value = "PONG"
+                    mock_redis_client.xadd.return_value = "1234567890-0"
+                    mock_redis_client.xread.return_value = []
+
+                    # Mock the repository cloning
+                    with patch.object(agent, "_clone_repository") as mock_clone:
+                        mock_clone.return_value = None
+
+                        # Mock the LLM API call to avoid actual API requests
+                        with patch("agent.main.acompletion") as mock_completion:
+                            mock_response = AsyncMock()
+                            mock_response.__aiter__.return_value = []
+                            mock_completion.return_value = mock_response
+
+                            # Should not raise an error
+                            await agent.run()
 
     async def test_litellm_authentication_error_handling(self):
         """Test handling of authentication errors from LiteLLM."""
@@ -264,6 +367,7 @@ class TestAgentErrorHandling:
             "AGENT_MODE": "litellm",
             "PROMPT": "test prompt",
             "REDIS_URL": "redis://localhost:6379/1",
+            "DATABASE_URL_ASYNC": "postgresql+asyncpg://test:test@localhost:5432/test",
         }
 
         with patch.dict(os.environ, mock_env, clear=True):
@@ -288,6 +392,7 @@ class TestAgentErrorHandling:
             "AGENT_MODE": "litellm",
             "PROMPT": "test prompt",
             "REDIS_URL": "redis://localhost:6379/1",
+            "DATABASE_URL_ASYNC": "postgresql+asyncpg://test:test@localhost:5432/test",
         }
 
         with patch.dict(os.environ, mock_env, clear=True):
@@ -310,6 +415,7 @@ class TestAgentErrorHandling:
             "AGENT_MODE": "litellm",
             "PROMPT": "test prompt",
             "REDIS_URL": "redis://localhost:6379/1",
+            "DATABASE_URL_ASYNC": "postgresql+asyncpg://test:test@localhost:5432/test",
         }
 
         with patch.dict(os.environ, mock_env, clear=True):
@@ -325,10 +431,10 @@ class TestAgentErrorHandling:
                 assert "Model not available" in str(exc_info.value)
 
 
-@pytest.mark.asyncio
 class TestAPIErrorHandling:
     """Test API endpoint error handling."""
 
+    @pytest.mark.asyncio
     async def test_create_run_with_unavailable_model(self):
         """Test run creation fails gracefully with unavailable models."""
         # This would require a full app test setup with database
@@ -350,6 +456,33 @@ class TestAPIErrorHandling:
 
     def test_available_models_endpoint_logic(self):
         """Test the logic for the available models endpoint."""
+        from app.models.provider import ProviderType
+        from app.services.model_catalog import ModelInfo
+
+        # Mock some models
+        mock_models = {
+            "gpt-4": ModelInfo(
+                provider=ProviderType.OPENAI,
+                model_name="gpt-4",
+                litellm_model_name="gpt-4",
+                display_name="GPT-4",
+                requires_api_key=True,
+            ),
+            "claude-3": ModelInfo(
+                provider=ProviderType.ANTHROPIC,
+                model_name="claude-3",
+                litellm_model_name="claude-3",
+                display_name="Claude 3",
+                requires_api_key=True,
+            ),
+            "gemini-pro": ModelInfo(
+                provider=ProviderType.GEMINI,
+                model_name="gemini-pro",
+                litellm_model_name="gemini-pro",
+                display_name="Gemini Pro",
+                requires_api_key=True,
+            ),
+        }
 
         # Test the key validation logic
         available_keys = {
@@ -358,41 +491,38 @@ class TestAPIErrorHandling:
             "gemini": True,
         }
 
-        available_models = model_catalog.get_available_models_for_keys(
-            {
-                provider.value: available
-                for provider, available in available_keys.items()
-            }
-        )
+        with patch.object(model_catalog, "_models", mock_models):
+            with patch.object(model_catalog, "_models_loaded", True):
+                available_models = model_catalog.get_available_models_for_keys(
+                    available_keys
+                )
 
-        # Should include OpenAI and Gemini models, but not Anthropic
-        providers = {model.provider.value for model in available_models}
-        assert "openai" in providers
-        assert "gemini" in providers
-        assert "anthropic" not in providers
+                # Should include OpenAI and Gemini models, but not Anthropic
+                providers = {model.provider.value for model in available_models}
+                assert "openai" in providers
+                assert "gemini" in providers
+                assert "anthropic" not in providers
 
 
 class TestKubernetesSecretHandling:
     """Test Kubernetes secret handling improvements."""
 
     def test_optional_secrets_in_job_template(self):
-        """Test that secrets are marked as optional in job template."""
-        # Read the job template and verify optional: true is set
+        """Test that job template uses token-based authentication."""
+        # Read the job template and verify it uses job tokens
         with open("/Users/cpb/git/aideator/k8s/jobs/agent-job-template.yaml") as f:
             template_content = f.read()
 
-        # Check that all API key secrets are marked as optional
-        assert "optional: true" in template_content
+        # Check that job uses token-based authentication instead of secrets
+        assert "JOB_TOKEN" in template_content
+        assert "ORCHESTRATOR_API_URL" in template_content
 
-        # Count occurrences - should have at least 8 optional secrets
-        optional_count = template_content.count("optional: true")
-        assert optional_count >= 8
+        # Verify it doesn't mount secrets directly
+        assert "secretRef" not in template_content
+        assert "secretKeyRef" not in template_content
 
-        # Verify specific secrets are optional
-        assert "openai-secret" in template_content
-        assert "anthropic-secret" in template_content
-        assert "gemini-secret" in template_content
-        assert "mistral-secret" in template_content
+        # Verify it uses the orchestrator API for key retrieval
+        assert "http://aideator-fastapi-svc:8000/api/v1" in template_content
 
 
 def test_error_message_quality():
@@ -406,7 +536,7 @@ def test_error_message_quality():
     assert "Missing API Key for Anthropic" in error_msg
     assert "kubectl create secret" in error_msg
     assert "https://console.anthropic.com/" in error_msg
-    assert "Available models with configured API keys:" in error_msg
+    assert "Available models:" in error_msg
 
     # Should be markdown formatted for better readability
     assert "**" in error_msg or "#" in error_msg

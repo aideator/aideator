@@ -18,8 +18,5 @@
     "coverage/**",
     "test-results/**",
     "playwright-report/**"
-  ],
-  "ignoreDependencies": [
-    "@types/*"
   ]
 }

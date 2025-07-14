@@ -38,6 +38,7 @@ dependencies = [
     "redis>=6.2.0",
     "greenlet>=3.2.3",
     "playwright>=1.53.0",
+    "pyjwt>=2.10.1",
 ]
 
 [project.scripts]

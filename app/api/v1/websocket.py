@@ -5,16 +5,22 @@ import os
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, WebSocketException, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+    WebSocketException,
+    status,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.database import get_session
-from app.core.dependencies import get_current_user_from_websocket
 from app.core.logging import get_logger
 from app.models.run import Run
-from app.models.user import User
 from app.services.kubernetes_service import KubernetesService
 from app.services.redis_service import redis_service
 
@@ -59,19 +65,24 @@ async def get_websocket_user(
     db: AsyncSession,
 ):
     """Get user from WebSocket query parameters."""
-    logger.info(f"🔌 WebSocket authentication attempt with API key: {api_key[:10] + '...' if api_key else 'None'}")
-    
+    logger.info(
+        f"🔌 WebSocket authentication attempt with API key: {api_key[:10] + '...' if api_key else 'None'}"
+    )
+
     if not api_key:
         logger.warning("🔌 WebSocket authentication failed: No API key provided")
         raise WebSocketException(code=1008, reason="API key required")
-    
+
     from app.core.auth import get_user_from_api_key
+
     try:
         user = await get_user_from_api_key(api_key, db)
         if not user or not user.is_active:
-            logger.warning(f"🔌 WebSocket authentication failed: Invalid API key {api_key[:10] + '...'}")
+            logger.warning(
+                f"🔌 WebSocket authentication failed: Invalid API key {api_key[:10] + '...'}"
+            )
             raise WebSocketException(code=1008, reason="Invalid API key")
-        
+
         logger.info(f"🔌 WebSocket authentication successful for user: {user.email}")
         return user
     except Exception as e:
@@ -93,8 +104,8 @@ async def websocket_stream_run(
     Supports bidirectional communication for control commands.
     """
     await websocket.accept()
-    
-    # Authenticate user  
+
+    # Authenticate user
     try:
         current_user = await get_websocket_user(websocket, api_key, db)
     except WebSocketException as e:
@@ -102,9 +113,11 @@ async def websocket_stream_run(
         return
     except Exception as e:
         logger.error(f"Authentication error: {e}")
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Authentication failed")
+        await websocket.close(
+            code=status.WS_1008_POLICY_VIOLATION, reason="Authentication failed"
+        )
         return
-    
+
     logger.info(f"WebSocket connected for run {run_id} by user {current_user.id}")
 
     # Verify run exists and user has access
@@ -272,7 +285,7 @@ async def websocket_debug_stream(
     WebSocket endpoint for debugging - streams only stdout logs.
     """
     await websocket.accept()
-    
+
     # Authenticate user
     try:
         current_user = await get_websocket_user(websocket, api_key, db)
@@ -281,10 +294,14 @@ async def websocket_debug_stream(
         return
     except Exception as e:
         logger.error(f"Authentication error: {e}")
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Authentication failed")
+        await websocket.close(
+            code=status.WS_1008_POLICY_VIOLATION, reason="Authentication failed"
+        )
         return
-    
-    logger.info(f"Debug WebSocket connected for run {run_id}, variation {variation_id} by user {current_user.id}")
+
+    logger.info(
+        f"Debug WebSocket connected for run {run_id}, variation {variation_id} by user {current_user.id}"
+    )
 
     # Verify run exists and user has access
     query = select(Run).where(Run.id == run_id, Run.user_id == current_user.id)
@@ -343,10 +360,10 @@ async def websocket_system_debug_stream(
             code=status.WS_1008_POLICY_VIOLATION, reason="Dev mode only"
         )
         return
-    
+
     # Accept the connection early to allow proper error handling
     await websocket.accept()
-    
+
     # Now authenticate the user
     try:
         current_user = await get_websocket_user(websocket, api_key, db)
@@ -355,10 +372,14 @@ async def websocket_system_debug_stream(
         return
     except Exception as e:
         logger.error(f"Authentication error: {e}")
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Authentication failed")
+        await websocket.close(
+            code=status.WS_1008_POLICY_VIOLATION, reason="Authentication failed"
+        )
         return
-    
-    logger.info(f"System Debug WebSocket connected for run {run_id} by user {current_user.id}")
+
+    logger.info(
+        f"System Debug WebSocket connected for run {run_id} by user {current_user.id}"
+    )
 
     # Verify run exists and user has access
     query = select(Run).where(Run.id == run_id, Run.user_id == current_user.id)
@@ -381,24 +402,28 @@ async def websocket_system_debug_stream(
     try:
         # Stream debug logs from kubectl
         last_ids = {"debug": "0-0"}
-        
+
         # Send initial message
-        await websocket.send_json({
-            "type": "system",
-            "data": {
-                "message": "System debug stream connected",
-                "timestamp": datetime.utcnow().isoformat()
+        await websocket.send_json(
+            {
+                "type": "system",
+                "data": {
+                    "message": "System debug stream connected",
+                    "timestamp": datetime.utcnow().isoformat(),
+                },
             }
-        })
-        
+        )
+
         # Read from debug stream
         async for message in redis_service.read_run_streams(run_id, last_ids):
             if message["type"] == "debug":
-                await websocket.send_json({
-                    "type": "debug",
-                    "message_id": message["message_id"],
-                    "data": message["data"],
-                })
+                await websocket.send_json(
+                    {
+                        "type": "debug",
+                        "message_id": message["message_id"],
+                        "data": message["data"],
+                    }
+                )
 
     except WebSocketDisconnect:
         logger.info(f"System Debug WebSocket disconnected for run {run_id}")

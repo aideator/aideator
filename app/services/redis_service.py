@@ -181,7 +181,7 @@ class RedisService:
             if last_ids
             else "0-0",
         }
-        
+
         # Add debug stream if requested
         if last_ids and "debug" in last_ids:
             streams[f"run:{run_id}:debug"] = last_ids.get("debug", "0-0")
@@ -238,10 +238,10 @@ class RedisService:
             max_length: Maximum number of messages to keep per stream
         """
         streams = [
-            f"run:{run_id}:llm", 
-            f"run:{run_id}:stdout", 
+            f"run:{run_id}:llm",
+            f"run:{run_id}:stdout",
             f"run:{run_id}:status",
-            f"run:{run_id}:debug"
+            f"run:{run_id}:debug",
         ]
 
         for stream_name in streams:
@@ -262,10 +262,10 @@ class RedisService:
             run_id: The run ID
         """
         streams = [
-            f"run:{run_id}:llm", 
-            f"run:{run_id}:stdout", 
+            f"run:{run_id}:llm",
+            f"run:{run_id}:stdout",
             f"run:{run_id}:status",
-            f"run:{run_id}:debug"
+            f"run:{run_id}:debug",
         ]
 
         for stream_name in streams:
@@ -278,12 +278,12 @@ class RedisService:
                 )
 
     async def add_debug_log(
-        self, 
-        run_id: str, 
-        log_line: str, 
+        self,
+        run_id: str,
+        log_line: str,
         source: str = "kubectl",
         is_json: bool = False,
-        metadata: dict[str, Any] | None = None
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         """Add debug log to Redis Stream.
 
@@ -326,10 +326,10 @@ class RedisService:
             Dictionary with stream information
         """
         streams = [
-            f"run:{run_id}:llm", 
-            f"run:{run_id}:stdout", 
+            f"run:{run_id}:llm",
+            f"run:{run_id}:stdout",
             f"run:{run_id}:status",
-            f"run:{run_id}:debug"
+            f"run:{run_id}:debug",
         ]
 
         info = {}

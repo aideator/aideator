@@ -178,13 +178,17 @@ async def github_callback(
         select(User).where(col(User.github_id) == str(github_user["id"]))
     )
     user = result.scalar_one_or_none()
-    logger.info(f"🔍 Checking for existing user by GitHub ID {github_user['id']}: {'Found' if user else 'Not found'}")
+    logger.info(
+        f"🔍 Checking for existing user by GitHub ID {github_user['id']}: {'Found' if user else 'Not found'}"
+    )
 
     if not user:
         # Check if user exists by email
         result = await db.execute(select(User).where(col(User.email) == primary_email))
         user = result.scalar_one_or_none()
-        logger.info(f"🔍 Checking for existing user by email {primary_email}: {'Found' if user else 'Not found'}")
+        logger.info(
+            f"🔍 Checking for existing user by email {primary_email}: {'Found' if user else 'Not found'}"
+        )
 
         if user:
             # Link existing account with GitHub
@@ -196,7 +200,9 @@ async def github_callback(
         else:
             # Create new user
             new_user_id = f"user_{secrets.token_urlsafe(12)}"
-            logger.info(f"👤 Creating new user with ID: {new_user_id}, email: {primary_email}")
+            logger.info(
+                f"👤 Creating new user with ID: {new_user_id}, email: {primary_email}"
+            )
             user = User(
                 id=new_user_id,
                 email=primary_email,
@@ -211,7 +217,7 @@ async def github_callback(
                 hashed_password=get_password_hash(secrets.token_urlsafe(32)),
             )
             db.add(user)
-            logger.info(f"✅ User object created and added to session")
+            logger.info("✅ User object created and added to session")
 
     # Encrypt and store GitHub access token
     from app.core.encryption import encrypt_token
@@ -224,7 +230,7 @@ async def github_callback(
         await db.commit()
         await db.refresh(user)
         logger.info(f"✅ User committed and refreshed. Final user ID: {user.id}")
-        
+
         # Verify user was actually saved
         verification_result = await db.execute(
             select(User).where(col(User.id) == user.id)
@@ -233,8 +239,10 @@ async def github_callback(
         if verified_user:
             logger.info(f"✅ Database verification: User {user.id} exists in database")
         else:
-            logger.error(f"❌ Database verification: User {user.id} NOT found in database after commit!")
-            
+            logger.error(
+                f"❌ Database verification: User {user.id} NOT found in database after commit!"
+            )
+
     except Exception as e:
         logger.error(f"❌ Database commit failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to create user account")

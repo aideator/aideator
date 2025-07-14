@@ -69,7 +69,7 @@ Before any suggestion that changes dependencies, environment, or tools:
 
 ## 📱 Project Overview
 
-**AIdeator** - A Kubernetes-native multi-agent AI orchestration platform
+**DevSwarm** - A Kubernetes-native multi-agent AI orchestration platform
 - Runs multiple AI agents in parallel in isolated containers
 - Streams agent thought processes in real-time via WebSocket + Redis Streams
 - Enables side-by-side comparison of different AI approaches
@@ -83,7 +83,7 @@ Before any suggestion that changes dependencies, environment, or tools:
 - **Navigation**: Next.js App Router
 - **Styling**: Tailwind CSS v3.4.17 (shadcn/ui compatible)
 - **Component Library**: shadcn/ui with Radix UI primitives
-- **Design System**: Custom AIdeator design system (see interface-codex/DESIGN-SYSTEM.md)
+- **Design System**: Custom DevSwarm design system (see interface-codex/DESIGN-SYSTEM.md)
 - **Icons**: Lucide React for consistent iconography
 - **State**: React hooks and context
 - **Backend**: FastAPI with async/await patterns
@@ -190,7 +190,7 @@ agent/                 # AI agent container code (modular structure in progress)
   utils/              # Utility functions
   
 deploy/               # Kubernetes deployment
-  charts/aideator/    # Helm chart
+  charts/DevSwarm/    # Helm chart
   values/             # Environment configs
   
 k8s/                  # Kubernetes templates
@@ -239,7 +239,7 @@ alembic/              # Database migrations (setup in progress)
 ### Development Workflow
 ```bash
 # Verify streaming works
-kubectl logs -f job/agent-job-dev-test -n aideator
+kubectl logs -f job/agent-job-dev-test -n DevSwarm
 # Test WebSocket connection
 timeout 20 wscat -c ws://localhost:8000/ws/runs/${RUN_ID}
 ```
@@ -259,7 +259,7 @@ timeout 20 wscat -c ws://localhost:8000/ws/runs/${RUN_ID}
 2. Touch `agent/main.py` to trigger rebuild
 3. Wait 10-15 seconds for Tilt
 4. Monitor Redis output: `redis-cli monitor`
-5. View agent logs (if needed): `kubectl logs -f job/agent-job-dev-test -n aideator`
+5. View agent logs (if needed): `kubectl logs -f job/agent-job-dev-test -n DevSwarm`
 
 ### Debugging Streaming Issues
 1. Check Redis connectivity with `redis-cli ping`
@@ -272,7 +272,7 @@ timeout 20 wscat -c ws://localhost:8000/ws/runs/${RUN_ID}
 
 ## 📚 Key Resources
 
-- **Kubernetes Namespace**: `aideator` (all resources)
+- **Kubernetes Namespace**: `DevSwarm` (all resources)
 - **Local Registry**: `localhost:5005` (for container images)
 - **Project Documentation**: 
   - Architecture details (`architecture.md`)
@@ -336,7 +336,7 @@ When making changes, check if these need updates:
 
 ---
 
-## 🚨 AIdeator-Specific Gotchas
+## 🚨 DevSwarm-Specific Gotchas
 
 ### Tailwind CSS v3 with shadcn/ui
 ```css
@@ -387,7 +387,7 @@ className={`card ${streaming ? 'streaming' : ''} ${selected ? 'selected' : ''}`}
 ```bash
 kubectl create secret generic openai-secret \
   --from-literal=api-key="$OPENAI_API_KEY" \
-  -n aideator
+  -n DevSwarm
 ```
 
 ### Streaming Pipeline Architecture (Database-based)

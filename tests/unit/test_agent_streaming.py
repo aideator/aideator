@@ -32,7 +32,7 @@ async def test_publish_output_dual_write_success():
 
             # Verify environment was set correctly
             assert agent.run_id == "test-run-123"
-            assert agent.variation_id == "0"
+            assert agent.variation_id == 0
 
             # Mock connections
             agent.redis_client = AsyncMock()

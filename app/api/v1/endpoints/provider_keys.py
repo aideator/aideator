@@ -21,6 +21,8 @@ provider_key_service = ProviderKeyService()
 class CreateProviderKeyRequest(BaseModel):
     """Request to create a new provider API key."""
 
+    model_config = {"protected_namespaces": ()}
+
     provider: str = Field(..., description="Provider name: openai, anthropic, etc")
     api_key: str = Field(..., min_length=1, description="The API key to store")
     name: str | None = Field(None, description="User-friendly name for the key")
@@ -57,6 +59,8 @@ class UpdateProviderKeyRequest(BaseModel):
 
 class ProviderKeyResponse(BaseModel):
     """Response containing provider key info (without the actual key)."""
+
+    model_config = {"protected_namespaces": ()}
 
     id: str
     provider: str

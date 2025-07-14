@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
@@ -12,7 +12,6 @@ from app.core.dependencies import CurrentUser
 from app.core.deps import get_orchestrator
 from app.models.run import Run, RunStatus
 from app.models.session import Preference, Session, Turn
-from app.services.agent_orchestrator import AgentOrchestrator
 from app.schemas.session import (
     CodeRequest,
     CodeResponse,
@@ -27,6 +26,7 @@ from app.schemas.session import (
     TurnCreate,
     TurnResponse,
 )
+from app.services.agent_orchestrator import AgentOrchestrator
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -34,19 +34,19 @@ router = APIRouter(prefix="/sessions", tags=["sessions"])
 def _determine_agent_mode(model_definition_id: str, context: str = "") -> str:
     """Determine the appropriate agent mode based on model and context."""
     model_lower = model_definition_id.lower()
-    
+
     # Check if this is chat mode
     if context and "chat" in context.lower():
         return "chat"
-    
+
     # Map specific code models to their agent modes
     if "claude" in model_lower or model_definition_id == "claude-code":
         return "claude-cli"
-    elif "codex" in model_lower or "gpt-4-codex" in model_lower:
+    if "codex" in model_lower or "gpt-4-codex" in model_lower:
         return "openai-codex"
-    elif "gemini" in model_lower or model_definition_id == "gemini-code":
+    if "gemini" in model_lower or model_definition_id == "gemini-code":
         return "gemini-cli"
-    
+
     # Default to litellm for other models
     return "litellm"
 
@@ -516,29 +516,37 @@ async def execute_code(
 ) -> CodeResponse:
     """
     Execute code with the specified models for a given turn.
-    
+
     This endpoint kicks off agent jobs for coding tasks and returns
     streaming URLs for both parsed results and debug logs.
     """
     settings = get_settings()
-    
+
     # Log the incoming request
     from app.core.logging import get_logger
+
     logger = get_logger(__name__)
-    
+
     # Process model variants
-    models_to_use = [variant.model_definition_id for variant in request.model_variants[:request.max_models]]
+    models_to_use = [
+        variant.model_definition_id
+        for variant in request.model_variants[: request.max_models]
+    ]
     model_variants_config = [
         {
             "model_definition_id": variant.model_definition_id,
             "model_parameters": variant.model_parameters,
             "variant_id": variant.id,
-            "agent_mode": _determine_agent_mode(variant.model_definition_id, request.context)
+            "agent_mode": _determine_agent_mode(
+                variant.model_definition_id, request.context or ""
+            ),
         }
-        for variant in request.model_variants[:request.max_models]
+        for variant in request.model_variants[: request.max_models]
     ]
-    logger.info(f"Execute code request - using {len(model_variants_config)} model variants")
-    
+    logger.info(
+        f"Execute code request - using {len(model_variants_config)} model variants"
+    )
+
     # Verify session ownership
     session_query = select(Session).where(
         and_(col(Session.id) == session_id, col(Session.user_id) == current_user.id)
@@ -572,13 +580,16 @@ async def execute_code(
     # Create run record
     run = Run(
         id=run_id,
-        github_url=request.context or "https://github.com/temp/repo",  # Placeholder for now
+        github_url=request.context
+        or "https://github.com/temp/repo",  # Placeholder for now
         prompt=request.prompt,
         variations=len(models_to_use),
         agent_config={
             "model_variants": model_variants_config,
             "use_claude_code": True,
-            "agent_mode": model_variants_config[0]["agent_mode"] if model_variants_config else "code",
+            "agent_mode": model_variants_config[0]["agent_mode"]
+            if model_variants_config
+            else "code",
         },
         user_id=current_user.id,
         session_id=session_id,
@@ -587,11 +598,11 @@ async def execute_code(
     )
 
     db.add(run)
-    
+
     # Update session
     session.last_activity_at = datetime.utcnow()
     session.updated_at = datetime.utcnow()
-    
+
     await db.commit()
     await db.refresh(run)  # Ensure run is fully loaded with all fields
 
@@ -599,6 +610,7 @@ async def execute_code(
     # Using secure API key retrieval system
     # Create a new session for the background task
     from app.core.database import async_session_maker
+
     async def execute_with_session():
         async with async_session_maker() as session:
             await orchestrator.execute_variations(
@@ -608,17 +620,21 @@ async def execute_code(
                 variations=len(models_to_use),
                 user_id=current_user.id,  # Add user_id for secure API key retrieval
                 agent_config=None,  # Config is stored in run record
-                agent_mode=model_variants_config[0]["agent_mode"] if model_variants_config else "code",
+                agent_mode=model_variants_config[0]["agent_mode"]
+                if model_variants_config
+                else "code",
                 db_session=session,
             )
-    
+
     background_tasks.add_task(execute_with_session)
 
     # Return response with streaming URLs
     # Use localhost for frontend WebSocket connections instead of 0.0.0.0
     base_url = f"localhost:{settings.port}"
     websocket_url = f"ws://{base_url}{settings.api_v1_prefix}/ws/runs/{run_id}"
-    debug_websocket_url = f"ws://{base_url}{settings.api_v1_prefix}/ws/runs/{run_id}/debug"
+    debug_websocket_url = (
+        f"ws://{base_url}{settings.api_v1_prefix}/ws/runs/{run_id}/debug"
+    )
 
     return CodeResponse(
         turn_id=turn_id,

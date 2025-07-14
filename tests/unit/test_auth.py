@@ -81,6 +81,11 @@ class TestGetUserFromToken:
         mock_db = AsyncMock(spec=AsyncSession)
         mock_db.get.return_value = mock_user
 
+        # Also mock execute for email lookup fallback
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_user
+        mock_db.execute.return_value = mock_result
+
         # Call the function
         result = await get_user_from_token("valid_token", mock_db)
 
@@ -96,6 +101,11 @@ class TestGetUserFromToken:
         # Mock database session - user not found
         mock_db = AsyncMock(spec=AsyncSession)
         mock_db.get.return_value = None
+
+        # Also mock execute for email lookup fallback
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_db.execute.return_value = mock_result
 
         # Call the function
         result = await get_user_from_token("valid_token", mock_db)

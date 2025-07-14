@@ -59,7 +59,9 @@ async def get_model_catalog(
         user_credentials = result.scalars().all()
 
         user_provider_map = {cred.provider: True for cred in user_credentials}
-        logger.info(f"User {current_user.id} has credentials for providers: {list(user_provider_map.keys())}")
+        logger.info(
+            f"User {current_user.id} has credentials for providers: {list(user_provider_map.keys())}"
+        )
 
         # Get all models from catalog
         all_models = model_catalog.get_all_models()
@@ -156,7 +158,8 @@ async def get_model_catalog(
                     if m.provider == provider_type
                 ),
                 model_count=count,
-                user_has_credentials=user_provider_map.get(provider_type.value, False) or user_provider_map.get(provider_type, False),
+                user_has_credentials=user_provider_map.get(provider_type.value, False)
+                or user_provider_map.get(provider_type, False),
             )
             provider_summaries.append(provider_summary)
 
@@ -501,7 +504,9 @@ async def get_providers(
         user_credentials = result.scalars().all()
 
         user_provider_map = {cred.provider: True for cred in user_credentials}
-        logger.info(f"User {current_user.id} has credentials for providers: {list(user_provider_map.keys())}")
+        logger.info(
+            f"User {current_user.id} has credentials for providers: {list(user_provider_map.keys())}"
+        )
 
         # Get all available providers
         all_providers = model_catalog.get_providers()
@@ -556,7 +561,8 @@ async def get_providers(
                 ),
                 requires_api_key=any(m.requires_api_key for m in provider_models),
                 model_count=len(provider_models),
-                user_has_credentials=user_provider_map.get(provider_type.value, False) or user_provider_map.get(provider_type, False),
+                user_has_credentials=user_provider_map.get(provider_type.value, False)
+                or user_provider_map.get(provider_type, False),
             )
             provider_summaries.append(provider_summary)
 

@@ -29,9 +29,9 @@ describe('SettingsPage', () => {
     expect(screen.getByText('Settings')).toBeInTheDocument()
     expect(screen.getByText('Manage your account settings and preferences')).toBeInTheDocument()
 
-    // Check back button
-    const backButton = screen.getByRole('button', { name: /back to home/i })
-    expect(backButton).toBeInTheDocument()
+    // Check back link (not button)
+    const backLink = screen.getByRole('link', { name: /back to home/i })
+    expect(backLink).toBeInTheDocument()
 
     // Check that ProviderKeyManager is rendered
     expect(screen.getByTestId('provider-key-manager')).toBeInTheDocument()
@@ -59,9 +59,11 @@ describe('SettingsPage', () => {
 
     const backLink = screen.getByRole('link', { name: /back to home/i })
     expect(backLink).toHaveAttribute('href', '/')
-    
-    // Check that it contains the arrow icon
-    const backButton = screen.getByRole('button', { name: /back to home/i })
-    expect(backButton).toHaveClass('mb-4')
+    expect(backLink).toHaveClass('inline-flex')
+    expect(backLink).toHaveClass('items-center')
+    expect(backLink).toHaveClass('gap-2')
+    expect(backLink).toHaveClass('text-gray-400')
+    expect(backLink).toHaveClass('hover:text-gray-300')
+    expect(backLink).toHaveClass('mb-4')
   })
 })

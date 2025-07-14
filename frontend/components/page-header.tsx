@@ -8,7 +8,6 @@ import { apiClient } from "@/lib/api"
 import { Session } from "@/lib/types"
 import { useState, useEffect } from "react"
 import { AccountDropdown } from "@/components/account-dropdown"
-import { useAuth } from "@/lib/auth-context"
 
 export function PageHeader() {
   const pathname = usePathname()

@@ -145,14 +145,15 @@ class TestRedisService:
 
         await redis_service.trim_streams("run-123", max_length=500)
 
-        assert mock_redis_client.xtrim.call_count == 3
+        assert mock_redis_client.xtrim.call_count == 4
         call_args_list = mock_redis_client.xtrim.call_args_list
 
-        # Check that all three streams are trimmed
+        # Check that all four streams are trimmed
         streams_trimmed = [call[0][0] for call in call_args_list]
         assert "run:run-123:llm" in streams_trimmed
         assert "run:run-123:stdout" in streams_trimmed
         assert "run:run-123:status" in streams_trimmed
+        assert "run:run-123:debug" in streams_trimmed
 
     @pytest.mark.asyncio
     async def test_delete_run_streams(self, redis_service, mock_redis_client):
@@ -161,14 +162,15 @@ class TestRedisService:
 
         await redis_service.delete_run_streams("run-123")
 
-        assert mock_redis_client.delete.call_count == 3
+        assert mock_redis_client.delete.call_count == 4
         call_args_list = mock_redis_client.delete.call_args_list
 
-        # Check that all three streams are deleted
+        # Check that all four streams are deleted
         streams_deleted = [call[0][0] for call in call_args_list]
         assert "run:run-123:llm" in streams_deleted
         assert "run:run-123:stdout" in streams_deleted
         assert "run:run-123:status" in streams_deleted
+        assert "run:run-123:debug" in streams_deleted
 
     @pytest.mark.asyncio
     async def test_health_check(self, redis_service, mock_redis_client):

@@ -65,21 +65,15 @@ export function CodeModePicker({
   onModelChange,
   selectedRepo,
   onRepoChange,
-  selectedBranch,
-  onBranchChange,
-  selectedAgentCount,
-  onAgentCountChange,
   customRepoUrl,
   onCustomRepoUrlChange,
   repositories,
-  branches,
   isLoadingRepos = false,
-  isLoadingBranches = false,
   className
 }: CodeModePickerProps) {
   const [useCustomRepo, setUseCustomRepo] = useState(false)
   const [providers, setProviders] = useState<ProviderInfo[]>([])
-  const [loading, setLoading] = useState(true)
+  const [, setLoading] = useState(true)
   
   const { user, loading: authLoading } = useAuth()
 

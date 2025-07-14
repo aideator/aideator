@@ -141,7 +141,7 @@ describe('Session Page', () => {
       })
       
       expect(screen.getByText('3')).toBeInTheDocument() // Total turns
-      expect(screen.getByText('$0.456')).toBeInTheDocument() // Total cost
+      expect(screen.getByText('$0.46')).toBeInTheDocument() // Total cost (formatted to 2 decimals)
       expect(screen.getAllByText('gpt-4').length).toBeGreaterThan(0) // Model used
       expect(screen.getAllByText('claude-3-sonnet').length).toBeGreaterThan(0) // Model used
     })
@@ -271,8 +271,7 @@ describe('Session Page', () => {
       // The exact assertion depends on the Link component implementation
     })
 
-    it('should navigate to new turn creation', async () => {
-      const user = userEvent.setup()
+    it('should show new turn button as disabled', async () => {
       render(<SessionPage />)
       
       await waitFor(() => {
@@ -280,9 +279,7 @@ describe('Session Page', () => {
       })
       
       const newTurnButton = screen.getByText('New Turn')
-      await user.click(newTurnButton)
-      
-      expect(mockRouter.push).toHaveBeenCalledWith('/?session=session-123')
+      expect(newTurnButton.closest('button')).toBeDisabled()
     })
   })
 

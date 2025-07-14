@@ -5,17 +5,14 @@ This test verifies that the database schema fixes correctly allow
 run creation with model variants.
 """
 
-import httpx
 import pytest
+import pytest_asyncio
+from httpx import AsyncClient
 
 
+@pytest.mark.integration
 class TestRunCreationFix:
     """Test the fix for run creation with proper database schema."""
-
-    @pytest.fixture
-    def api_client(self):
-        """Create API client for testing."""
-        return httpx.Client(base_url="http://localhost:8000")
 
     @pytest.fixture
     def test_user_data(self):
@@ -40,17 +37,20 @@ class TestRunCreationFix:
             ],
         }
 
-    def test_user_registration_and_api_key_creation(self, api_client, test_user_data):
+    @pytest.mark.asyncio
+    async def test_user_registration_and_api_key_creation(
+        self, client: AsyncClient, test_user_data
+    ):
         """Test user registration and API key creation still works."""
         # Register user
-        response = api_client.post("/api/v1/auth/register", json=test_user_data)
+        response = await client.post("/api/v1/auth/register", json=test_user_data)
         assert response.status_code == 201
         user_data = response.json()
         assert "id" in user_data
         assert user_data["email"] == test_user_data["email"]
 
         # Login
-        response = api_client.post("/api/v1/auth/login", json=test_user_data)
+        response = await client.post("/api/v1/auth/login", json=test_user_data)
         assert response.status_code == 200
         token_data = response.json()
         assert "access_token" in token_data
@@ -58,7 +58,7 @@ class TestRunCreationFix:
         # Create API key
         headers = {"Authorization": f"Bearer {token_data['access_token']}"}
         api_key_data = {"name": "Test Key", "description": "For testing run creation"}
-        response = api_client.post(
+        response = await client.post(
             "/api/v1/auth/api-keys", json=api_key_data, headers=headers
         )
         assert response.status_code == 201
@@ -68,18 +68,19 @@ class TestRunCreationFix:
 
         return api_key_response["api_key"]
 
-    def test_run_creation_with_model_variants(
-        self, api_client, test_user_data, valid_run_request
+    @pytest.mark.asyncio
+    async def test_run_creation_with_model_variants(
+        self, client: AsyncClient, test_user_data, valid_run_request
     ):
         """Test that run creation works with proper model variants after schema fix."""
         # Get API key
-        api_key = self.test_user_registration_and_api_key_creation(
-            api_client, test_user_data
+        api_key = await self.test_user_registration_and_api_key_creation(
+            client, test_user_data
         )
 
         # Create run with model variants
         headers = {"X-API-Key": api_key}
-        response = api_client.post(
+        response = await client.post(
             "/api/v1/runs", json=valid_run_request, headers=headers
         )
 
@@ -106,15 +107,18 @@ class TestRunCreationFix:
 
         return run_data
 
-    def test_run_details_retrieval(self, api_client, test_user_data, valid_run_request):
+    @pytest.mark.asyncio
+    async def test_run_details_retrieval(
+        self, client: AsyncClient, test_user_data, valid_run_request
+    ):
         """Test that we can retrieve run details after creation."""
         # Create run
-        api_key = self.test_user_registration_and_api_key_creation(
-            api_client, test_user_data
+        api_key = await self.test_user_registration_and_api_key_creation(
+            client, test_user_data
         )
         headers = {"X-API-Key": api_key}
 
-        response = api_client.post(
+        response = await client.post(
             "/api/v1/runs", json=valid_run_request, headers=headers
         )
         assert response.status_code == 202
@@ -122,7 +126,7 @@ class TestRunCreationFix:
         run_id = run_data["run_id"]
 
         # Retrieve run details
-        response = api_client.get(f"/api/v1/runs/{run_id}", headers=headers)
+        response = await client.get(f"/api/v1/runs/{run_id}", headers=headers)
         assert response.status_code == 200
 
         details = response.json()
@@ -131,17 +135,18 @@ class TestRunCreationFix:
         assert details["prompt"] == valid_run_request["prompt"]
         assert details["status"] in ["pending", "running", "completed", "failed"]
 
-    def test_run_list_contains_created_run(
-        self, api_client, test_user_data, valid_run_request
+    @pytest.mark.asyncio
+    async def test_run_list_contains_created_run(
+        self, client: AsyncClient, test_user_data, valid_run_request
     ):
         """Test that created runs appear in the run list."""
         # Create run
-        api_key = self.test_user_registration_and_api_key_creation(
-            api_client, test_user_data
+        api_key = await self.test_user_registration_and_api_key_creation(
+            client, test_user_data
         )
         headers = {"X-API-Key": api_key}
 
-        response = api_client.post(
+        response = await client.post(
             "/api/v1/runs", json=valid_run_request, headers=headers
         )
         assert response.status_code == 202
@@ -149,7 +154,7 @@ class TestRunCreationFix:
         run_id = run_data["run_id"]
 
         # List runs
-        response = api_client.get("/api/v1/runs", headers=headers)
+        response = await client.get("/api/v1/runs", headers=headers)
         assert response.status_code == 200
 
         runs_list = response.json()
@@ -167,17 +172,18 @@ class TestRunCreationFix:
         assert created_run["github_url"] == valid_run_request["github_url"]
         assert created_run["prompt"] == valid_run_request["prompt"]
 
-    def test_database_schema_completeness(
-        self, api_client, test_user_data, valid_run_request
+    @pytest.mark.asyncio
+    async def test_database_schema_completeness(
+        self, client: AsyncClient, test_user_data, valid_run_request
     ):
         """Test that all expected database fields are properly handled."""
         # Create run to test database schema
-        api_key = self.test_user_registration_and_api_key_creation(
-            api_client, test_user_data
+        api_key = await self.test_user_registration_and_api_key_creation(
+            client, test_user_data
         )
         headers = {"X-API-Key": api_key}
 
-        response = api_client.post(
+        response = await client.post(
             "/api/v1/runs", json=valid_run_request, headers=headers
         )
         assert response.status_code == 202
@@ -185,7 +191,7 @@ class TestRunCreationFix:
         run_id = run_data["run_id"]
 
         # Get run details to verify all schema fields
-        response = api_client.get(f"/api/v1/runs/{run_id}", headers=headers)
+        response = await client.get(f"/api/v1/runs/{run_id}", headers=headers)
         assert response.status_code == 200
         details = response.json()
 
@@ -213,10 +219,13 @@ class TestRunCreationFix:
         assert run_data["session_id"] is not None
         assert run_data["turn_id"] is not None
 
-    def test_multiple_model_variants_accepted(self, api_client, test_user_data):
+    @pytest.mark.asyncio
+    async def test_multiple_model_variants_accepted(
+        self, client: AsyncClient, test_user_data
+    ):
         """Test that multiple model variants are properly accepted."""
-        api_key = self.test_user_registration_and_api_key_creation(
-            api_client, test_user_data
+        api_key = await self.test_user_registration_and_api_key_creation(
+            client, test_user_data
         )
         headers = {"X-API-Key": api_key}
 
@@ -240,64 +249,9 @@ class TestRunCreationFix:
             ],
         }
 
-        response = api_client.post("/api/v1/runs", json=run_request, headers=headers)
+        response = await client.post("/api/v1/runs", json=run_request, headers=headers)
         assert response.status_code == 202
 
         run_data = response.json()
         # Estimated duration should reflect 3 variants
         assert run_data["estimated_duration_seconds"] == 3 * 40
-
-
-if __name__ == "__main__":
-    # Simple test runner for manual execution
-    import sys
-
-    print("Running Run Creation Fix Tests...")
-
-    # Test basic API availability
-    try:
-        client = httpx.Client(base_url="http://localhost:8000")
-        response = client.get("/api/v1/health")
-        if response.status_code != 200:
-            print(f"❌ API health check failed: {response.status_code}")
-            sys.exit(1)
-        print("✅ API is available")
-    except Exception as e:
-        print(f"❌ Cannot connect to API: {e}")
-        sys.exit(1)
-
-    # Run a basic test
-    test_instance = TestRunCreationFix()
-
-    try:
-        # Test user registration flow
-        client = httpx.Client(base_url="http://localhost:8000")
-        test_data = {"email": "manual-test@example.com", "password": "TestPass123"}
-
-        api_key = test_instance.test_user_registration_and_api_key_creation(
-            client, test_data
-        )
-        print("✅ User registration and API key creation works")
-
-        # Test run creation
-        run_request = {
-            "github_url": "https://github.com/octocat/Hello-World",
-            "prompt": "Test run creation after schema fix",
-            "model_variants": [
-                {
-                    "model_definition_id": "model_gpt_4o_mini_openai",
-                    "model_parameters": {"temperature": 0.7},
-                }
-            ],
-        }
-
-        run_data = test_instance.test_run_creation_with_model_variants(
-            client, test_data, run_request
-        )
-        print(f"✅ Run creation successful: {run_data['run_id']}")
-
-        print("✅ All manual tests passed!")
-
-    except Exception as e:
-        print(f"❌ Test failed: {e}")
-        sys.exit(1)

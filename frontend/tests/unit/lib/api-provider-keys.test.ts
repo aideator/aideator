@@ -36,22 +36,17 @@ describe('API Client - Provider Key Methods', () => {
     mockFetch.mockClear()
     jest.clearAllMocks()
     
-    // Reset auth token to avoid auto-auth calls
-    apiClient.setAuthToken('')
+    // Set a dummy auth token to prevent auto-auth calls
+    apiClient.setAuthToken('test-token')
   })
 
   describe('getProviders', () => {
     it('fetches list of providers', async () => {
-      // Mock dev credentials call and then the actual API call
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ providers: mockProviders }),
-        })
+      // Mock only the actual API call
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ providers: mockProviders }),
+      })
 
       const result = await apiClient.getProviders()
 
@@ -60,6 +55,7 @@ describe('API Client - Provider Key Methods', () => {
         expect.objectContaining({
           headers: expect.objectContaining({
             'Content-Type': 'application/json',
+            'Authorization': 'Bearer test-token',
           }),
         })
       )
@@ -67,17 +63,13 @@ describe('API Client - Provider Key Methods', () => {
     })
 
     it('handles provider fetch error', async () => {
-      // Mock dev credentials success and then API error
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
-        })
-        .mockResolvedValueOnce({
-          ok: false,
-          statusText: 'Internal Server Error',
-          json: async () => ({ detail: 'Server error' }),
-        })
+      const errorData = { detail: 'Server error' }
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        statusText: 'Internal Server Error',
+        json: async () => errorData,
+        text: async () => JSON.stringify(errorData),
+      })
 
       await expect(apiClient.getProviders()).rejects.toEqual({
         detail: 'Server error',
@@ -89,15 +81,10 @@ describe('API Client - Provider Key Methods', () => {
     it('fetches user provider keys', async () => {
       const mockKeys = [mockProviderKey]
       
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => mockKeys,
-        })
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockKeys,
+      })
 
       const result = await apiClient.getProviderKeys()
 
@@ -106,6 +93,7 @@ describe('API Client - Provider Key Methods', () => {
         expect.objectContaining({
           headers: expect.objectContaining({
             'Content-Type': 'application/json',
+            'Authorization': 'Bearer test-token',
           }),
         })
       )
@@ -122,15 +110,10 @@ describe('API Client - Provider Key Methods', () => {
         description: 'Test description',
       }
 
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => mockProviderKey,
-        })
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockProviderKey,
+      })
 
       const result = await apiClient.createProviderKey(newKey)
 
@@ -141,6 +124,7 @@ describe('API Client - Provider Key Methods', () => {
           body: JSON.stringify(newKey),
           headers: expect.objectContaining({
             'Content-Type': 'application/json',
+            'Authorization': 'Bearer test-token',
           }),
         })
       )
@@ -153,21 +137,19 @@ describe('API Client - Provider Key Methods', () => {
         api_key: 'invalid-key',
       }
 
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
-        })
-        .mockResolvedValueOnce({
-          ok: false,
-          statusText: 'Bad Request',
-          json: async () => ({ 
-            detail: { 
-              message: 'Invalid API key format',
-              suggestion: 'OpenAI keys should start with sk-'
-            } 
-          }),
-        })
+      const errorData = { 
+        detail: { 
+          message: 'Invalid API key format',
+          suggestion: 'OpenAI keys should start with sk-'
+        } 
+      }
+      
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        statusText: 'Bad Request',
+        json: async () => errorData.detail,
+        text: async () => JSON.stringify(errorData),
+      })
 
       await expect(apiClient.createProviderKey(newKey)).rejects.toEqual({
         detail: 'Invalid API key format',
@@ -182,15 +164,10 @@ describe('API Client - Provider Key Methods', () => {
         description: 'Updated description',
       }
 
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ ...mockProviderKey, ...updates }),
-        })
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ...mockProviderKey, ...updates }),
+      })
 
       const result = await apiClient.updateProviderKey('provkey_123', updates)
 
@@ -201,6 +178,7 @@ describe('API Client - Provider Key Methods', () => {
           body: JSON.stringify(updates),
           headers: expect.objectContaining({
             'Content-Type': 'application/json',
+            'Authorization': 'Bearer test-token',
           }),
         })
       )
@@ -211,15 +189,10 @@ describe('API Client - Provider Key Methods', () => {
 
   describe('deleteProviderKey', () => {
     it('deletes a provider key', async () => {
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({}),
-        })
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({}),
+      })
 
       await apiClient.deleteProviderKey('provkey_123')
 
@@ -229,22 +202,21 @@ describe('API Client - Provider Key Methods', () => {
           method: 'DELETE',
           headers: expect.objectContaining({
             'Content-Type': 'application/json',
+            'Authorization': 'Bearer test-token',
           }),
         })
       )
     })
 
     it('handles delete error', async () => {
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
-        })
-        .mockResolvedValueOnce({
-          ok: false,
-          statusText: 'Forbidden',
-          json: async () => ({ detail: 'Cannot delete active key' }),
-        })
+      const errorData = { detail: 'Cannot delete active key' }
+      
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        statusText: 'Forbidden',
+        json: async () => errorData,
+        text: async () => JSON.stringify(errorData),
+      })
 
       await expect(apiClient.deleteProviderKey('provkey_123')).rejects.toEqual({
         detail: 'Cannot delete active key',
@@ -254,15 +226,10 @@ describe('API Client - Provider Key Methods', () => {
 
   describe('validateProviderKey', () => {
     it('validates a provider key successfully', async () => {
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ valid: true }),
-        })
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ valid: true }),
+      })
 
       const result = await apiClient.validateProviderKey('provkey_123')
 
@@ -272,6 +239,7 @@ describe('API Client - Provider Key Methods', () => {
           method: 'POST',
           headers: expect.objectContaining({
             'Content-Type': 'application/json',
+            'Authorization': 'Bearer test-token',
           }),
         })
       )
@@ -279,15 +247,10 @@ describe('API Client - Provider Key Methods', () => {
     })
 
     it('handles validation failure', async () => {
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ valid: false, error: 'Invalid API key' }),
-        })
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ valid: false, error: 'Invalid API key' }),
+      })
 
       const result = await apiClient.validateProviderKey('provkey_123')
 
@@ -295,16 +258,14 @@ describe('API Client - Provider Key Methods', () => {
     })
 
     it('handles validation request error', async () => {
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
-        })
-        .mockResolvedValueOnce({
-          ok: false,
-          statusText: 'Service Unavailable',
-          json: async () => ({ detail: 'Provider service unavailable' }),
-        })
+      const errorData = { detail: 'Provider service unavailable' }
+      
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        statusText: 'Service Unavailable',
+        json: async () => errorData,
+        text: async () => JSON.stringify(errorData),
+      })
 
       await expect(apiClient.validateProviderKey('provkey_123')).rejects.toEqual({
         detail: 'Provider service unavailable',

@@ -107,7 +107,8 @@ describe('ProviderKeyManager', () => {
     await waitFor(() => {
       expect(screen.getByText('No API keys configured')).toBeInTheDocument()
       expect(screen.getByText('Add your provider API keys to start using AI models')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /add your first api key/i })).toBeInTheDocument()
+      // The add button is in the header, not in the empty state
+      expect(screen.getByRole('button', { name: /add api key/i })).toBeInTheDocument()
     })
   })
 
@@ -151,7 +152,7 @@ describe('ProviderKeyManager', () => {
       expect(screen.getByText('No API keys configured')).toBeInTheDocument()
     })
 
-    const addButton = screen.getByRole('button', { name: /add your first api key/i })
+    const addButton = screen.getByRole('button', { name: /add api key/i })
     fireEvent.click(addButton)
 
     expect(screen.getByTestId('provider-key-form')).toBeInTheDocument()

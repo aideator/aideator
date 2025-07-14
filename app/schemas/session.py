@@ -169,19 +169,30 @@ class SessionExport(BaseModel):
 
 class ModelVariantRequest(BaseModel):
     """Schema for model variant in request."""
-    
+
+    model_config = {"protected_namespaces": ()}
+
     id: str = Field(..., description="Unique variant ID")
     model_definition_id: str = Field(..., description="Model definition ID")
-    model_parameters: dict[str, Any] = Field(default_factory=dict, description="Model parameters like temperature, max_tokens, etc.")
+    model_parameters: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Model parameters like temperature, max_tokens, etc.",
+    )
 
 
 class CodeRequest(BaseModel):
     """Schema for code execution request."""
 
+    model_config = {"protected_namespaces": ()}
+
     prompt: str = Field(..., min_length=1, description="The coding prompt/instruction")
     context: str | None = Field(None, description="Additional context or codebase URL")
-    model_variants: list[ModelVariantRequest] = Field(..., description="List of model variants with parameters")
-    max_models: int = Field(default=5, ge=1, le=5, description="Maximum number of models to run")
+    model_variants: list[ModelVariantRequest] = Field(
+        ..., description="List of model variants with parameters"
+    )
+    max_models: int = Field(
+        default=5, ge=1, le=5, description="Maximum number of models to run"
+    )
 
 
 class CodeResponse(BaseModel):
@@ -192,4 +203,6 @@ class CodeResponse(BaseModel):
     websocket_url: str = Field(..., description="WebSocket URL for streaming results")
     debug_websocket_url: str = Field(..., description="WebSocket URL for debug logs")
     status: str = Field(default="accepted", description="Initial status")
-    models_used: list[str] = Field(..., description="List of models that will be executed")
+    models_used: list[str] = Field(
+        ..., description="List of models that will be executed"
+    )

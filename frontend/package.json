@@ -21,9 +21,6 @@
     "test:knip": "knip --no-exit-code"
   },
   "dependencies": {
-    "@git-diff-view/core": "^0.0.30",
-    "@git-diff-view/file": "^0.0.30",
-    "@git-diff-view/react": "^0.0.30",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
     "@radix-ui/react-aspect-ratio": "1.1.1",
@@ -71,7 +68,6 @@
     "vaul": "^1.1.2"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.3.1",
     "@playwright/test": "^1.54.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
@@ -80,8 +76,6 @@
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "^15.3.5",
     "jest": "^30.0.4",
     "jest-environment-jsdom": "^30.0.4",
     "knip": "^5.61.3",

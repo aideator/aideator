@@ -33,12 +33,12 @@ async def get_user_from_token(token: str, db: AsyncSession) -> User | None:
     """Get user from JWT token."""
     try:
         logger.info(f"🔍 Validating JWT token: {token[:20]}...")
-        
+
         payload = jwt.decode(
             token, settings.secret_key, algorithms=[settings.algorithm]
         )
         logger.info(f"✅ JWT payload decoded: {payload}")
-        
+
         # Try to get user_id first (if present in payload)
         user_id: str | None = payload.get("user_id")
         if user_id:
@@ -47,31 +47,31 @@ async def get_user_from_token(token: str, db: AsyncSession) -> User | None:
             if user and user.is_active:
                 logger.info(f"✅ Found user by user_id: {user.email}")
                 return user
-            else:
-                logger.warning(f"❌ User not found or inactive by user_id: {user_id}")
-        
+            logger.warning(f"❌ User not found or inactive by user_id: {user_id}")
+
         # Fallback to using 'sub' field (which might be email or user_id)
         sub: str | None = payload.get("sub")
         if sub is None:
             logger.warning("❌ No 'sub' field in JWT payload")
             return None
-            
+
         logger.info(f"🔍 Looking up user by sub field: {sub}")
-        
+
         # Try as user ID first
         user = await db.get(User, sub)
         if user and user.is_active:
             logger.info(f"✅ Found user by sub as ID: {user.email}")
             return user
-            
+
         # If not found by ID, try as email
         from sqlalchemy import select
+
         result = await db.execute(select(User).where(User.email == sub))
         user = result.scalar_one_or_none()
         if user and user.is_active:
             logger.info(f"✅ Found user by sub as email: {user.email}")
             return user
-        
+
         logger.warning(f"❌ User not found by sub: {sub}")
         return None
 
@@ -83,7 +83,7 @@ async def get_user_from_token(token: str, db: AsyncSession) -> User | None:
 async def get_user_from_api_key(api_key: str, db: AsyncSession) -> User | None:
     """Get user from API key."""
     logger.info(f"�� Validating API key: {api_key[:10]}...")
-    
+
     if not api_key.startswith("aid_sk_"):
         logger.warning("❌ API key doesn't start with 'aid_sk_'")
         return None
@@ -94,7 +94,7 @@ async def get_user_from_api_key(api_key: str, db: AsyncSession) -> User | None:
     # Find the API key by trying to verify against stored hashes
     result = await db.execute(select(APIKey).where(APIKey.is_active == True))  # type: ignore[arg-type] # noqa: E712
     api_keys = result.scalars().all()
-    
+
     logger.info(f"🔍 Found {len(api_keys)} active API keys in database")
 
     for stored_key in api_keys:
@@ -115,8 +115,7 @@ async def get_user_from_api_key(api_key: str, db: AsyncSession) -> User | None:
             if user and user.is_active:
                 logger.info(f"✅ Found active user: {user.email}")
                 return user
-            else:
-                logger.warning(f"❌ User not found or inactive: {stored_key.user_id}")
+            logger.warning(f"❌ User not found or inactive: {stored_key.user_id}")
 
     logger.warning("❌ No matching API key found")
     return None

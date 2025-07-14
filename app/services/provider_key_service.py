@@ -470,6 +470,8 @@ class ProviderKeyService:
         if not self.db:
             raise ValueError("Database session not provided")
 
+        if isinstance(self.db, AsyncSession):
+            return await self.db.get(ProviderAPIKeyDB, key_id)
         return self.db.get(ProviderAPIKeyDB, key_id)
 
     async def update_provider_key(
@@ -484,13 +486,19 @@ class ProviderKeyService:
         if not self.db:
             raise ValueError("Database session not provided")
 
-        key = self.db.get(ProviderAPIKeyDB, credential_id)
+        if isinstance(self.db, AsyncSession):
+            key = await self.db.get(ProviderAPIKeyDB, credential_id)
+        else:
+            key = self.db.get(ProviderAPIKeyDB, credential_id)
         if not key:
             raise HTTPException(status_code=404, detail="Provider key not found")
 
         from app.models.user import User
 
-        user = self.db.get(User, key.user_id)
+        if isinstance(self.db, AsyncSession):
+            user = await self.db.get(User, key.user_id)
+        else:
+            user = self.db.get(User, key.user_id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 

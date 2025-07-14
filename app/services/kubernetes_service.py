@@ -92,7 +92,7 @@ class KubernetesService:
             logger.info(
                 f"Created job {job_name} for run {run_id}, variation {variation_id}"
             )
-            
+
             # Start log watcher for this job (only in dev mode)
             if settings.debug or os.getenv("AIDEATOR_DEV_MODE") == "true":
                 try:
@@ -101,7 +101,7 @@ class KubernetesService:
                 except Exception as e:
                     logger.error(f"Failed to start log watcher: {e}")
                     # Don't fail the job creation if log watcher fails
-            
+
             return job_name
 
         finally:

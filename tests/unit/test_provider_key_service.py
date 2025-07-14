@@ -119,7 +119,7 @@ class TestProviderKeyService:
         mock_key.key_hint = "sk-ant-...456"
 
         # Mock the database get method to return the user
-        mock_db_session.get = Mock(return_value=mock_user)
+        mock_db_session.get = AsyncMock(return_value=mock_user)
 
         with patch.object(service, "create_provider_key_internal") as mock_create:
             mock_create.return_value = mock_key
@@ -152,7 +152,7 @@ class TestProviderKeyService:
 
         # Set up service with db session and mock get method to return the key
         service.db = mock_db_session
-        mock_db_session.get = Mock(return_value=mock_key)
+        mock_db_session.get = AsyncMock(return_value=mock_key)
 
         # Act
         result = await service.get_provider_key(key_id)
@@ -168,7 +168,7 @@ class TestProviderKeyService:
         """Test getting a non-existent provider key."""
         # Arrange
         service.db = mock_db_session
-        mock_db_session.get = Mock(return_value=None)
+        mock_db_session.get = AsyncMock(return_value=None)
 
         # Act
         result = await service.get_provider_key("nonexistent")
@@ -188,7 +188,7 @@ class TestProviderKeyService:
 
         # Set up service with db session and mock get method to return the user
         service.db = mock_db_session
-        mock_db_session.get = Mock(return_value=mock_user)
+        mock_db_session.get = AsyncMock(return_value=mock_user)
 
         # Mock the execute method for list_user_keys
         mock_result = Mock()

@@ -450,7 +450,7 @@ class TestAgentOrchestrator:
         # Mock wait completion
         with patch.object(orchestrator, "_wait_for_jobs_completion", new=AsyncMock()):
             await orchestrator._execute_individual_jobs(
-                run_id, repo_url, prompt, variations
+                run_id, repo_url, prompt, variations, user_id="test-user-individual"
             )
 
         # Verify jobs were created

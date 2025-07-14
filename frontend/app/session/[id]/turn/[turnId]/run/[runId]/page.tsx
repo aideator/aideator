@@ -5,10 +5,9 @@ import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
-import { ArrowLeft, Play, Square, Clock, DollarSign, Users, Terminal, FileText, Zap, Bug, GitPullRequest } from "lucide-react"
+import { ArrowLeft, Terminal, GitPullRequest } from "lucide-react"
 import Link from "next/link"
-import { apiClient, WebSocketClient, useAuthenticatedApiClient } from "@/lib/api"
+import { WebSocketClient, useAuthenticatedApiClient } from "@/lib/api"
 import { Session, Turn, Run, AgentOutput } from "@/lib/types"
 import { useAuthenticatedWebSocket } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
@@ -65,9 +64,9 @@ export default function RunPage() {
         wsClient.close()
       }
     }
-  }, [])
+  }, [wsClient])
 
-  const loadRunData = async () => {
+  const loadRunData = useCallback(async () => {
     try {
       setIsLoading(true)
       const [sessionResponse, turnResponse, runResponse] = await Promise.all([
@@ -94,9 +93,9 @@ export default function RunPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [sessionId, turnId, runId, apiClient])
 
-  const loadExistingOutputs = async () => {
+  const loadExistingOutputs = useCallback(async () => {
     try {
       // Fetch all outputs from the database
       const outputs = await apiClient.getRunOutputs(runId, { output_type: 'llm' })
@@ -118,9 +117,9 @@ export default function RunPage() {
       // Don't show error if outputs aren't ready yet
       console.log('Could not load existing outputs (may not be ready yet):', err)
     }
-  }
+  }, [apiClient, runId])
 
-  const loadExistingDiffs = async (variationCount: number) => {
+  const loadExistingDiffs = useCallback(async (variationCount: number) => {
     try {
       // Try to fetch diffs for each variation
       const diffPromises = Array.from({ length: variationCount }, async (_, i) => {
@@ -131,7 +130,7 @@ export default function RunPage() {
             setDiffsReady(prev => ({ ...prev, [i]: true }))
             return { variation: i, diffs }
           }
-        } catch (err) {
+        } catch {
           // Silently ignore - diffs may not be ready yet
           console.log(`Diffs not ready for variation ${i}`)
         }
@@ -166,9 +165,9 @@ export default function RunPage() {
       // Don't show error - diffs may not be ready
       console.log('Could not load existing diffs:', err)
     }
-  }
+  }, [apiClient, runId])
 
-  const fetchDiffsForVariation = async (variationId: number) => {
+  const fetchDiffsForVariation = useCallback(async (variationId: number) => {
     try {
       const diffs = await apiClient.getRunDiffs(runId, { variation_id: variationId })
       
@@ -193,45 +192,8 @@ export default function RunPage() {
     } catch (err) {
       console.error(`Failed to fetch diffs for variation ${variationId}:`, err)
     }
-  }
+  }, [runId, apiClient])
 
-  const loadDiffsForAllVariations = async (variationCount: number) => {
-    try {
-      // Fetch diffs for each variation in parallel
-      const diffPromises = Array.from({ length: variationCount }, (_, i) => 
-        apiClient.getRunDiffs(runId, { variation_id: i })
-          .then(diffs => ({ variation: i, diffs }))
-          .catch(err => {
-            console.error(`Failed to load diffs for variation ${i}:`, err)
-            return { variation: i, diffs: [] }
-          })
-      )
-      
-      const results = await Promise.all(diffPromises)
-      
-      // Transform API response to DiffData format and update state
-      const newDiffMap = new Map<number, DiffData[]>()
-      results.forEach(({ variation, diffs }) => {
-        if (diffs.length > 0) {
-          const diffData: DiffData[] = diffs.map(diff => ({
-            oldFile: {
-              fileName: diff.oldFile.name,
-              content: diff.oldFile.content
-            },
-            newFile: {
-              fileName: diff.newFile.name,
-              content: diff.newFile.content
-            }
-          }))
-          newDiffMap.set(variation, diffData)
-        }
-      })
-      
-      setDiffDataByVariation(newDiffMap)
-    } catch (err) {
-      console.error('Failed to load diffs:', err)
-    }
-  }
 
   const startWebSocketConnection = useCallback(() => {
     try {
@@ -298,7 +260,7 @@ export default function RunPage() {
     } catch (err) {
       console.error('Failed to start WebSocket connection:', err)
     }
-  }, [wsClient, createWebSocketClient, runId, messageIdCounter, seenMessageIds])
+  }, [wsClient, createWebSocketClient, runId, messageIdCounter, seenMessageIds, fetchDiffsForVariation])
 
   // Auto-start streaming when run data is loaded
   useEffect(() => {
@@ -314,25 +276,6 @@ export default function RunPage() {
     }
   }, [outputs])
 
-  const stopWebSocketConnection = () => {
-    if (wsClient) {
-      wsClient.close()
-      setWsClient(null)
-      setIsStreaming(false)
-    }
-  }
-
-  const handleCancelRun = async () => {
-    try {
-      if (wsClient) {
-        wsClient.sendControl("cancel")
-      }
-      // Refresh run status
-      await loadRunData()
-    } catch (err) {
-      console.error('Failed to cancel run:', err)
-    }
-  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -347,46 +290,6 @@ export default function RunPage() {
     }
   }
 
-  const getProgress = () => {
-    if (!run) return 0
-    switch (run.status) {
-      case "completed":
-        return 100
-      case "failed":
-        return 0
-      case "running":
-        return 50 // Approximate progress
-      default:
-        return 0
-    }
-  }
-
-
-  const getOutputIcon = (type: string) => {
-    switch (type) {
-      case "llm":
-        return <Zap className="w-4 h-4 text-blue-400" />
-      case "stdout":
-        return <Terminal className="w-4 h-4 text-green-400" />
-      case "stderr":
-        return <Terminal className="w-4 h-4 text-red-400" />
-      default:
-        return <FileText className="w-4 h-4 text-gray-400" />
-    }
-  }
-
-  const getOutputBgColor = (type: string) => {
-    switch (type) {
-      case "llm":
-        return "bg-blue-900/20 border-blue-800"
-      case "stdout":
-        return "bg-green-900/20 border-green-800"
-      case "stderr":
-        return "bg-red-900/20 border-red-800"
-      default:
-        return "bg-gray-900/20 border-gray-800"
-    }
-  }
 
   if (authLoading || isLoading) {
     return (
@@ -444,7 +347,7 @@ export default function RunPage() {
             <h1 className="text-2xl font-semibold">Run Details</h1>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant={getStatusColor(run.status) as any}>
+            <Badge variant={getStatusColor(run.status) as 'default' | 'secondary' | 'destructive' | 'outline'}>
               {run.status}
             </Badge>
             {run.winning_variation_id && (

@@ -34,8 +34,8 @@ describe('APIClient', () => {
     mockFetch.mockClear()
     jest.clearAllMocks()
     
-    // Reset auth token to avoid auto-auth calls
-    apiClient.setAuthToken('')
+    // Set a dummy auth token to prevent auto-auth calls
+    apiClient.setAuthToken('test-token')
   })
 
   describe('Sessions API', () => {
@@ -61,16 +61,10 @@ describe('APIClient', () => {
         offset: 0,
       }
 
-      // Mock both auth request and actual request
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => mockResponse,
-        })
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      })
 
       const result = await apiClient.getSessions()
 
@@ -105,16 +99,10 @@ describe('APIClient', () => {
         total_cost: 0,
       }
 
-      // Mock both auth request and actual request  
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => mockResponse,
-        })
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      })
 
       const result = await apiClient.createSession(sessionData)
 
@@ -136,20 +124,13 @@ describe('APIClient', () => {
         detail: 'Session not found',
       }
 
-      // Mock dev credentials failure (auto-auth attempt) and then the actual API call
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: false,
-          status: 401,
-          statusText: 'Unauthorized',
-          json: async () => ({ detail: 'Failed to get development credentials' }),
-        })
-        .mockResolvedValueOnce({
-          ok: false,
-          status: 404,
-          statusText: 'Not Found',
-          json: async () => errorResponse,
-        })
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        json: async () => errorResponse,
+        text: async () => JSON.stringify(errorResponse),
+      })
 
       await expect(apiClient.getSession('invalid-id')).rejects.toHaveProperty('detail', 'Session not found')
     })
@@ -179,16 +160,10 @@ websocket_url: `${TEST_WS_URL}/ws/runs/run-123`,
         turn_id: 'turn-123',
       }
 
-      // Mock both auth request and actual request
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => mockResponse,
-        })
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      })
 
       const result = await apiClient.createRun(runRequest)
 
@@ -214,16 +189,10 @@ websocket_url: `${TEST_WS_URL}/ws/runs/run-123`,
         },
       ]
 
-      // Mock both auth request and actual request
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ access_token: 'test-token', api_key: 'test-key' }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => mockOutputs,
-        })
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockOutputs,
+      })
 
       const result = await apiClient.getRunOutputs('run-123', {
         variation_id: 0,

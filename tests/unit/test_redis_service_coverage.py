@@ -136,7 +136,7 @@ class TestRedisServiceCoverage:
         await service.trim_streams("run-123", max_length=500)
 
         # Should call xtrim for each stream
-        assert mock_redis_client.xtrim.call_count == 3
+        assert mock_redis_client.xtrim.call_count == 4
 
     async def test_delete_run_streams(self, service, mock_redis_client):
         """Test deleting run streams."""
@@ -145,7 +145,7 @@ class TestRedisServiceCoverage:
         await service.delete_run_streams("run-456")
 
         # Should call delete for each stream
-        assert mock_redis_client.delete.call_count == 3
+        assert mock_redis_client.delete.call_count == 4
 
     async def test_read_run_streams_no_client(self, service):
         """Test reading streams with no Redis client."""
@@ -253,7 +253,7 @@ class TestRedisServiceCoverage:
         await service.trim_streams("run-123")
 
         # Should still try to trim all streams despite exceptions
-        assert mock_redis_client.xtrim.call_count == 3
+        assert mock_redis_client.xtrim.call_count == 4
 
     async def test_delete_run_streams_exception(self, service, mock_redis_client):
         """Test deleting run streams with exception."""
@@ -264,4 +264,4 @@ class TestRedisServiceCoverage:
         await service.delete_run_streams("run-456")
 
         # Should still try to delete all streams despite exceptions
-        assert mock_redis_client.delete.call_count == 3
+        assert mock_redis_client.delete.call_count == 4

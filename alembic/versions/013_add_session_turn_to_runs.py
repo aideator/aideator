@@ -21,19 +21,13 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Add session_id and turn_id columns to runs table."""
-    
+
     # Add session_id column
-    op.add_column(
-        "runs",
-        sa.Column("session_id", sa.String(), nullable=True)
-    )
-    
+    op.add_column("runs", sa.Column("session_id", sa.String(), nullable=True))
+
     # Add turn_id column
-    op.add_column(
-        "runs",
-        sa.Column("turn_id", sa.String(), nullable=True)
-    )
-    
+    op.add_column("runs", sa.Column("turn_id", sa.String(), nullable=True))
+
     # Create indexes for faster lookups
     op.create_index("ix_runs_session_id", "runs", ["session_id"])
     op.create_index("ix_runs_turn_id", "runs", ["turn_id"])
@@ -41,11 +35,11 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Remove session_id and turn_id columns from runs table."""
-    
+
     # Drop indexes
     op.drop_index("ix_runs_turn_id", "runs")
     op.drop_index("ix_runs_session_id", "runs")
-    
+
     # Drop columns
     op.drop_column("runs", "turn_id")
     op.drop_column("runs", "session_id")

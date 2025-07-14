@@ -78,3 +78,17 @@ global.alert = jest.fn()
 
 // Mock window.confirm
 global.confirm = jest.fn(() => true)
+
+// Fail tests on console.error (but allow console.warn)
+global.originalConsoleError = console.error
+
+beforeEach(() => {
+  console.error = (...args) => {
+    global.originalConsoleError(...args)
+    throw new Error(`Test failed due to console.error: ${args.join(' ')}`)
+  }
+})
+
+afterEach(() => {
+  console.error = global.originalConsoleError
+})

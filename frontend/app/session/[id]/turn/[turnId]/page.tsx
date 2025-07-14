@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -24,13 +24,7 @@ export default function TurnPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (sessionId && turnId) {
-      loadTurnData()
-    }
-  }, [sessionId, turnId])
-
-  const loadTurnData = async () => {
+  const loadTurnData = useCallback(async () => {
     try {
       setIsLoading(true)
       const [sessionResponse, turnResponse, runsResponse] = await Promise.all([
@@ -48,7 +42,13 @@ export default function TurnPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [sessionId, turnId])
+
+  useEffect(() => {
+    if (sessionId && turnId) {
+      loadTurnData()
+    }
+  }, [sessionId, turnId, loadTurnData])
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -115,7 +115,7 @@ export default function TurnPage() {
             </div>
             <h1 className="text-2xl font-semibold">{turn.prompt}</h1>
           </div>
-          <Badge variant={getStatusColor(turn.status) as any}>
+          <Badge variant={getStatusColor(turn.status) as 'default' | 'secondary' | 'destructive' | 'outline'}>
             {turn.status}
           </Badge>
         </div>
@@ -191,7 +191,7 @@ export default function TurnPage() {
                         <Badge variant="outline" className="text-xs">
                           Run {index + 1}
                         </Badge>
-                        <Badge variant={getStatusColor(run.status) as any} className="text-xs">
+                        <Badge variant={getStatusColor(run.status) as 'default' | 'secondary' | 'destructive' | 'outline'} className="text-xs">
                           {run.status}
                         </Badge>
                         {run.winning_variation_id && (

@@ -23,7 +23,6 @@ import {
   CodeResponse,
 } from './types'
 import { useAuth } from './auth-context'
-import { useEffect } from 'react'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -147,6 +146,17 @@ class APIClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
+    // Auto-authenticate if no credentials are set
+    if (!this.authToken && !this.apiKey) {
+      try {
+        const credentials = await this.getDevCredentials()
+        this.authToken = credentials.access_token
+        this.apiKey = credentials.api_key
+      } catch (error) {
+        console.error('Failed to get dev credentials:', error)
+      }
+    }
+
     const url = `${this.baseURL}${endpoint}`
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -184,7 +194,12 @@ class APIClient {
       
       try {
         const errorData = JSON.parse(errorText)
-        errorDetail = errorData.detail || errorData.message || 'Unknown error'
+        // Handle both string and object detail
+        if (typeof errorData.detail === 'object' && errorData.detail?.message) {
+          errorDetail = errorData.detail.message
+        } else {
+          errorDetail = errorData.detail || errorData.message || 'Unknown error'
+        }
       } catch {
         errorDetail = errorText || 'Unknown error'
       }

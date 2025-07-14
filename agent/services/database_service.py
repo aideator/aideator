@@ -41,7 +41,7 @@ class AgentDatabaseService:
             expire_on_commit=False,
             autoflush=False,
         )
-        
+
         # Batching configuration
         self._write_queue: list[dict[str, Any]] = []
         self._write_lock = asyncio.Lock()
@@ -65,14 +65,16 @@ class AgentDatabaseService:
         """Disconnect from database and flush pending writes."""
         # Stop accepting new writes
         self._shutdown = True
-        
+
         # Flush any remaining items
         async with self._write_lock:
             if self._write_queue:
-                logger.info(f"[DB-FLUSH] Flushing {len(self._write_queue)} pending writes")
+                logger.info(
+                    f"[DB-FLUSH] Flushing {len(self._write_queue)} pending writes"
+                )
                 await self._write_batch(self._write_queue)
                 self._write_queue = []
-        
+
         # Cancel batch task
         if self._batch_task and not self._batch_task.done():
             self._batch_task.cancel()
@@ -80,7 +82,7 @@ class AgentDatabaseService:
                 await self._batch_task
             except asyncio.CancelledError:
                 pass
-        
+
         await self.engine.dispose()
 
     async def write_agent_output(
@@ -102,52 +104,54 @@ class AgentDatabaseService:
         """
         # Add to queue
         async with self._write_lock:
-            self._write_queue.append({
-                "run_id": run_id,
-                "variation_id": variation_id,
-                "content": content,
-                "output_type": output_type,
-                "timestamp": datetime.utcnow(),
-                "metadata": metadata
-            })
-            
+            self._write_queue.append(
+                {
+                    "run_id": run_id,
+                    "variation_id": variation_id,
+                    "content": content,
+                    "output_type": output_type,
+                    "timestamp": datetime.utcnow(),
+                    "metadata": metadata,
+                }
+            )
+
             # Start batch writer if not running
             if self._batch_task is None or self._batch_task.done():
                 self._batch_task = asyncio.create_task(self._batch_writer())
-    
+
     async def _batch_writer(self):
         """Background task that writes batched outputs to database."""
         while not self._shutdown:
             try:
                 # Wait for batch interval or until we have enough items
                 await asyncio.sleep(self._batch_interval)
-                
+
                 # Get items to write
                 async with self._write_lock:
                     if not self._write_queue:
                         continue
-                        
+
                     # Take up to batch_size items
-                    items_to_write = self._write_queue[:self._batch_size]
-                    self._write_queue = self._write_queue[self._batch_size:]
-                
+                    items_to_write = self._write_queue[: self._batch_size]
+                    self._write_queue = self._write_queue[self._batch_size :]
+
                 # Write batch to database
                 await self._write_batch(items_to_write)
-                
+
             except Exception as e:
                 logger.error(f"[BATCH-WRITER] Error in batch writer: {e}")
                 await asyncio.sleep(1)  # Brief pause before retrying
-    
+
     async def _write_batch(self, items: list[dict[str, Any]]) -> None:
         """Write a batch of outputs to the database."""
         if not items:
             return
-            
+
         async with self.async_session_maker() as session:
             try:
                 # Import here to avoid circular imports
                 from app.models.run import AgentOutput
-                
+
                 # Create all output objects
                 outputs = [
                     AgentOutput(
@@ -159,15 +163,15 @@ class AgentDatabaseService:
                     )
                     for item in items
                 ]
-                
+
                 # Add all at once
                 session.add_all(outputs)
                 await session.commit()
-                
+
                 logger.debug(
                     f"[DB-BATCH] Wrote batch of {len(items)} outputs to database"
                 )
-                
+
             except Exception as e:
                 logger.error(
                     f"[DB-BATCH] Failed to write batch of {len(items)} outputs: {e}"
@@ -249,9 +253,7 @@ class AgentDatabaseService:
                 logger.error(f"Database health check failed: {e}")
                 return False
 
-    async def publish_log(
-        self, message: str, level: str, **kwargs
-    ) -> None:
+    async def publish_log(self, message: str, level: str, **kwargs) -> None:
         """Write log entry to database.
 
         Args:
@@ -264,7 +266,7 @@ class AgentDatabaseService:
             variation_id=kwargs.get("variation_id", 0),
             content=message,
             output_type="logging",
-            metadata={"level": level, **kwargs}
+            metadata={"level": level, **kwargs},
         )
 
     async def update_run_stats(
@@ -319,7 +321,7 @@ class AgentDatabaseService:
                             "tokens_used": tokens_used,
                             "cost_usd": cost_usd,
                             "model": model,
-                            "provider": provider
+                            "provider": provider,
                         }
                         run.results["llm_stats"].append(stat_entry)
 

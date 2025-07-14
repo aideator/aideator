@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { X, Search, Settings, Plus, ChevronDown, ChevronRight, AlertCircle, ExternalLink } from "lucide-react"
+import { X, Search, Settings, Plus, ChevronDown, ChevronRight, AlertCircle } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -295,7 +295,7 @@ export function ModelPicker({ selectedVariants, onVariantsChange, maxVariants = 
         {/* Selected Model Chips */}
         {selectedVariants.length > 0 && (
           <div className="flex flex-wrap gap-2">
-            {selectedVariants.map((variant, index) => {
+            {selectedVariants.map((variant) => {
               const model = getModelById(variant.model_definition_id)
               if (!model) return null
               

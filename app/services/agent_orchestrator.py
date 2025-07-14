@@ -8,13 +8,13 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.jobs import generate_job_token
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.models.run import Run, RunStatus
 from app.schemas.runs import AgentConfig
 from app.services.kubernetes_service import KubernetesService
 from app.services.redis_service import redis_service
-from app.api.v1.jobs import generate_job_token
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -118,7 +118,14 @@ class AgentOrchestrator:
             await self._increment_job_count(variations)
 
             await self._execute_individual_jobs(
-                run_id, repo_url, prompt, variations, user_id, agent_config, agent_mode, db_session
+                run_id,
+                repo_url,
+                prompt,
+                variations,
+                user_id,
+                agent_config,
+                agent_mode,
+                db_session,
             )
 
         except Exception as e:
@@ -165,7 +172,7 @@ class AgentOrchestrator:
                 logger.warning(f"Run {run_id} not found in database")
         else:
             logger.warning("No database session provided to fetch model variants")
-        
+
         # Create individual jobs with secure job tokens
         jobs = []
         for i in range(variations):
@@ -173,23 +180,27 @@ class AgentOrchestrator:
             litellm_model_name = None
             variant_agent_mode = agent_mode  # Default fallback
             if i < len(model_variants):
-                litellm_model_name = model_variants[i].get("model_definition_id")  # Now contains real LiteLLM name
+                litellm_model_name = model_variants[i].get(
+                    "model_definition_id"
+                )  # Now contains real LiteLLM name
                 variant_agent_mode = model_variants[i].get("agent_mode", agent_mode)
             elif agent_config:
                 litellm_model_name = agent_config.model
-            
+
             # Log the model and agent mode being used
-            logger.info(f"Creating job for variation {i} with litellm_model_name: {litellm_model_name}, agent_mode: {variant_agent_mode}")
-            
+            logger.info(
+                f"Creating job for variation {i} with litellm_model_name: {litellm_model_name}, agent_mode: {variant_agent_mode}"
+            )
+
             # Generate job token for secure API key retrieval
             job_token = generate_job_token(
                 user_id=user_id,
                 run_id=run_id,
                 variation_id=i,
                 model_name=litellm_model_name,
-                expires_minutes=120  # 2 hours for job completion
+                expires_minutes=120,  # 2 hours for job completion
             )
-            
+
             job_name = await self.kubernetes.create_agent_job(
                 run_id=run_id,
                 variation_id=i,
@@ -332,4 +343,3 @@ class AgentOrchestrator:
         except Exception as e:
             logger.error(f"Failed to update run status: {e}")
             await db_session.rollback()
-

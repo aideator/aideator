@@ -48,16 +48,7 @@ export default function Home() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
 
-  // Wait for auth to load before making API calls
-  useEffect(() => {
-    if (!authLoading && user) {
-      loadSessions()
-      loadPopularRepositories()
-      loadModelDefinitions()
-    }
-  }, [authLoading, user])
-
-  const loadSessions = async () => {
+  const loadSessions = useCallback(async () => {
     // Don't make API calls if user is not authenticated
     if (!user) {
       setSessions([])
@@ -78,9 +69,9 @@ export default function Home() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [user])
 
-  const loadPopularRepositories = async () => {
+  const loadPopularRepositories = useCallback(async () => {
     // Default to aideator/helloworld repo instead of API calls
     setIsLoadingRepos(true)
     const defaultRepos: GitHubRepository[] = [
@@ -97,7 +88,19 @@ export default function Home() {
     setRepositories(defaultRepos)
     setSelectedRepo('aideator/helloworld')
     setIsLoadingRepos(false)
-  }
+  }, [])
+
+  const loadModelDefinitions = useCallback(async () => {
+    try {
+      setIsLoadingModels(true)
+      const models = await apiClient.getModelDefinitions()
+      setAvailableModels(models)
+    } catch (err) {
+      console.error('Failed to load model definitions:', err)
+    } finally {
+      setIsLoadingModels(false)
+    }
+  }, [])
 
   const loadBranches = useCallback(async () => {
     if (!selectedRepo) return
@@ -119,23 +122,20 @@ export default function Home() {
     setIsLoadingBranches(false)
   }, [selectedRepo])
 
+  // Wait for auth to load before making API calls
+  useEffect(() => {
+    if (!authLoading && user) {
+      loadSessions()
+      loadPopularRepositories()
+      loadModelDefinitions()
+    }
+  }, [authLoading, user, loadSessions, loadPopularRepositories, loadModelDefinitions])
+
   useEffect(() => {
     if (selectedRepo) {
       loadBranches()
     }
   }, [selectedRepo, loadBranches])
-
-  const loadModelDefinitions = async () => {
-    try {
-      setIsLoadingModels(true)
-      const models = await apiClient.getModelDefinitions()
-      setAvailableModels(models)
-    } catch (err) {
-      console.error('Failed to load model definitions:', err)
-    } finally {
-      setIsLoadingModels(false)
-    }
-  }
 
   const handleChatSubmit = async () => {
     console.log('🚀 handleChatSubmit called')
@@ -196,18 +196,19 @@ export default function Home() {
       // Navigate to the streaming page
       console.log('🔗 Navigating to run page...')
       router.push(`/session/${newSession.id}/turn/${newTurn.id}/run/${response.run_id}`)
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('❌ Failed to create chat session:', err)
-      console.error('Error details:', err.detail || err.message || err)
+      const error = err as { detail?: string; message?: string }
+      console.error('Error details:', error.detail || error.message || String(err))
       
       // More specific error messages
-      if (err.detail?.includes('401') || err.detail?.includes('Unauthorized')) {
+      if (error.detail?.includes('401') || error.detail?.includes('Unauthorized')) {
         alert('Authentication error. Please sign in again.')
         router.push('/signin')
-      } else if (err.detail?.includes('404')) {
+      } else if (error.detail?.includes('404')) {
         alert('API endpoint not found. Please check your configuration.')
       } else {
-        alert(`Failed to create chat session: ${err.detail || err.message || 'Unknown error'}`)
+        alert(`Failed to create chat session: ${error.detail || error.message || 'Unknown error'}`)
       }
     } finally {
       setIsCreatingRun(false)
@@ -281,18 +282,19 @@ export default function Home() {
       // Navigate to the streaming page
       console.log('🔗 Navigating to run page...')
       router.push(`/session/${newSession.id}/turn/${newTurn.id}/run/${response.run_id}`)
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('❌ Failed to create code session:', err)
-      console.error('Error details:', err.detail || err.message || err)
+      const error = err as { detail?: string; message?: string }
+      console.error('Error details:', error.detail || error.message || String(err))
       
       // More specific error messages
-      if (err.detail?.includes('401') || err.detail?.includes('Unauthorized')) {
+      if (error.detail?.includes('401') || error.detail?.includes('Unauthorized')) {
         alert('Authentication error. Please sign in again.')
         router.push('/signin')
-      } else if (err.detail?.includes('404')) {
+      } else if (error.detail?.includes('404')) {
         alert('API endpoint not found. Please check your configuration.')
       } else {
-        alert(`Failed to create code session: ${err.detail || err.message || 'Unknown error'}`)
+        alert(`Failed to create code session: ${error.detail || error.message || 'Unknown error'}`)
       }
     } finally {
       setIsCreatingRun(false)

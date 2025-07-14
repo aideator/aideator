@@ -337,11 +337,12 @@ class TestRedisService:
 
         await service.trim_streams("test-run", max_length=500)
 
-        assert mock_redis_client.xtrim.call_count == 3
+        assert mock_redis_client.xtrim.call_count == 4
         expected_streams = [
             "run:test-run:llm",
             "run:test-run:stdout",
             "run:test-run:status",
+            "run:test-run:debug",
         ]
 
         for i, call in enumerate(mock_redis_client.xtrim.call_args_list):
@@ -364,11 +365,12 @@ class TestRedisService:
 
         await service.delete_run_streams("test-run")
 
-        assert mock_redis_client.delete.call_count == 3
+        assert mock_redis_client.delete.call_count == 4
         expected_streams = [
             "run:test-run:llm",
             "run:test-run:stdout",
             "run:test-run:status",
+            "run:test-run:debug",
         ]
 
         for i, call in enumerate(mock_redis_client.delete.call_args_list):
@@ -405,14 +407,20 @@ class TestRedisService:
                 "first-entry": ["125-0", {"status": "running"}],
                 "last-entry": ["135-0", {"status": "completed"}],
             },
+            {
+                "length": 5,
+                "first-entry": ["126-0", {"debug": "debug msg"}],
+                "last-entry": ["130-0", {"debug": "last debug"}],
+            },
         ]
 
         result = await service.get_stream_info("test-run")
 
-        assert len(result) == 3
+        assert len(result) == 4
         assert result["run:test-run:llm"]["length"] == 100
         assert result["run:test-run:stdout"]["length"] == 50
         assert result["run:test-run:status"]["length"] == 10
+        assert result["run:test-run:debug"]["length"] == 5
 
     @pytest.mark.asyncio
     async def test_get_stream_info_error(self, service, mock_redis_client):
