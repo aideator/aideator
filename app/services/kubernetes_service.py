@@ -13,6 +13,7 @@ from typing import Any
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.services.log_watcher_service import log_watcher_service
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -43,6 +44,8 @@ class KubernetesService:
         variation_id: int,
         repo_url: str,
         prompt: str,
+        job_token: str,
+        model: str,
         agent_config: dict[str, Any] | None = None,
         agent_mode: str | None = None,
     ) -> str:
@@ -60,6 +63,8 @@ class KubernetesService:
             variation_id=variation_id,
             repo_url=repo_url,
             prompt=self._escape_yaml_string(prompt),  # Proper YAML escaping
+            job_token=self._escape_yaml_string(job_token),  # Secure job token
+            model=model,  # Model name for LLM
             agent_mode=agent_mode or "litellm",  # Default to litellm
         )
 
@@ -87,6 +92,16 @@ class KubernetesService:
             logger.info(
                 f"Created job {job_name} for run {run_id}, variation {variation_id}"
             )
+            
+            # Start log watcher for this job (only in dev mode)
+            if settings.debug or os.getenv("AIDEATOR_DEV_MODE") == "true":
+                try:
+                    await log_watcher_service.start_log_watcher(run_id, job_name)
+                    logger.info(f"Started log watcher for job {job_name}")
+                except Exception as e:
+                    logger.error(f"Failed to start log watcher: {e}")
+                    # Don't fail the job creation if log watcher fails
+            
             return job_name
 
         finally:

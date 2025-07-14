@@ -21,7 +21,8 @@ from typing import Any
 
 import aiofiles
 import git
-from litellm import acompletion
+import requests
+from litellm import acompletion, completion_cost, stream_chunk_builder
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 # Constants
@@ -37,13 +38,98 @@ MAX_FILE_PREVIEW_CHARS = 2000
 CHUNK_READ_SIZE = 1024
 
 
+class DatabaseStreamWriter:
+    """Intercepts stdout/stderr and writes to database."""
+    
+    def __init__(self, original_stream, stream_type: str, agent: 'AIdeatorAgent'):
+        self.original_stream = original_stream
+        self.stream_type = stream_type  # 'stdout' or 'stderr'
+        self.agent = agent
+        self.buffer = ""
+        self.line_buffer = []  # Buffer multiple lines before writing
+        self.max_lines = 10  # Batch up to 10 lines
+        self.last_write_time = datetime.now(UTC)
+        
+    def write(self, text: str) -> int:
+        """Write to both original stream and database."""
+        # Write to original stream first
+        result = self.original_stream.write(text)
+        
+        # Buffer text and collect complete lines
+        self.buffer += text
+        while '\n' in self.buffer:
+            line, self.buffer = self.buffer.split('\n', 1)
+            if line.strip():
+                self.line_buffer.append(line)
+                
+                # Check if we should write batch
+                current_time = datetime.now(UTC)
+                time_elapsed = (current_time - self.last_write_time).total_seconds()
+                
+                if len(self.line_buffer) >= self.max_lines or time_elapsed > 1.0:
+                    self._write_batch()
+                    self.last_write_time = current_time
+                    
+        return result
+    
+    def _write_batch(self):
+        """Write buffered lines as a single database entry."""
+        if not self.line_buffer or not self.agent.db_service:
+            return
+            
+        # Combine lines into a single content block
+        combined_content = '\n'.join(self.line_buffer)
+        line_count = len(self.line_buffer)
+        self.line_buffer = []
+        
+        # Schedule async write in background
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                task = loop.create_task(
+                    self.agent.db_service.write_agent_output(
+                        run_id=self.agent.run_id,
+                        variation_id=int(self.agent.variation_id),
+                        content=combined_content,
+                        output_type=self.stream_type,
+                        metadata={"source": "python_print", "line_count": line_count}
+                    )
+                )
+                # Add to background tasks
+                if not hasattr(self.agent, '_bg_tasks'):
+                    self.agent._bg_tasks = set()
+                self.agent._bg_tasks.add(task)
+                task.add_done_callback(self.agent._bg_tasks.discard)
+        except Exception:
+            # Silently ignore if no event loop
+            pass
+        
+    def flush(self):
+        """Flush the stream."""
+        # Flush any remaining complete lines
+        if self.line_buffer:
+            self._write_batch()
+            
+        # Flush any remaining partial buffer
+        if self.buffer.strip():
+            self.line_buffer.append(self.buffer)
+            self._write_batch()
+            self.buffer = ""
+            
+        return self.original_stream.flush()
+        
+    def __getattr__(self, name):
+        """Delegate all other attributes to original stream."""
+        return getattr(self.original_stream, name)
+
+
 class AIdeatorAgent:
     """Main agent class for repository analysis and code generation."""
 
     def __init__(self):
         """Initialize agent with configuration from environment."""
         self.run_id = os.getenv("RUN_ID", "local-test")
-        self.variation_id = os.getenv("VARIATION_ID", "0")
+        self.variation_id = int(os.getenv("VARIATION_ID", "0"))
         self.repo_url = os.getenv("REPO_URL", "")
         self.prompt = os.getenv("PROMPT", "Analyze this repository")
 
@@ -60,10 +146,12 @@ class AIdeatorAgent:
         )
         self.gateway_key = os.getenv("LITELLM_GATEWAY_KEY", "sk-1234")
 
-        # API key setup (for direct calls if needed)
-        api_key = os.getenv("OPENAI_API_KEY")
-        if api_key:
-            os.environ["OPENAI_API_KEY"] = api_key
+        # Job token for secure API key retrieval
+        self.job_token = os.getenv("JOB_TOKEN")
+        self.orchestrator_url = os.getenv("ORCHESTRATOR_API_URL", "http://aideator-fastapi:8000/api/v1")
+
+        # API keys will be fetched from orchestrator
+        self.api_keys = {}
 
         # Working directory - use a secure temp directory
         self.work_dir = Path(tempfile.mkdtemp(prefix="agent-workspace-"))
@@ -72,6 +160,9 @@ class AIdeatorAgent:
         # Setup logging to file only (not stdout to avoid mixing with LLM output)
         self.log_file = self.work_dir / f"agent_{self.run_id}_{self.variation_id}.log"
         self._setup_file_logging()
+
+        # Fetch API keys from orchestrator before checking availability
+        self._fetch_api_keys_from_orchestrator()
 
         # Check available API keys for graceful error handling
         self.available_api_keys = self._check_available_api_keys()
@@ -82,7 +173,7 @@ class AIdeatorAgent:
             print(
                 json.dumps(
                     {
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(UTC).isoformat(),
                         "run_id": self.run_id,
                         "variation_id": self.variation_id,
                         "level": "ERROR",
@@ -101,7 +192,7 @@ class AIdeatorAgent:
             print(
                 json.dumps(
                     {
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(UTC).isoformat(),
                         "run_id": self.run_id,
                         "variation_id": self.variation_id,
                         "level": "ERROR",
@@ -140,15 +231,157 @@ class AIdeatorAgent:
     async def _init_database(self):
         """Initialize database connection in async context."""
         try:
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 About to import AgentDatabaseService"
+            }), flush=True)
             from agent.services.database_service import AgentDatabaseService
 
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 About to create AgentDatabaseService instance"
+            }), flush=True)
             self.db_service = AgentDatabaseService()
+            
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 About to call db_service.connect()"
+            }), flush=True)
             await self.db_service.connect()
+            
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 Database connection successful"
+            }), flush=True)
             self.log("[DB-CONNECT] Connected to database", "INFO")
 
         except Exception as e:
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "ERROR",
+                "message": f"🔧 Database connection failed: {e}",
+                "exception_type": type(e).__name__,
+                "exception_str": str(e)
+            }), flush=True)
             self.log(f"[DB-CONNECT] Database connection failed: {e}", "ERROR")
             raise RuntimeError(f"Failed to connect to database: {e}")
+
+    async def _fetch_api_keys(self):
+        """Fetch API keys from orchestrator using job token."""
+        if not self.job_token:
+            self.log("[API-KEYS] No job token provided - skipping API key fetch", "WARNING")
+            return
+
+        try:
+            import aiohttp
+
+            # Make request to orchestrator API
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.orchestrator_url}/jobs/keys",
+                    json={"job_token": self.job_token},
+                    headers={"Content-Type": "application/json"}
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        self.api_keys = data.get("keys", {})
+
+                        # Set environment variables for compatibility
+                        for key, value in self.api_keys.items():
+                            os.environ[key] = value
+
+                        self.log(f"[API-KEYS] Successfully fetched {len(self.api_keys)} API keys", "INFO")
+
+                        # Log which providers are available (without exposing keys)
+                        providers = [key.replace("_API_KEY", "") for key in self.api_keys]
+                        self.log(f"[API-KEYS] Available providers: {providers}", "INFO")
+
+                    else:
+                        error_text = await response.text()
+                        self.log(f"[API-KEYS] Failed to fetch API keys: {response.status} - {error_text}", "ERROR")
+
+        except Exception as e:
+            self.log(f"[API-KEYS] Error fetching API keys: {e}", "ERROR")
+
+    def _fetch_api_keys_from_orchestrator(self):
+        """Fetch API keys from orchestrator using job token."""
+        if not self.job_token:
+            print(
+                json.dumps(
+                    {
+                        "timestamp": datetime.now(UTC).isoformat(),
+                        "run_id": self.run_id,
+                        "variation_id": self.variation_id,
+                        "level": "WARNING",
+                        "message": "No job token provided, skipping API key retrieval",
+                    }
+                ),
+                flush=True,
+            )
+            return
+
+        try:
+            import requests
+            
+            response = requests.post(
+                f"{self.orchestrator_url}/jobs/keys",
+                json={"job_token": self.job_token},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                self.api_keys = data.get("keys", {})
+                
+                # Set environment variables for the API keys
+                for key_name, key_value in self.api_keys.items():
+                    os.environ[key_name] = key_value
+                
+                # Update available API keys after setting environment variables
+                self.available_api_keys = self._check_available_api_keys()
+                
+                print(
+                    json.dumps(
+                        {
+                            "timestamp": datetime.now(UTC).isoformat(),
+                            "run_id": self.run_id,
+                            "variation_id": self.variation_id,
+                            "level": "INFO",
+                            "message": f"✅ Successfully fetched {len(self.api_keys)} API keys from orchestrator",
+                        }
+                    ),
+                    flush=True,
+                )
+            else:
+                print(
+                    json.dumps(
+                        {
+                            "timestamp": datetime.now(UTC).isoformat(),
+                            "run_id": self.run_id,
+                            "variation_id": self.variation_id,
+                            "level": "ERROR",
+                            "message": f"Failed to fetch API keys: {response.status_code} - {response.text}",
+                        }
+                    ),
+                    flush=True,
+                )
+        except Exception as e:
+            print(
+                json.dumps(
+                    {
+                        "timestamp": datetime.now(UTC).isoformat(),
+                        "run_id": self.run_id,
+                        "variation_id": self.variation_id,
+                        "level": "ERROR",
+                        "message": f"Error fetching API keys: {str(e)}",
+                    }
+                ),
+                flush=True,
+            )
 
     def _setup_file_logging(self):
         """Setup file-only logging to avoid stdout pollution."""
@@ -241,6 +474,7 @@ class AIdeatorAgent:
         # Default to openai for unknown models
         return "openai"
 
+
     def _validate_model_credentials(self, model_name: str) -> tuple[bool, str]:
         """Validate that credentials are available for the requested model.
 
@@ -296,6 +530,20 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             return False, error_msg
 
         return True, ""
+
+    def _validate_cli_credentials(self, agent_mode: str) -> None:
+        """Validate credentials for CLI-based coding agents."""
+        if agent_mode == "claude-cli":
+            if not os.getenv("ANTHROPIC_API_KEY"):
+                raise RuntimeError("Missing ANTHROPIC_API_KEY for Claude CLI")
+        elif agent_mode == "gemini-cli":
+            if not os.getenv("GEMINI_API_KEY"):
+                raise RuntimeError("Missing GEMINI_API_KEY for Gemini CLI")
+        elif agent_mode == "openai-codex":
+            if not os.getenv("OPENAI_API_KEY"):
+                raise RuntimeError("Missing OPENAI_API_KEY for OpenAI Codex CLI")
+        
+        self.log(f"✅ CLI credentials validated for {agent_mode}", "INFO")
 
     def _get_available_models_suggestion(self) -> str:
         """Get a helpful suggestion of available models based on configured API keys."""
@@ -363,9 +611,15 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
+                    # Include run_id and variation_id in kwargs for database
+                    db_kwargs = {
+                        "run_id": self.run_id,
+                        "variation_id": self.variation_id,
+                        **kwargs
+                    }
                     # Schedule as a task if loop is running
                     task = loop.create_task(
-                        self.db_service.publish_log(message, level, **kwargs)
+                        self.db_service.publish_log(message, level, **db_kwargs)
                     )
                     # Store task reference to avoid warning
                     if not hasattr(self, "_bg_tasks"):
@@ -388,7 +642,7 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
         await self.log_async(f"⚡ {message}", "INFO", detail=detail)
 
     async def log_async(self, message: str, level: str = "INFO", **kwargs):
-        """Async structured logging with Redis Streams publish."""
+        """Async structured logging with dual write to Redis Streams and PostgreSQL."""
         log_entry = {
             "timestamp": datetime.now(UTC).isoformat(),
             "run_id": self.run_id,
@@ -404,6 +658,10 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             f"{message} | {json.dumps(kwargs) if kwargs else ''}",
         )
 
+        # Dual write: Redis + Database
+        redis_success = False
+        db_success = False
+
         # Publish to Redis Streams
         try:
             if self.redis_client:
@@ -415,8 +673,34 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                     "timestamp": log_entry["timestamp"],
                 }
                 await self.redis_client.xadd(stream_name, fields)
+                redis_success = True
         except Exception as e:
             self.file_logger.error(f"Failed to publish log to Redis Streams: {e}")
+
+        # Write to database
+        try:
+            if self.db_service:
+                await self.db_service.write_agent_output(
+                    run_id=self.run_id,
+                    variation_id=int(self.variation_id),
+                    content=message,
+                    output_type="logging",
+                    metadata={"level": level, **kwargs}
+                )
+                db_success = True
+        except Exception as e:
+            self.file_logger.error(f"Failed to write log to database: {e}")
+
+        # Log dual write status in debug mode
+        if os.getenv("DEBUG") == "true":
+            if redis_success and db_success:
+                self.file_logger.debug("[DUAL-WRITE] Log written to both Redis and DB")
+            elif redis_success:
+                self.file_logger.debug("[DUAL-WRITE] Log written to Redis only (DB failed)")
+            elif db_success:
+                self.file_logger.debug("[DUAL-WRITE] Log written to DB only (Redis failed)")
+            else:
+                self.file_logger.debug("[DUAL-WRITE] Failed to write log to both Redis and DB")
 
         # Also print to stdout in debug mode
         if os.getenv("DEBUG") == "true":
@@ -424,6 +708,8 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
 
     async def publish_output(self, content: str):
         """Publish agent output with dual write to Redis Streams and PostgreSQL."""
+        # Don't log LLM output as it creates duplicate content in logs
+        
         # Dual write: Write to both Redis and database
         success_redis = False
         success_db = False
@@ -493,6 +779,32 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
         else:
             self.log(
                 "[DUAL-WRITE] Failed to write LLM output to both Redis and DB",
+                "ERROR",
+            )
+
+    async def _publish_to_redis_only(self, content: str):
+        """Publish agent output to Redis Streams only (database handled by DatabaseStreamWriter)."""
+        try:
+            if self.redis_client:
+                stream_name = f"run:{self.run_id}:llm"
+                fields = {
+                    "variation_id": self.variation_id,
+                    "content": content,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "metadata": json.dumps({"content_length": len(content)}),
+                }
+
+                message_id = await self.redis_client.xadd(stream_name, fields)
+                self.log(
+                    f"[REDIS-ONLY] Published LLM output to stream: {stream_name}, ID: {message_id}",
+                    "DEBUG",
+                )
+            else:
+                self.log("[REDIS-ONLY] Redis client not initialized", "ERROR")
+
+        except Exception as e:
+            self.log(
+                f"[REDIS-ONLY] Failed to publish output to Redis Streams: {e}",
                 "ERROR",
             )
 
@@ -574,35 +886,139 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
 
     async def run(self) -> None:
         """Main agent execution flow."""
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 Entered agent.run() method"
+        }), flush=True)
+        
         self.log("🚀 Starting AIdeator Agent", "INFO", config=self.config)
 
         # Initialize Redis and Database connections
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 About to initialize Redis"
+        }), flush=True)
         await self._init_redis()
+        
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 About to initialize Database"
+        }), flush=True)
         await self._init_database()
+        
+        # Install stdout/stderr interceptors to capture all output
+        if self.db_service:
+            sys.stdout = DatabaseStreamWriter(sys.stdout, "stdout", self)
+            sys.stderr = DatabaseStreamWriter(sys.stderr, "stderr", self)
+            self.log("📝 Installed stdout/stderr interceptors for database persistence", "INFO")
+
+        # Fetch API keys from orchestrator
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 About to fetch API keys (async method)"
+        }), flush=True)
+        await self._fetch_api_keys()
+
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 API keys fetched, about to log availability"
+        }), flush=True)
 
         # Log available API keys for debugging
-        await self.log_async(
-            "🔑 API Key availability check",
-            "INFO",
-            available_keys=self.available_api_keys,
-        )
-
-        # Validate model credentials before proceeding
-        is_valid, error_msg = self._validate_model_credentials(self.config["model"])
-        if not is_valid:
-            # Output the user-friendly error message
-            print(error_msg, flush=True)
-            self.log_error(f"Missing API key for model {self.config['model']}", None)
-            raise RuntimeError(f"Missing API key for model {self.config['model']}")
+        try:
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG", 
+                "message": "🔧 About to call log_async with available_keys"
+            }), flush=True)
+            
+            await self.log_async(
+                "🔑 API Key availability check",
+                "INFO",
+                available_keys=self.available_api_keys,
+            )
+            
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 log_async completed successfully"
+            }), flush=True)
+            
+        except Exception as e:
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "ERROR",
+                "message": f"🔧 log_async failed: {str(e)}",
+                "exception_type": type(e).__name__
+            }), flush=True)
 
         # Log agent mode
         agent_mode = os.getenv("AGENT_MODE", "litellm")
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": f"🔧 About to log agent mode: {agent_mode}"
+        }), flush=True)
+        
         self.log(f"🎯 Agent mode: {agent_mode}", "INFO", agent_mode=agent_mode)
+        
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 Agent mode logged, about to validate credentials"
+        }), flush=True)
+
+        # Validate model credentials (skip for CLI-based coding agents)
+        if agent_mode not in ["claude-cli", "gemini-cli", "openai-codex"]:
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 Using LiteLLM credential validation"
+            }), flush=True)
+            
+            is_valid, error_msg = self._validate_model_credentials(self.config["model"])
+            if not is_valid:
+                # Output the user-friendly error message
+                print(error_msg, flush=True)
+                self.log_error(f"Missing API key for model {self.config['model']}", None)
+                raise RuntimeError(f"Missing API key for model {self.config['model']}")
+        else:
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": f"🔧 Using CLI credential validation for {agent_mode}"
+            }), flush=True)
+            
+            # For CLI-based agents, validate CLI-specific credentials
+            self._validate_cli_credentials(agent_mode)
+            
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 Credential validation completed"
+        }), flush=True)
 
         # Check if this is a code mode that requires repository
         is_code_mode = agent_mode in ["claude-cli", "gemini-cli", "openai-codex"]
+        
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": f"🔧 is_code_mode: {is_code_mode}, agent_mode: {agent_mode}"
+        }), flush=True)
 
         if is_code_mode:
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": f"🔧 About to check CLI tool version for {agent_mode}"
+            }), flush=True)
+            
             # Log CLI tool versions for code modes
             if agent_mode == "claude-cli":
                 claude_version = self._get_cli_version("claude")
@@ -618,8 +1034,27 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                     "INFO",
                     gemini_version=gemini_version,
                 )
+            elif agent_mode == "openai-codex":
+                codex_version = self._get_cli_version("codex")
+                self.log(
+                    f"🔥 OpenAI Codex CLI version: {codex_version}",
+                    "INFO",
+                    codex_version=codex_version,
+                )
+                
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 CLI tool version check completed"
+            }), flush=True)
 
-        # Log LiteLLM Gateway configuration
+        # Log LiteLLM Gateway configuration  
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 About to log LiteLLM Gateway configuration"
+        }), flush=True)
+        
         self.log(
             "🔧 Using LiteLLM Gateway",
             "INFO",
@@ -628,21 +1063,64 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             note="Routing through LiteLLM Gateway for unified API access",
         )
 
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 LiteLLM Gateway logged, about to log debug file location"
+        }), flush=True)
+
         # Log file location to file only, not stdout
         self.log(f"Debug logs location: {self.log_file}", "INFO")
+        
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 About to enter main execution try block"
+        }), flush=True)
 
         try:
             if is_code_mode:
+                print(json.dumps({
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "level": "DEBUG",
+                    "message": "🔧 Entering code mode execution"
+                }), flush=True)
+                
                 # Code mode: Clone repository and analyze codebase
                 self.log("📁 Code mode detected - cloning repository", "INFO")
+                
+                print(json.dumps({
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "level": "DEBUG",
+                    "message": "🔧 About to clone repository"
+                }), flush=True)
+                
                 await self._clone_repository()
+                
+                print(json.dumps({
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "level": "DEBUG",
+                    "message": "🔧 Repository cloned, about to analyze codebase"
+                }), flush=True)
 
                 # Analyze codebase
                 codebase_summary = await self._analyze_codebase()
+                
+                print(json.dumps({
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "level": "DEBUG",
+                    "message": "🔧 Codebase analyzed, about to generate LLM response"
+                }), flush=True)
 
                 # Generate response with LLM
                 response = await self._generate_llm_response(codebase_summary)
             else:
+                print(json.dumps({
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "level": "DEBUG",
+                    "message": "🔧 Entering chat mode execution"
+                }), flush=True)
+                
                 # Chat mode: Skip repository cloning, just pass prompt directly
                 self.log("💬 Chat mode detected - skipping repository clone", "INFO")
                 response = await self._generate_llm_response(None)
@@ -654,6 +1132,10 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                 response_length=len(response),
                 status="success",
             )
+
+            # Generate and save diffs if in code mode
+            if is_code_mode and self.repo_dir.exists():
+                await self._generate_and_save_diffs()
 
         except Exception as e:
             self.log_error("Agent execution failed", e)
@@ -860,6 +1342,8 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
             return await self._generate_claude_cli_response()
         if agent_mode == "gemini-cli":
             return await self._generate_gemini_cli_response()
+        if agent_mode == "openai-codex":
+            return await self._generate_openai_codex_response()
         return await self._generate_litellm_response(codebase_summary)
 
     async def _generate_claude_cli_response(self) -> str:
@@ -957,22 +1441,29 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                                             text_content = content_item["text"]
                                             # Output immediately for streaming (like TypeScript)
                                             print(text_content, end="", flush=True)
-                                            # Stream to Redis immediately
-                                            await self.publish_output(text_content)
+                                            # Stream to Redis only (database handled by DatabaseStreamWriter)
+                                            await self._publish_to_redis_only(text_content)
+                                            # Note: stdout database writing is handled by DatabaseStreamWriter
                                             collected_output.append(text_content)
                                         elif content_item.get("type") == "tool_use":
-                                            tool_info = f"🔧 Using tool: {content_item.get('name', 'unknown')}"
+                                            tool_name = content_item.get('name', 'unknown')
+                                            tool_info = f"🔧 Using tool: {tool_name}"
+                                            # Only print once - DatabaseStreamWriter will handle DB persistence
                                             print(tool_info, flush=True)
                                             collected_output.append(tool_info + "\n")
+                                            
+                                            # Stream to Redis only (DB handled by DatabaseStreamWriter)
+                                            await self._publish_to_redis_only(tool_info)
 
-                            except json.JSONDecodeError:
-                                # If not JSON, treat as plain text output (like TypeScript fallback)
+                            except json.JSONDecodeError as e:
+                                # This should NOT happen with --output-format stream-json
                                 self.log_progress(
-                                    "Plain text output",
-                                    f"{line[:50]}{'...' if len(line) > 50 else ''}",
+                                    "JSON DECODE ERROR - This should not happen!",
+                                    f"Line: '{line}' | Error: {str(e)[:100]}",
                                 )
-                                print(line, flush=True)
-                                collected_output.append(line + "\n")
+                                # Do NOT print the line - it's malformed and causes duplication
+                                # print(line, flush=True)  # REMOVED
+                                # collected_output.append(line + "\n")  # REMOVED
 
                 # Handle any remaining buffer content
                 if buffer.strip():
@@ -980,7 +1471,8 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                         "Processing remaining buffer",
                         f"{buffer[:50]}{'...' if len(buffer) > 50 else ''}",
                     )
-                    print(buffer, flush=True)
+                    # Buffer content was already processed in the streaming loop above
+                    # Do not print again to avoid duplication
                     collected_output.append(buffer)
 
                 # Wait for process to complete
@@ -999,6 +1491,15 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                         "Claude CLI process failed",
                         f"Exit code: {process.returncode}, Error: {error_msg}",
                     )
+                    # Persist stderr to database
+                    if self.db_service and error_msg:
+                        await self.db_service.write_agent_output(
+                            run_id=self.run_id,
+                            variation_id=int(self.variation_id),
+                            content=error_msg,
+                            output_type="stderr",
+                            metadata={"source": "claude_cli", "exit_code": process.returncode}
+                        )
 
                     # Still return collected output if we got some
                     if collected_output:
@@ -1017,6 +1518,42 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                     "Claude CLI streaming completed successfully",
                     f"Total chunks: {data_chunks}, Total bytes: {total_bytes}, Response length: {len(response)} characters",
                 )
+
+                # Write analytics data for Claude CLI
+                if self.db_service:
+                    try:
+                        request_end_time = datetime.now(UTC)
+                        analytics_data = {
+                            "model": "claude-cli",
+                            "provider": "anthropic",
+                            "stream": True,
+                            "status": "success",
+                            "request_end_time": request_end_time,
+                            "response_time_ms": int((request_end_time - datetime.now(UTC)).total_seconds() * 1000),
+                            "metadata": {
+                                "agent_mode": "claude-cli",
+                                "chunks_received": data_chunks,
+                                "total_bytes": total_bytes,
+                                "response_length": len(response),
+                                "working_directory": str(self.repo_dir),
+                            }
+                        }
+                        
+                        await self.db_service.write_litellm_analytics(
+                            run_id=self.run_id,
+                            variation_id=int(self.variation_id),
+                            analytics_data=analytics_data
+                        )
+                        self.log(
+                            "Wrote Claude CLI analytics to database",
+                            "INFO",
+                            analytics_summary=analytics_data
+                        )
+                    except Exception as analytics_error:
+                        self.log(
+                            f"Failed to write Claude CLI analytics: {analytics_error}",
+                            "ERROR"
+                        )
 
                 return response if response else "No output received from Claude CLI"
 
@@ -1082,13 +1619,68 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
                     response_length=len(response),
                 )
 
+                # Persist stdout to database
+                if self.db_service and response:
+                    await self.db_service.write_agent_output(
+                        run_id=self.run_id,
+                        variation_id=int(self.variation_id),
+                        content=response,
+                        output_type="stdout",
+                        metadata={"source": "gemini_cli"}
+                    )
+
                 # Stream the response line by line
                 for line in response.split("\n"):
                     if line.strip():
                         print(f"🔸 {line}", flush=True)
 
+                # Write analytics data for Gemini CLI
+                if self.db_service:
+                    try:
+                        request_end_time = datetime.now(UTC)
+                        analytics_data = {
+                            "model": "gemini-cli",
+                            "provider": "google",
+                            "stream": False,
+                            "status": "success",
+                            "request_end_time": request_end_time,
+                            "response_time_ms": int((request_end_time - datetime.now(UTC)).total_seconds() * 1000),
+                            "metadata": {
+                                "agent_mode": "gemini-cli",
+                                "response_length": len(response),
+                                "working_directory": str(self.repo_dir),
+                            }
+                        }
+                        
+                        await self.db_service.write_litellm_analytics(
+                            run_id=self.run_id,
+                            variation_id=int(self.variation_id),
+                            analytics_data=analytics_data
+                        )
+                        self.log(
+                            "Wrote Gemini CLI analytics to database",
+                            "INFO",
+                            analytics_summary=analytics_data
+                        )
+                    except Exception as analytics_error:
+                        self.log(
+                            f"Failed to write Gemini CLI analytics: {analytics_error}",
+                            "ERROR"
+                        )
+
                 return response
             error_msg = stderr.decode() if stderr else "Unknown error"
+            
+            # Persist stderr to database
+            if self.db_service and error_msg:
+                await self.db_service.write_agent_output(
+                    run_id=self.run_id,
+                    variation_id=int(self.variation_id),
+                    content=error_msg,
+                    output_type="stderr",
+                    metadata={"source": "gemini_cli", "exit_code": result.returncode}
+                )
+            
             raise RuntimeError(
                 f"Gemini CLI failed with exit code {result.returncode}: {error_msg}"
             )
@@ -1096,6 +1688,273 @@ The model '{model_name}' requires a {readable_provider} API key, but none was fo
         except Exception as e:
             self.log_error("Gemini CLI execution failed", e)
             raise RuntimeError(f"Failed to generate Gemini CLI response: {e}") from e
+
+    async def _generate_openai_codex_response(self) -> str:
+        """Generate response using OpenAI Codex CLI."""
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 Entered _generate_openai_codex_response()"
+        }), flush=True)
+        
+        self.log_progress(
+            "Generating response using OpenAI Codex CLI",
+            "Executing codex in full-auto quiet mode for one-shot execution",
+        )
+        
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 About to start OpenAI Codex execution try block"
+        }), flush=True)
+
+        try:
+            # Track start time for analytics
+            request_start_time = datetime.now(UTC)
+
+            # Execute OpenAI Codex CLI
+            self.log_progress(
+                "Executing OpenAI Codex CLI", f"Working directory: {self.repo_dir}"
+            )
+
+            # Use codex exec with verified flags for containerized non-interactive execution
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": f"🔧 About to execute: codex exec --dangerously-bypass-approvals-and-sandbox --model gpt-4o-mini '{self.prompt}'"
+            }), flush=True)
+            
+            # Set up environment for containerized CI/CD with comprehensive debugging
+            codex_env = os.environ.copy()
+            codex_env.update({
+                "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),  # Required for Codex
+                "DEBUG": "true",  # Enable verbose logging for debugging
+                "RUST_LOG": "debug",  # Enable Rust debug logging
+                "CODEX_LOG": "debug",  # Enable all Codex logging
+                # Ensure critical paths are available - include all possible locations
+                "PATH": "/opt/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "HOME": str(Path.home()),  # Use actual home directory
+                "USER": "agentuser",
+                "SHELL": "/bin/bash",
+                "TERM": "xterm",  # Ensure terminal type is set
+                # Add Codex-specific environment variables
+                "CODEX_SANDBOX_MODE": "danger-full-access",
+                "CODEX_APPROVAL_POLICY": "never",
+            })
+            
+            # Create Codex config for containerized environment
+            config_dir = Path.home() / ".codex"
+            config_dir.mkdir(exist_ok=True)
+            config_file = config_dir / "config.toml"
+            
+            # Create instructions file to guide Codex
+            instructions_file = config_dir / "instructions.md"
+            instructions_content = """# Codex Agent Instructions
+
+## Repository Analysis Guide
+
+When analyzing a repository, use these commands effectively:
+
+### Essential Commands
+- `ls` - List files and directories
+- `find . -type f -name "*.py"` - Find specific file types
+- `rg --files` - List all files (respects .gitignore)
+- `rg "pattern"` - Search for patterns in files
+- `git log --oneline -n 10` - View recent commits
+- `git status` - Check repository status
+
+### Reading Files
+- `cat filename` - Read entire file (works for most files)
+- `head -n 50 filename` - Read first 50 lines
+- `tail -n 50 filename` - Read last 50 lines
+- `grep -n "pattern" filename` - Search in specific file
+- `wc -l filename` - Count lines in file
+
+### Best Practices
+1. Start with `ls` and `find` to understand structure
+2. Use `rg` for searching across multiple files
+3. Read key files like README.md, package.json, Cargo.toml
+4. For large files, use `head` or `tail` to sample content
+5. Use git commands to understand project history
+"""
+            with open(instructions_file, "w") as f:
+                f.write(instructions_content.strip())
+            
+            # Write minimal valid config
+            config_content = """
+model = "gpt-4o-mini"
+approval_policy = "never"
+"""
+            with open(config_file, "w") as f:
+                f.write(config_content.strip())
+            
+            
+            result = await asyncio.create_subprocess_exec(
+                "codex",
+                "exec",
+                "--dangerously-bypass-approvals-and-sandbox",
+                "--model", "gpt-4o-mini",  # Use standard model that doesn't require org verification
+                "--cd", self.repo_dir,  # Use Codex's working directory flag
+                self.prompt,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=codex_env,
+            )
+            
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 Codex subprocess created, streaming output in real-time"
+            }), flush=True)
+
+            # Stream output in real-time instead of waiting for completion
+            try:
+                async def stream_output():
+                    stdout_chunks = []
+                    stderr_chunks = []
+                    
+                    # Read stdout and stderr streams in real-time
+                    async def read_stdout():
+                        if result.stdout:
+                            async for line in result.stdout:
+                                line_text = line.decode('utf-8').rstrip()
+                                if line_text:
+                                    stdout_chunks.append(line_text)
+                                    # Stream to stdout with fire emoji prefix
+                                    print(f"🔥 {line_text}", flush=True)
+                                    
+                                    # Also write to database/Redis for frontend streaming
+                                    if self.db_service:
+                                        await self.db_service.write_agent_output(
+                                            run_id=self.run_id,
+                                            variation_id=int(self.variation_id),
+                                            content=line_text,
+                                            output_type="llm",
+                                            metadata={"source": "openai_codex_cli_stream"}
+                                        )
+                                    
+                                    # CRITICAL: Also publish to Redis for real-time WebSocket streaming
+                                    await self._publish_to_redis_only(line_text)
+
+                    async def read_stderr():
+                        if result.stderr:
+                            async for line in result.stderr:
+                                line_text = line.decode('utf-8').rstrip()
+                                if line_text:
+                                    stderr_chunks.append(line_text)
+                                    # Log stderr for debugging
+                                    print(json.dumps({
+                                        "timestamp": datetime.now(UTC).isoformat(),
+                                        "level": "ERROR",
+                                        "message": f"🔧 Codex stderr: {line_text}"
+                                    }), flush=True)
+
+                    # Run both readers concurrently
+                    await asyncio.gather(read_stdout(), read_stderr())
+                    
+                    # Wait for process to complete
+                    await result.wait()
+                    
+                    return b'\n'.join(chunk.encode('utf-8') for chunk in stdout_chunks), \
+                           b'\n'.join(chunk.encode('utf-8') for chunk in stderr_chunks)
+
+                # Run with timeout
+                stdout, stderr = await asyncio.wait_for(stream_output(), timeout=120.0)
+                
+                print(json.dumps({
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "level": "DEBUG",
+                    "message": f"🔧 Codex completed: exit_code={result.returncode}, stdout_len={len(stdout)}, stderr_len={len(stderr)}"
+                }), flush=True)
+                
+            except TimeoutError:
+                result.terminate()
+                await result.wait()
+                self.log_error("OpenAI Codex CLI execution timed out after 120 seconds", None)
+                raise RuntimeError("OpenAI Codex CLI execution timed out after 120 seconds")
+
+            # Handle output
+            if result.returncode == 0:
+                response_text = stdout.decode("utf-8")
+                self.log_progress(
+                    "OpenAI Codex CLI completed successfully",
+                    f"Generated {len(response_text)} characters",
+                )
+
+                # Stream the response line by line for consistency with other CLI tools
+                for line in response_text.split("\n"):
+                    if line.strip():
+                        print(f"🔥 {line}", flush=True)
+                
+                # Persist output to database
+                if self.db_service:
+                    await self.db_service.write_agent_output(
+                        run_id=self.run_id,
+                        variation_id=int(self.variation_id),
+                        content=response_text,
+                        output_type="stdout",
+                        metadata={"source": "openai_codex_cli", "exit_code": result.returncode}
+                    )
+
+                # Write analytics data for OpenAI Codex CLI
+                if self.db_service:
+                    try:
+                        request_end_time = datetime.now(UTC)
+                        response_time_ms = int((request_end_time - request_start_time).total_seconds() * 1000)
+                        analytics_data = {
+                            "model": "openai-codex-cli",
+                            "provider": "openai",
+                            "stream": False,
+                            "status": "success",
+                            "request_end_time": request_end_time,
+                            "response_time_ms": response_time_ms,
+                            "metadata": {
+                                "agent_mode": "openai-codex",
+                                "response_length": len(response_text),
+                                "working_directory": str(self.repo_dir),
+                                "codex_flags": ["exec", "--dangerously-bypass-approvals-and-sandbox"]
+                            }
+                        }
+                        
+                        await self.db_service.write_litellm_analytics(
+                            run_id=self.run_id,
+                            variation_id=int(self.variation_id),
+                            analytics_data=analytics_data
+                        )
+                        self.log(
+                            "Wrote OpenAI Codex CLI analytics to database",
+                            "INFO",
+                            analytics_summary=analytics_data
+                        )
+                    except Exception as analytics_error:
+                        self.log(
+                            f"Failed to write OpenAI Codex CLI analytics: {analytics_error}",
+                            "ERROR"
+                        )
+                
+                return response_text
+            else:
+                error_msg = stderr.decode("utf-8")
+                self.log_error(
+                    "OpenAI Codex CLI process failed",
+                    f"Exit code: {result.returncode}, Error: {error_msg}",
+                )
+                # Persist stderr to database
+                if self.db_service and error_msg:
+                    await self.db_service.write_agent_output(
+                        run_id=self.run_id,
+                        variation_id=int(self.variation_id),
+                        content=error_msg,
+                        output_type="stderr",
+                        metadata={"source": "openai_codex_cli", "exit_code": result.returncode}
+                    )
+                raise RuntimeError(
+                    f"OpenAI Codex CLI failed with exit code {result.returncode}: {error_msg}"
+                )
+
+        except Exception as e:
+            self.log_error("OpenAI Codex CLI execution failed", e)
+            raise RuntimeError(f"Failed to generate OpenAI Codex CLI response: {e}") from e
 
     async def _generate_litellm_response(self, codebase_summary: str | None) -> str:
         """Generate response using LiteLLM (original implementation)."""
@@ -1136,33 +1995,326 @@ Be thorough but concise in your response.
             response_text = ""
             chunk_count = 0
             buffer = ""
+            collected_chunks = []  # Collect chunks for usage extraction
 
             # Call THROUGH the LiteLLM Gateway
             # The gateway will handle routing to the actual provider
-            try:
-                response = await acompletion(
-                    model=self.config[
-                        "model"
-                    ],  # Use model name directly, Gateway handles routing
-                    max_tokens=self.config["max_tokens"],
-                    temperature=self.config["temperature"],
-                    messages=[{"role": "user", "content": full_prompt}],
-                    stream=True,  # Enable streaming
-                    api_base=self.gateway_url,  # Point to LiteLLM Gateway service
-                    api_key=self.gateway_key,  # Use Gateway master key
-                    # The gateway will use its own configured API keys to call providers
-                )
-            except Exception as api_error:
-                # Handle specific API errors with user-friendly messages
-                error_str = str(api_error).lower()
+            # Get the provider API key for this model
+            provider = self._get_model_provider(self.config["model"])
+            provider_key_env = f"{provider.upper()}_API_KEY"
+            api_key = os.getenv(provider_key_env)
+            
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": f"🔧 Using provider={provider}, has_api_key={bool(api_key)}, gateway_key={self.gateway_key}"
+            }), flush=True)
+            
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 About to prepare completion kwargs"
+            }), flush=True)
+            
+            # Use LiteLLM Gateway with clientside API key injection
+            completion_kwargs = {
+                "model": self.config["model"],
+                "max_tokens": self.config["max_tokens"],
+                "temperature": self.config["temperature"],
+                "messages": [{"role": "user", "content": full_prompt}],
+                "stream": True,
+                "stream_options": {"include_usage": True},
+                "api_base": self.gateway_url,  # Point to LiteLLM Gateway
+                "api_key": self.gateway_key,   # Use Gateway master key for auth
+            }
+            
+            # Pass provider API key via extra_body (clientside auth)
+            if api_key:
+                completion_kwargs["extra_body"] = {"api_key": api_key}
+            
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": f"🔧 About to call acompletion with model={completion_kwargs['model']}"
+            }), flush=True)
+            
+            response = await acompletion(**completion_kwargs)
+            
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 acompletion call successful, starting to process stream"
+            }), flush=True)
+            
+            # Debug: Verify response object
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": f"🔧 Response object type: {type(response)}"
+            }), flush=True)
 
-                if (
-                    "authentication" in error_str
-                    or "api key" in error_str
-                    or "unauthorized" in error_str
-                ):
-                    provider = self._get_model_provider(self.config["model"])
-                    error_message = f"""
+            # CRITICAL DEBUG: This should appear if we reach here
+            print(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "DEBUG",
+                "message": "🔧 REACHED AFTER acompletion - about to enter streaming loop"
+            }), flush=True)
+            
+            # Add debug logging before streaming loop  
+            self.log("🔧 About to enter async streaming loop", "DEBUG")
+            
+            async for chunk in response:
+                # Collect chunk for usage extraction
+                collected_chunks.append(chunk)
+
+                # Extract text from chunk
+                if chunk.choices and chunk.choices[0].delta.content:
+                    chunk_text = chunk.choices[0].delta.content
+                    response_text += chunk_text
+                    chunk_count += 1
+                    
+                    # Debug log for first few chunks
+                    if chunk_count <= 3:
+                        self.log(f"🔧 Processing chunk #{chunk_count}: '{chunk_text}'", "DEBUG")
+
+                    # Add to buffer
+                    buffer += chunk_text
+
+                    # Stream output in reasonable chunks
+                    # Wait for complete lines or reasonable amount of content
+                    while len(buffer) >= 200 or '\n' in buffer[:200]:
+                        # If we have a newline, output up to that
+                        newline_pos = buffer.find('\n')
+                        if newline_pos != -1 and newline_pos < 200:
+                            output_chunk = buffer[:newline_pos + 1]
+                        else:
+                            # Otherwise take a reasonable chunk
+                            chunk_size = min(200, len(buffer))
+                            output_chunk = buffer[:chunk_size]
+                            
+                            # Try to break at word boundary
+                            space_pos = output_chunk.rfind(" ")
+                            if space_pos > 100:  # Only adjust if we have substantial content
+                                output_chunk = buffer[: space_pos + 1]
+
+                        # Output to stdout (DatabaseStreamWriter handles database persistence)
+                        print(output_chunk, end="", flush=True)
+                        
+                        # Stream to Redis only (database handled by DatabaseStreamWriter)
+                        await self._publish_to_redis_only(output_chunk)
+                        buffer = buffer[len(output_chunk) :]
+
+
+            # Add debug logging after streaming loop
+            self.log(f"🔧 Streaming loop completed, processed {chunk_count} chunks", "DEBUG")
+            
+            # Output any remaining buffer
+            if buffer.strip():
+                self.log(f"🔧 Outputting remaining buffer: '{buffer[:50]}...'", "DEBUG")
+                import sys
+                
+                # Output remaining buffer
+                print(buffer, end="", flush=True)
+                
+                # Stream to Redis only (database handled by DatabaseStreamWriter)
+                await self._publish_to_redis_only(buffer)
+
+            # Extract usage data from collected chunks and collect analytics
+            tokens_used = None
+            cost_usd = None
+            provider = self._get_model_provider(self.config["model"])
+            request_start_time = datetime.now(UTC)
+            
+            # Prepare analytics data
+            analytics_data = {
+                "model": self.config["model"],
+                "provider": provider,
+                "temperature": self.config.get("temperature"),
+                "max_tokens": self.config.get("max_tokens"),
+                "stream": True,
+                "status": "success",
+                "request_start_time": request_start_time,
+                "metadata": {
+                    "litellm_version": "proxy",
+                    "gateway_url": self.gateway_url,
+                    "agent_mode": "litellm",
+                    "chunks_received": chunk_count,
+                }
+            }
+
+            try:
+                # Try to build complete response from chunks to get usage data
+                if collected_chunks:
+                    # Check if the last chunk has usage information
+                    last_chunk = collected_chunks[-1] if collected_chunks else None
+                    if last_chunk and hasattr(last_chunk, "usage") and last_chunk.usage:
+                        tokens_used = last_chunk.usage.total_tokens
+                        prompt_tokens = getattr(last_chunk.usage, "prompt_tokens", None)
+                        completion_tokens = getattr(last_chunk.usage, "completion_tokens", None)
+                        
+                        # Update analytics data with token usage
+                        analytics_data.update({
+                            "total_tokens": tokens_used,
+                            "prompt_tokens": prompt_tokens,
+                            "completion_tokens": completion_tokens,
+                        })
+                        
+                        self.log(
+                            "Extracted token usage from stream",
+                            "INFO",
+                            tokens_used=tokens_used,
+                            prompt_tokens=prompt_tokens,
+                            completion_tokens=completion_tokens
+                        )
+
+                        # Try to calculate cost
+                        try:
+                            # Create a mock response object for cost calculation
+                            mock_response = type("obj", (object,), {
+                                "model": self.config["model"],
+                                "usage": last_chunk.usage
+                            })()
+                            cost_usd = completion_cost(completion_response=mock_response)
+                            analytics_data["cost_usd"] = cost_usd
+                            
+                            self.log(
+                                "Calculated completion cost",
+                                "INFO",
+                                cost_usd=cost_usd,
+                                model=self.config["model"]
+                            )
+                        except Exception as cost_error:
+                            self.log(
+                                f"Failed to calculate cost: {cost_error}",
+                                "WARNING"
+                            )
+
+                    # If no usage in last chunk, try to rebuild complete response
+                    if tokens_used is None:
+                        try:
+                            complete_response = stream_chunk_builder(
+                                chunks=collected_chunks,
+                                messages=[{"role": "user", "content": full_prompt}]
+                            )
+                            if hasattr(complete_response, "usage") and complete_response.usage:
+                                tokens_used = complete_response.usage.total_tokens
+                                prompt_tokens = getattr(complete_response.usage, "prompt_tokens", None)
+                                completion_tokens = getattr(complete_response.usage, "completion_tokens", None)
+                                
+                                # Calculate cost from complete response
+                                cost_usd = completion_cost(completion_response=complete_response)
+                                
+                                # Update analytics data
+                                analytics_data.update({
+                                    "total_tokens": tokens_used,
+                                    "prompt_tokens": prompt_tokens,
+                                    "completion_tokens": completion_tokens,
+                                    "cost_usd": cost_usd,
+                                })
+                                
+                                self.log(
+                                    "Extracted usage from rebuilt response",
+                                    "INFO",
+                                    tokens_used=tokens_used,
+                                    cost_usd=cost_usd
+                                )
+                        except Exception as rebuild_error:
+                            self.log(
+                                f"Failed to rebuild response for usage: {rebuild_error}",
+                                "WARNING"
+                            )
+
+            except Exception as usage_error:
+                self.log(
+                    f"Failed to extract usage data: {usage_error}",
+                    "WARNING"
+                )
+                analytics_data["status"] = "error"
+                analytics_data["error_type"] = type(usage_error).__name__
+                analytics_data["error_message"] = str(usage_error)
+
+            # Calculate response time and performance metrics
+            request_end_time = datetime.now(UTC)
+            response_time_ms = int((request_end_time - request_start_time).total_seconds() * 1000)
+            analytics_data.update({
+                "request_end_time": request_end_time,
+                "response_time_ms": response_time_ms,
+            })
+            
+            # Calculate tokens per second if we have token data
+            if tokens_used and response_time_ms > 0:
+                tokens_per_second = (tokens_used / response_time_ms) * 1000
+                analytics_data["tokens_per_second"] = tokens_per_second
+
+            # Update run statistics if we have usage data
+            if self.db_service and (tokens_used is not None or cost_usd is not None):
+                try:
+                    await self.db_service.update_run_stats(
+                        run_id=self.run_id,
+                        tokens_used=tokens_used,
+                        cost_usd=cost_usd,
+                        model=self.config["model"],
+                        provider=provider
+                    )
+                    self.log(
+                        "Updated run statistics in database",
+                        "INFO",
+                        tokens_used=tokens_used,
+                        cost_usd=cost_usd
+                    )
+                except Exception as stats_error:
+                    self.log(
+                        f"Failed to update run statistics: {stats_error}",
+                        "ERROR"
+                    )
+            
+            # Write detailed LiteLLM analytics data
+            if self.db_service:
+                try:
+                    await self.db_service.write_litellm_analytics(
+                        run_id=self.run_id,
+                        variation_id=int(self.variation_id),
+                        analytics_data=analytics_data
+                    )
+                    self.log(
+                        "Wrote LiteLLM analytics to database",
+                        "INFO",
+                        analytics_summary={
+                            "model": analytics_data.get("model"),
+                            "tokens": analytics_data.get("total_tokens"),
+                            "cost": analytics_data.get("cost_usd"),
+                            "response_time_ms": analytics_data.get("response_time_ms"),
+                        }
+                    )
+                except Exception as analytics_error:
+                    self.log(
+                        f"Failed to write LiteLLM analytics: {analytics_error}",
+                        "ERROR"
+                    )
+
+            self.log(
+                "Streaming LLM response complete",
+                "INFO",
+                step="streaming_complete",
+                chunks_received=chunk_count,
+                total_length=len(response_text),
+                tokens_used=tokens_used,
+                cost_usd=cost_usd
+            )
+
+            return response_text
+                
+        except Exception as api_error:
+            # Handle specific API errors with user-friendly messages
+            error_str = str(api_error).lower()
+
+            if (
+                "authentication" in error_str
+                or "api key" in error_str
+                or "unauthorized" in error_str
+            ):
+                provider = self._get_model_provider(self.config["model"])
+                error_message = f"""
 🔑 **Authentication Error**
 
 The {provider.title()} API rejected the request due to authentication issues.
@@ -1179,14 +2331,14 @@ The {provider.title()} API rejected the request due to authentication issues.
 
 Original error: {api_error!s}
 """
-                    print(error_message, flush=True)
-                    raise RuntimeError(
-                        f"Authentication failed for {provider}: {api_error}"
-                    )
+                print(error_message, flush=True)
+                raise RuntimeError(
+                    f"Authentication failed for {provider}: {api_error}"
+                )
 
-                if "rate limit" in error_str or "quota" in error_str:
-                    provider = self._get_model_provider(self.config["model"])
-                    error_message = f"""
+            if "rate limit" in error_str or "quota" in error_str:
+                provider = self._get_model_provider(self.config["model"])
+                error_message = f"""
 ⏱️ **Rate Limit Exceeded**
 
 The {provider.title()} API rate limit has been exceeded.
@@ -1202,15 +2354,15 @@ The {provider.title()} API rate limit has been exceeded.
 
 Original error: {api_error!s}
 """
-                    print(error_message, flush=True)
-                    raise RuntimeError(
-                        f"Rate limit exceeded for {provider}: {api_error}"
-                    )
+                print(error_message, flush=True)
+                raise RuntimeError(
+                    f"Rate limit exceeded for {provider}: {api_error}"
+                )
 
-                if "model" in error_str and (
-                    "not found" in error_str or "does not exist" in error_str
-                ):
-                    error_message = f"""
+            if "model" in error_str and (
+                "not found" in error_str or "does not exist" in error_str
+            ):
+                error_message = f"""
 🤖 **Model Not Available**
 
 The model '{self.config["model"]}' is not available or does not exist.
@@ -1227,11 +2379,11 @@ The model '{self.config["model"]}' is not available or does not exist.
 
 Original error: {api_error!s}
 """
-                    print(error_message, flush=True)
-                    raise RuntimeError(f"Model not available: {api_error}")
+                print(error_message, flush=True)
+                raise RuntimeError(f"Model not available: {api_error}")
 
-                # Generic error
-                error_message = f"""
+            # Generic error
+            error_message = f"""
 ⚠️ **API Request Failed**
 
 An error occurred while calling the model API.
@@ -1246,72 +2398,142 @@ An error occurred while calling the model API.
 
 If the problem persists, contact support with the error details above.
 """
-                print(error_message, flush=True)
-                raise RuntimeError(f"API request failed: {api_error}")
+            print(error_message, flush=True)
+            raise RuntimeError(f"API request failed: {api_error}")
 
-            async for chunk in response:
-                # Extract text from chunk
-                if chunk.choices and chunk.choices[0].delta.content:
-                    chunk_text = chunk.choices[0].delta.content
-                    response_text += chunk_text
-                    chunk_count += 1
 
-                    # Add to buffer
-                    buffer += chunk_text
 
-                    # Stream output more frequently for smoother experience
-                    # Output smaller chunks (10-20 chars) instead of waiting for lines
-                    while len(buffer) >= 15:
-                        # Take a chunk, preferring to break at word boundaries
-                        chunk_size = 15
-                        output_chunk = buffer[:chunk_size]
-
-                        # Adjust chunk to end at word boundary if possible
-                        space_pos = output_chunk.rfind(" ")
-                        if space_pos > 8:  # Only adjust if we have a reasonable word
-                            output_chunk = buffer[: space_pos + 1]
-
-                        # Output the chunk directly without emoji prefix for cleaner parsing
-                        print(output_chunk, end="", flush=True)
-                        # Stream to Redis immediately
-                        await self.publish_output(output_chunk)
-                        buffer = buffer[len(output_chunk) :]
-
-                    # Also check for newlines to maintain structure
-                    if "\n" in buffer:
-                        lines = buffer.split("\n")
-                        for line in lines[:-1]:  # All complete lines
-                            print(line, flush=True)
-                            # Stream to Redis immediately
-                            await self.publish_output(line + "\n")
-                        buffer = lines[-1]  # Keep the incomplete line
-
-            # Output any remaining buffer
-            if buffer.strip():
-                print(buffer, end="", flush=True)
-                # Stream to Redis immediately
-                await self.publish_output(buffer)
-
-            self.log(
-                "Streaming LLM response complete",
-                "INFO",
-                step="streaming_complete",
-                chunks_received=chunk_count,
-                total_length=len(response_text),
-            )
-
-            return response_text
-
+    async def _generate_and_save_diffs(self) -> None:
+        """Generate diffs for all changed files and save to database."""
+        try:
+            self.log("🔍 Generating diffs for changed files", "INFO")
+            
+            # Change to repository directory
+            os.chdir(self.repo_dir)
+            
+            # Get list of unstaged changed files (Claude won't commit, so only check unstaged)
+            diff_result = subprocess.run(['git', 'diff', '--name-only'], 
+                                       capture_output=True, text=True)
+            self.log(f"🔍 Git diff output: {repr(diff_result.stdout)}", "DEBUG")
+            
+            # Parse git diff --name-only output (unstaged changes only)
+            changed_files = []
+            for line in diff_result.stdout.strip().split('\n'):
+                if line.strip():
+                    changed_files.append(line.strip())
+            
+            self.log(f"🔍 Detected unstaged changed files: {changed_files}", "DEBUG")
+            
+            if not changed_files:
+                self.log("📝 No file changes detected", "INFO")
+                return
+                
+            self.log(f"📂 Found {len(changed_files)} changed files", "INFO", 
+                    changed_files=changed_files)
+            
+            # Build diff array using the same format as the Python script
+            diff_array = []
+            for file in changed_files:
+                try:
+                    # Get old content from HEAD
+                    old_content = ""
+                    try:
+                        old_result = subprocess.run(['git', 'show', f'HEAD:{file}'], 
+                                                  capture_output=True, text=True, check=True)
+                        old_content = old_result.stdout
+                    except subprocess.CalledProcessError:
+                        # File is new and not in HEAD
+                        old_content = ""
+                    
+                    # Get new content from working directory
+                    new_content = ""
+                    try:
+                        with open(file, 'r', encoding='utf-8') as f:
+                            new_content = f.read()
+                    except FileNotFoundError:
+                        # File has been deleted
+                        new_content = ""
+                    
+                    diff_array.append({
+                        'oldFile': {'name': file, 'content': old_content},
+                        'newFile': {'name': file, 'content': new_content}
+                    })
+                    
+                except Exception as e:
+                    self.log(f"⚠️ Error processing file {file}: {e}", "WARNING")
+                    continue
+            
+            if diff_array:
+                # Save diffs to database
+                await self._save_diffs_to_database(diff_array)
+                self.log(f"✅ Generated and saved diffs for {len(diff_array)} files", "INFO")
+            else:
+                self.log("📝 No valid diffs generated", "INFO")
+                
         except Exception as e:
-            self.log_error("LLM generation failed", e)
-            raise RuntimeError(f"Failed to generate LLM response: {e}") from e
+            self.log_error("Failed to generate diffs", e)
+
+    async def _save_diffs_to_database(self, diff_array: list) -> None:
+        """Save diff array to database as agent output."""
+        try:
+            # Convert diff array to JSON string for storage
+            diff_json = json.dumps(diff_array, indent=2)
+            
+            # Save as agent output with type 'diffs'
+            if self.db_service:
+                await self.db_service.write_agent_output(
+                    run_id=self.run_id,
+                    variation_id=int(self.variation_id),
+                    content=diff_json,
+                    output_type="diffs",
+                    metadata={
+                        "source": "diff_generator",
+                        "file_count": len(diff_array),
+                        "format": "json"
+                    }
+                )
+                self.log("💾 Diffs saved to database successfully", "INFO")
+                
+                # Notify frontend that diffs are ready
+                await self.publish_status(
+                    "diffs_ready", 
+                    {
+                        "variation_id": int(self.variation_id),
+                        "file_count": len(diff_array),
+                        "diff_size": len(diff_json)
+                    }
+                )
+                self.log("📡 Published diffs_ready notification", "INFO")
+                
+            else:
+                self.log("⚠️ Database service not available, diffs not saved", "WARNING")
+                
+        except Exception as e:
+            self.log_error("Failed to save diffs to database", e)
 
 
 async def main():
     """Main entry point."""
+    print(json.dumps({
+        "timestamp": datetime.now(UTC).isoformat(),
+        "level": "DEBUG",
+        "message": "🔧 Starting main() function"
+    }), flush=True)
+    
     agent = AIdeatorAgent()
+    print(json.dumps({
+        "timestamp": datetime.now(UTC).isoformat(),
+        "level": "DEBUG", 
+        "message": "🔧 Agent initialized successfully"
+    }), flush=True)
+    
     try:
         # Run the agent
+        print(json.dumps({
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": "DEBUG",
+            "message": "🔧 About to call agent.run()"
+        }), flush=True)
         await agent.run()
 
         # Publish completion status
@@ -1319,10 +2541,15 @@ async def main():
             "variation_completed", {"variation_id": agent.variation_id, "success": True}
         )
 
-        # Sleep for 600 seconds (10 minutes) before exit on success
-        agent.log("⏱️ Sleeping for 600 seconds before exit", "INFO")
-        await asyncio.sleep(600)
+        # Sleep for 30 seconds before exit on success (to allow final logs to flush)
+        agent.log("⏱️ Sleeping for 30 seconds before exit", "INFO")
+        await asyncio.sleep(30)
 
+        # Wait for any background tasks to complete
+        if hasattr(agent, '_bg_tasks') and agent._bg_tasks:
+            agent.log(f"⏳ Waiting for {len(agent._bg_tasks)} background tasks to complete", "INFO")
+            await asyncio.gather(*agent._bg_tasks, return_exceptions=True)
+        
         # Clean up connections
         if agent.redis_client:
             await agent.redis_client.close()
@@ -1337,6 +2564,21 @@ async def main():
         agent.log("🏁 Exiting agent container", "INFO")
         sys.exit(1)
     finally:
+        # Restore original stdout/stderr
+        if isinstance(sys.stdout, DatabaseStreamWriter):
+            sys.stdout.flush()
+            sys.stdout = sys.stdout.original_stream
+        if isinstance(sys.stderr, DatabaseStreamWriter):
+            sys.stderr.flush()
+            sys.stderr = sys.stderr.original_stream
+        
+        # Wait for any remaining background tasks
+        if hasattr(agent, '_bg_tasks') and agent._bg_tasks:
+            try:
+                await asyncio.gather(*agent._bg_tasks, return_exceptions=True)
+            except Exception:
+                pass  # Best effort
+            
         # Clean up temp directory
         if hasattr(agent, "work_dir") and agent.work_dir.exists():
             try:

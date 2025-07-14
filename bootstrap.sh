@@ -199,11 +199,21 @@ EOF
 create_cluster() {
     log "Creating Kubernetes cluster..."
     
-    if ! ctlptl get cluster aideator >/dev/null 2>&1; then
+    # Temporarily disable k3d debug output
+    local OLD_LOG_LEVEL="${LOG_LEVEL}"
+    unset LOG_LEVEL
+    export K3D_LOG_LEVEL=WARN
+    
+    if ! ctlptl get cluster k3d-aideator >/dev/null 2>&1; then
         log "Creating ctlptl cluster from config..."
         ctlptl apply -f deploy/k3d/aideator-cluster.yaml
     else
-        log "Cluster 'aideator' already exists"
+        log "Cluster 'k3d-aideator' already exists"
+    fi
+    
+    # Restore log level
+    if [[ -n "${OLD_LOG_LEVEL}" ]]; then
+        export LOG_LEVEL="${OLD_LOG_LEVEL}"
     fi
     
     # Wait for cluster to be ready
@@ -233,8 +243,23 @@ setup_frontend() {
 setup_python() {
     log "Setting up Python dependencies..."
     
-    # Install in editable mode
-    pip3 install -e .
+    # Create virtual environment if it doesn't exist
+    if [[ ! -d .venv ]]; then
+        log "Creating Python virtual environment..."
+        python3 -m venv .venv
+    fi
+    
+    # Activate virtual environment and install in editable mode
+    source .venv/bin/activate
+    
+    # Use uv if available, otherwise fall back to pip
+    if command -v uv &> /dev/null && [ -f .venv/bin/python ]; then
+        log "Using uv to install dependencies"
+        uv pip install -e .
+    else
+        log "Using pip to install dependencies"
+        pip install -e .
+    fi
     
     log "Python dependencies installed"
 }

@@ -134,7 +134,7 @@ def custom_openapi(app: FastAPI) -> Callable[[], dict[str, Any]]:
                 WebSocket endpoint for real-time streaming of agent outputs.
 
                 **Connection:**
-                - Connect to: `ws://localhost:8000/ws/runs/{run_id}`
+                - Connect to: `ws://localhost:8000/api/v1/ws/runs/{run_id}`
                 - Protocol: WebSocket
                 - Authentication: Optional (query params or headers)
 
@@ -191,7 +191,7 @@ def custom_openapi(app: FastAPI) -> Callable[[], dict[str, Any]]:
                 WebSocket endpoint for debugging - streams only stdout logs for a specific variation.
 
                 **Connection:**
-                - Connect to: `ws://localhost:8000/ws/runs/{run_id}/debug?variation_id=0`
+                - Connect to: `ws://localhost:8000/api/v1/ws/runs/{run_id}/debug?variation_id=0`
                 - Protocol: WebSocket
                 - Filters: Only stdout messages for specified variation
 

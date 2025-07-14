@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql+asyncpg://aideator:aideator@localhost:5432/aideator"
     database_echo: bool = False
-    database_pool_size: int = 5
+    database_pool_size: int = 30  # Increased to handle WebSocket connections
     database_pool_recycle: int = 3600
 
     # Kubernetes Configuration

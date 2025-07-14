@@ -16,6 +16,7 @@ from app.models.provider import (
     ProviderCredential,
     ProviderType,
 )
+from app.models.provider_key import ProviderAPIKeyDB
 from app.models.user import User
 from app.schemas.models import (
     ModelCatalogResponse,
@@ -48,16 +49,17 @@ async def get_model_catalog(
     Get the full model catalog with provider information and user credentials status.
     """
     try:
-        # Get user's existing credentials
+        # Get user's existing credentials from provider_api_keys table
         result = await db.execute(
-            select(ProviderCredential).where(
-                ProviderCredential.user_id == current_user.id,
-                ProviderCredential.is_active,
+            select(ProviderAPIKeyDB).where(
+                ProviderAPIKeyDB.user_id == current_user.id,
+                ProviderAPIKeyDB.is_active,
             )
         )
         user_credentials = result.scalars().all()
 
         user_provider_map = {cred.provider: True for cred in user_credentials}
+        logger.info(f"User {current_user.id} has credentials for providers: {list(user_provider_map.keys())}")
 
         # Get all models from catalog
         all_models = model_catalog.get_all_models()
@@ -154,7 +156,7 @@ async def get_model_catalog(
                     if m.provider == provider_type
                 ),
                 model_count=count,
-                user_has_credentials=user_provider_map.get(provider_type, False),
+                user_has_credentials=user_provider_map.get(provider_type.value, False) or user_provider_map.get(provider_type, False),
             )
             provider_summaries.append(provider_summary)
 
@@ -489,16 +491,17 @@ async def get_providers(
     Get available providers with user credential status.
     """
     try:
-        # Get user's existing credentials
+        # Get user's existing credentials from provider_api_keys table
         result = await db.execute(
-            select(ProviderCredential).where(
-                ProviderCredential.user_id == current_user.id,
-                ProviderCredential.is_active,
+            select(ProviderAPIKeyDB).where(
+                ProviderAPIKeyDB.user_id == current_user.id,
+                ProviderAPIKeyDB.is_active,
             )
         )
         user_credentials = result.scalars().all()
 
         user_provider_map = {cred.provider: True for cred in user_credentials}
+        logger.info(f"User {current_user.id} has credentials for providers: {list(user_provider_map.keys())}")
 
         # Get all available providers
         all_providers = model_catalog.get_providers()
@@ -553,7 +556,7 @@ async def get_providers(
                 ),
                 requires_api_key=any(m.requires_api_key for m in provider_models),
                 model_count=len(provider_models),
-                user_has_credentials=user_provider_map.get(provider_type, False),
+                user_has_credentials=user_provider_map.get(provider_type.value, False) or user_provider_map.get(provider_type, False),
             )
             provider_summaries.append(provider_summary)
 

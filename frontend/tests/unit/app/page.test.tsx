@@ -222,7 +222,7 @@ describe('Home Page', () => {
       user_id: 'user-1',
       turn_number: 1,
       prompt: 'Test task',
-      context: 'https://github.com/octocat/Hello-World',
+      context: 'https://github.com/astral-sh/uv',
       model: 'gpt-4',
       models_requested: ['gpt-4', 'claude-3-sonnet'],
       responses: {},
@@ -235,7 +235,7 @@ describe('Home Page', () => {
     mockApiClient.executeCode.mockResolvedValue({
       turn_id: 'turn-123',
       run_id: 'run-123',
-      websocket_url: 'ws://localhost:8000/ws/runs/run-123',
+              websocket_url: 'ws://localhost:8000/api/v1/ws/runs/run-123',
       debug_websocket_url: 'ws://localhost:8000/ws/debug/run-123',
       status: 'pending',
       models_used: ['gpt-4', 'claude-3-sonnet']

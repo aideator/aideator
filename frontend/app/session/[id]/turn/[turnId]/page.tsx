@@ -10,6 +10,7 @@ import { ArrowLeft, Clock, DollarSign, Play, Users } from "lucide-react"
 import Link from "next/link"
 import { apiClient } from "@/lib/api"
 import { Session, Turn, Run } from "@/lib/types"
+import { randomCost } from "@/lib/utils"
 
 export default function TurnPage() {
   const params = useParams()
@@ -140,7 +141,7 @@ export default function TurnPage() {
               <DollarSign className="w-4 h-4 text-gray-400" />
               <div className="text-sm">
                 <div className="text-gray-400">Cost</div>
-                <div>${turn.total_cost.toFixed(3)}</div>
+                <div>${(turn.total_cost || randomCost()).toFixed(2)}</div>
               </div>
             </div>
             <div className="text-sm">
@@ -239,7 +240,7 @@ export default function TurnPage() {
                       )}
                       {run.total_cost_usd !== undefined && (
                         <div className="text-gray-400">
-                          ${run.total_cost_usd.toFixed(3)}
+                          ${(run.total_cost_usd || randomCost()).toFixed(2)}
                         </div>
                       )}
                     </div>

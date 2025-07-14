@@ -31,6 +31,26 @@ from app.schemas.session import (
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
+def _determine_agent_mode(model_definition_id: str, context: str = "") -> str:
+    """Determine the appropriate agent mode based on model and context."""
+    model_lower = model_definition_id.lower()
+    
+    # Check if this is chat mode
+    if context and "chat" in context.lower():
+        return "chat"
+    
+    # Map specific code models to their agent modes
+    if "claude" in model_lower or model_definition_id == "claude-code":
+        return "claude-cli"
+    elif "codex" in model_lower or "gpt-4-codex" in model_lower:
+        return "openai-codex"
+    elif "gemini" in model_lower or model_definition_id == "gemini-code":
+        return "gemini-cli"
+    
+    # Default to litellm for other models
+    return "litellm"
+
+
 @router.get("/", response_model=SessionListResponse)
 async def get_sessions(
     current_user: CurrentUser,
@@ -446,6 +466,44 @@ async def export_session(
     )
 
 
+@router.get("/{session_id}/turns/{turn_id}/runs")
+async def get_turn_runs(
+    session_id: str,
+    turn_id: str,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_session),
+) -> list[Run]:
+    """Get all runs for a specific turn."""
+    # Verify session ownership
+    session_query = select(Session).where(
+        and_(col(Session.id) == session_id, col(Session.user_id) == current_user.id)
+    )
+    session_result = await db.execute(session_query)
+    session = session_result.scalar_one_or_none()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Verify turn exists
+    turn_query = select(Turn).where(
+        and_(col(Turn.id) == turn_id, col(Turn.session_id) == session_id)
+    )
+    turn_result = await db.execute(turn_query)
+    turn = turn_result.scalar_one_or_none()
+
+    if not turn:
+        raise HTTPException(status_code=404, detail="Turn not found")
+
+    # Get runs for this turn
+    runs_query = (
+        select(Run)
+        .where(and_(col(Run.turn_id) == turn_id, col(Run.session_id) == session_id))
+        .order_by(col(Run.created_at))
+    )
+    runs_result = await db.execute(runs_query)
+    return runs_result.scalars().all()
+
+
 @router.post("/{session_id}/turns/{turn_id}/code", response_model=CodeResponse)
 async def execute_code(
     session_id: str,
@@ -463,6 +521,23 @@ async def execute_code(
     streaming URLs for both parsed results and debug logs.
     """
     settings = get_settings()
+    
+    # Log the incoming request
+    from app.core.logging import get_logger
+    logger = get_logger(__name__)
+    
+    # Process model variants
+    models_to_use = [variant.model_definition_id for variant in request.model_variants[:request.max_models]]
+    model_variants_config = [
+        {
+            "model_definition_id": variant.model_definition_id,
+            "model_parameters": variant.model_parameters,
+            "variant_id": variant.id,
+            "agent_mode": _determine_agent_mode(variant.model_definition_id, request.context)
+        }
+        for variant in request.model_variants[:request.max_models]
+    ]
+    logger.info(f"Execute code request - using {len(model_variants_config)} model variants")
     
     # Verify session ownership
     session_query = select(Session).where(
@@ -488,7 +563,7 @@ async def execute_code(
     if turn.prompt != request.prompt:
         turn.prompt = request.prompt
         turn.context = request.context
-        turn.models_requested = request.models[:request.max_models]
+        turn.models_requested = models_to_use
         turn.status = "streaming"
 
     # Generate run ID for the coding job
@@ -499,18 +574,15 @@ async def execute_code(
         id=run_id,
         github_url=request.context or "https://github.com/temp/repo",  # Placeholder for now
         prompt=request.prompt,
-        variations=len(request.models[:request.max_models]),
+        variations=len(models_to_use),
         agent_config={
-            "model_variants": [
-                {"model_definition_id": model, "agent_mode": "code"}
-                for model in request.models[:request.max_models]
-            ],
+            "model_variants": model_variants_config,
             "use_claude_code": True,
-            "agent_mode": "code",
-            "session_id": session_id,
-            "turn_id": turn_id,
+            "agent_mode": model_variants_config[0]["agent_mode"] if model_variants_config else "code",
         },
         user_id=current_user.id,
+        session_id=session_id,
+        turn_id=turn_id,
         status=RunStatus.PENDING,
     )
 
@@ -521,24 +593,32 @@ async def execute_code(
     session.updated_at = datetime.utcnow()
     
     await db.commit()
+    await db.refresh(run)  # Ensure run is fully loaded with all fields
 
     # Schedule background orchestration for coding task
-    background_tasks.add_task(
-        orchestrator.execute_variations,
-        run_id=run_id,
-        repo_url=request.context or "https://github.com/temp/repo",
-        prompt=request.prompt,
-        variations=len(request.models[:request.max_models]),
-        agent_config=None,  # Config is stored in run record
-        agent_mode="code",
-        db_session=db,
-    )
+    # Using secure API key retrieval system
+    # Create a new session for the background task
+    from app.core.database import async_session_maker
+    async def execute_with_session():
+        async with async_session_maker() as session:
+            await orchestrator.execute_variations(
+                run_id=run_id,
+                repo_url=request.context or "https://github.com/temp/repo",
+                prompt=request.prompt,
+                variations=len(models_to_use),
+                user_id=current_user.id,  # Add user_id for secure API key retrieval
+                agent_config=None,  # Config is stored in run record
+                agent_mode=model_variants_config[0]["agent_mode"] if model_variants_config else "code",
+                db_session=session,
+            )
+    
+    background_tasks.add_task(execute_with_session)
 
     # Return response with streaming URLs
     # Use localhost for frontend WebSocket connections instead of 0.0.0.0
     base_url = f"localhost:{settings.port}"
-    websocket_url = f"ws://{base_url}/ws/runs/{run_id}"
-    debug_websocket_url = f"ws://{base_url}/ws/runs/{run_id}/debug"
+    websocket_url = f"ws://{base_url}{settings.api_v1_prefix}/ws/runs/{run_id}"
+    debug_websocket_url = f"ws://{base_url}{settings.api_v1_prefix}/ws/runs/{run_id}/debug"
 
     return CodeResponse(
         turn_id=turn_id,
@@ -546,5 +626,5 @@ async def execute_code(
         websocket_url=websocket_url,
         debug_websocket_url=debug_websocket_url,
         status="accepted",
-        models_used=request.models[:request.max_models],
+        models_used=models_to_use,
     )

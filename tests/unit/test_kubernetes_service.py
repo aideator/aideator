@@ -81,6 +81,8 @@ class TestKubernetesService:
                             variation_id=variation_id,
                             repo_url=repo_url,
                             prompt=prompt,
+                            job_token="test-token",
+                            model="gpt-4",
                         )
 
         assert job_name == f"agent-{run_id}-{variation_id}"
@@ -114,6 +116,8 @@ class TestKubernetesService:
                             variation_id=0,
                             repo_url="https://github.com/test/repo",
                             prompt="test",
+                            job_token="test-token",
+                            model="gpt-4",
                             agent_config=agent_config,
                             agent_mode="claude-cli",
                         )
@@ -148,6 +152,8 @@ class TestKubernetesService:
                                 variation_id=0,
                                 repo_url="https://github.com/test/repo",
                                 prompt="test",
+                                job_token="test-token",
+                                model="gpt-4",
                             )
 
                         # Ensure cleanup happens even on error
@@ -459,6 +465,8 @@ class TestKubernetesService:
                             variation_id=0,
                             repo_url="https://github.com/test/repo",
                             prompt=prompt,
+                            job_token="test-token",
+                            model="gpt-4",
                         )
 
         assert job_name == "agent-test-0"

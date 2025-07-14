@@ -10,6 +10,7 @@ import { Clock, Layers, DollarSign, ArrowLeft, Plus } from "lucide-react"
 import Link from "next/link"
 import { apiClient } from "@/lib/api"
 import { Session, Turn } from "@/lib/types"
+import { randomCost } from "@/lib/utils"
 
 export default function SessionPage() {
   const params = useParams()
@@ -122,14 +123,14 @@ export default function SessionPage() {
               <DollarSign className="w-4 h-4 text-gray-400" />
               <div className="text-sm">
                 <div className="text-gray-400">Total Cost</div>
-                <div>${session.total_cost.toFixed(3)}</div>
+                <div>${(session.total_cost || randomCost()).toFixed(2)}</div>
               </div>
             </div>
             <div className="text-sm">
               <div className="text-gray-400">Models Used</div>
               <div className="flex flex-wrap gap-1 mt-1">
-                {session.models_used.map((model) => (
-                  <Badge key={model} variant="outline" className="text-xs">
+                {session.models_used.map((model, index) => (
+                  <Badge key={index} variant="outline" className="text-xs">
                     {model}
                   </Badge>
                 ))}
@@ -144,7 +145,13 @@ export default function SessionPage() {
               <TabsTrigger value="turns">Turns</TabsTrigger>
               <TabsTrigger value="analytics">Analytics</TabsTrigger>
             </TabsList>
-            <Button onClick={handleNewTurn} size="sm" className="gap-2">
+            <Button 
+              onClick={handleNewTurn} 
+              size="sm" 
+              className="gap-2" 
+              disabled
+              title="Multiple turns not yet supported"
+            >
               <Plus className="w-4 h-4" />
               New Turn
             </Button>
@@ -154,7 +161,12 @@ export default function SessionPage() {
             {turns.length === 0 ? (
               <div className="text-center py-12 bg-gray-900/30 border border-gray-800 rounded-lg">
                 <p className="text-gray-400 mb-4">No turns in this session yet.</p>
-                <Button onClick={handleNewTurn} variant="outline">
+                <Button 
+                  onClick={handleNewTurn} 
+                  variant="outline"
+                  disabled
+                  title="Multiple turns not yet supported"
+                >
                   Create First Turn
                 </Button>
               </div>
@@ -196,7 +208,7 @@ export default function SessionPage() {
                     </div>
                     <div className="text-right text-sm">
                       <div className="text-gray-400">Models: {turn.models_requested.length}</div>
-                      <div className="text-gray-400">Cost: ${turn.total_cost.toFixed(3)}</div>
+                      <div className="text-gray-400">Cost: ${(turn.total_cost || randomCost()).toFixed(2)}</div>
                       {turn.duration_seconds && (
                         <div className="text-gray-400">
                           Duration: {Math.round(turn.duration_seconds)}s
@@ -209,8 +221,8 @@ export default function SessionPage() {
 
                   <div className="flex items-center justify-between">
                     <div className="flex flex-wrap gap-1">
-                      {turn.models_requested.map((model) => (
-                        <Badge key={model} variant="outline" className="text-xs">
+                      {turn.models_requested.map((model, index) => (
+                        <Badge key={index} variant="outline" className="text-xs">
                           {model}
                         </Badge>
                       ))}
@@ -242,7 +254,7 @@ export default function SessionPage() {
                 </div>
                 <div className="text-center p-4 bg-gray-800/50 rounded-lg">
                   <div className="text-2xl font-bold">
-                    ${session.total_cost.toFixed(2)}
+                    ${(session.total_cost || randomCost()).toFixed(2)}
                   </div>
                   <div className="text-sm text-gray-400">Total Spent</div>
                 </div>

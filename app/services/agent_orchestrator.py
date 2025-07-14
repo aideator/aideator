@@ -14,6 +14,7 @@ from app.models.run import Run, RunStatus
 from app.schemas.runs import AgentConfig
 from app.services.kubernetes_service import KubernetesService
 from app.services.redis_service import redis_service
+from app.api.v1.jobs import generate_job_token
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -75,6 +76,7 @@ class AgentOrchestrator:
         repo_url: str,
         prompt: str,
         variations: int,
+        user_id: str,
         agent_config: AgentConfig | None = None,
         agent_mode: str | None = None,
         db_session: AsyncSession | None = None,
@@ -116,7 +118,7 @@ class AgentOrchestrator:
             await self._increment_job_count(variations)
 
             await self._execute_individual_jobs(
-                run_id, repo_url, prompt, variations, agent_mode, db_session
+                run_id, repo_url, prompt, variations, user_id, agent_config, agent_mode, db_session
             )
 
         except Exception as e:
@@ -143,19 +145,59 @@ class AgentOrchestrator:
         repo_url: str,
         prompt: str,
         variations: int,
+        user_id: str,
+        agent_config: AgentConfig | None = None,
         agent_mode: str | None = None,
         db_session: AsyncSession | None = None,
     ) -> None:
         """Execute agents using individual jobs."""
-        # Create individual jobs
+        # Get model variants from the run record if not in agent_config
+        model_variants = []
+        if db_session:
+            logger.info(f"Fetching run record for {run_id}")
+            run = await db_session.get(Run, run_id)
+            if run:
+                logger.info(f"Run found with agent_config: {run.agent_config}")
+                if run.agent_config and "model_variants" in run.agent_config:
+                    model_variants = run.agent_config["model_variants"]
+                    logger.info(f"Model variants from DB: {model_variants}")
+            else:
+                logger.warning(f"Run {run_id} not found in database")
+        else:
+            logger.warning("No database session provided to fetch model variants")
+        
+        # Create individual jobs with secure job tokens
         jobs = []
         for i in range(variations):
+            # Get model name and agent mode for this variation
+            litellm_model_name = None
+            variant_agent_mode = agent_mode  # Default fallback
+            if i < len(model_variants):
+                litellm_model_name = model_variants[i].get("model_definition_id")  # Now contains real LiteLLM name
+                variant_agent_mode = model_variants[i].get("agent_mode", agent_mode)
+            elif agent_config:
+                litellm_model_name = agent_config.model
+            
+            # Log the model and agent mode being used
+            logger.info(f"Creating job for variation {i} with litellm_model_name: {litellm_model_name}, agent_mode: {variant_agent_mode}")
+            
+            # Generate job token for secure API key retrieval
+            job_token = generate_job_token(
+                user_id=user_id,
+                run_id=run_id,
+                variation_id=i,
+                model_name=litellm_model_name,
+                expires_minutes=120  # 2 hours for job completion
+            )
+            
             job_name = await self.kubernetes.create_agent_job(
                 run_id=run_id,
                 variation_id=i,
                 repo_url=repo_url,
                 prompt=prompt,
-                agent_mode=agent_mode,
+                job_token=job_token,
+                model=litellm_model_name,
+                agent_mode=variant_agent_mode,
             )
             jobs.append((job_name, i))
 
@@ -290,3 +332,4 @@ class AgentOrchestrator:
         except Exception as e:
             logger.error(f"Failed to update run status: {e}")
             await db_session.rollback()
+

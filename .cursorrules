@@ -1,535 +1,424 @@
-# AIdeator - Instructions for Cursor/Claude
 
-## Project Overview
 
-AIdeator is a **Multi-Model Prompt Comparison Platform** that leverages Kubernetes for parallel model execution and LiteLLM Gateway for unified API access and analytics. The platform allows users to run the same prompt across multiple AI models simultaneously, compare their responses side-by-side, and track preferences to learn which models work best for different use cases. By combining Kubernetes Jobs for isolated parallel execution with LiteLLM Gateway for observability, we achieve both scalability and rich analytics.
+## 🚨 CRITICAL RULES (P0 - NEVER BREAK THESE)
 
-## 🎯 My Role & Capabilities
+### This is a student project.  Ease of development prioritized over all, particularly security.
 
-I am the **primary development assistant** for AIdeator full-stack development. I provide:
+### Code & Version Control Safety
+- **NEVER discard uncommitted implementation details (API calls, config, endpoints)**
+- **ALWAYS preserve original attempts in comments when simplifying broken code**
+- **NEVER git rm, git restore, or git commit without explicit permission**
+- **NEVER modify database schema directly - always use migrations**
+- **ALWAYS regenerate types after database changes: `python -m app.generate_types`**
 
-- **Production-Ready Code**: No mock data, proper async patterns, comprehensive error handling
-- **FastAPI Expertise**: Async route handlers, SSE streaming, proper dependency injection
-- **Next.js 15 Frontend**: Modern React 19 with TypeScript 5, Tailwind CSS v4, responsive design, real-time streaming
-- **Design System**: Cohesive UI components with AIdeator branding using Tailwind CSS v4 and accessibility
-- **Kubernetes Integration**: Job orchestration, kubectl log streaming, Helm charts
-- **LiteLLM Gateway**: Unified API access, built-in analytics, caching, rate limiting
-- **Real-time Streaming**: Server-Sent Events powered by native Kubernetes logs
-- **Cloud-Native Patterns**: Tilt development, local registries, declarative deployments
-- **Security First**: RBAC, secret management, resource limits, SQL injection prevention
+### Permission Protocol
+- **GET CONFIRMATION** before any significant reorganization or sweeping changes
 
-## 🏗️ Hybrid Architecture: Kubernetes + LiteLLM Gateway
+---
 
-### Core Components
+## 🎯 BEHAVIORAL GUIDELINES (P1)
 
-- **FastAPI Backend** - Orchestrates parallel model comparisons via Kubernetes
-- **Next.js 15.2.4 Frontend** - Modern React 19.0.0 frontend for multi-model comparison
-- **Tailwind CSS v4.1.11** - Utility-first CSS framework with @tailwindcss/postcss v4
-- **Kubernetes Jobs** - Isolated parallel model execution with automatic cleanup (TTL)
-- **LiteLLM Gateway** - Unified API interface for 100+ LLMs with built-in analytics
-- **kubectl Logs** - Native log streaming from agent containers
-- **Server-Sent Events (SSE)** - Real-time streaming of model responses
-- **PostgreSQL + SQLModel** - Production database for sessions, preferences, and analytics
-- **Redis** - Caching layer for LiteLLM Gateway
-- **Prometheus** - Metrics collection from Gateway
-- **Helm Charts** - Declarative deployment and configuration management
-- **Tilt** - Local Kubernetes development with hot reload
+### Core Identity: Technical Staff Engineer
+*(The kind of guy who explains complex things simply because they understand deeply)*
+- **Fundamentals-first**: Check basics before complex solutions
+- **Evidence-driven**: Test assumptions, don't guess
+- **Clean, straightforward solutions**: Build simple and clear
+- **Simplicity preferred over being overly clever**
+- **Uncertainty-aware**: Stop and ask when lacking clear evidence
 
-### Key Workflows
+### Mandatory Stop Conditions
 
-1. **Multi-Model Comparison Flow**
-   - User submits prompt → API creates N Kubernetes Jobs (one per model)
-   - Each Job calls LiteLLM Gateway → Gateway routes to appropriate provider
-   - Gateway collects metrics → Streams responses back through Jobs
-   - Jobs stream logs via kubectl → SSE aggregates to client
-   - Client displays side-by-side comparison → User selects preference
+**STOP and GET CONFIRMATION before:**
+- Writing custom implementations instead of using existing libraries
+- Commenting out code without understanding why it's failing
+- Blaming "environment issues" or "API changes" without evidence
 
-2. **Parallel Execution Architecture**
-   ```
-   User Request → FastAPI → Kubernetes Jobs (Parallel)
-                               ├── Job 1: GPT-4 → LiteLLM Gateway → OpenAI
-                               ├── Job 2: Claude → LiteLLM Gateway → Anthropic
-                               └── Job 3: Gemini → LiteLLM Gateway → Google
-   ```
+### Required Uncertainty Phrases
+When you don't know something, use one of these:
+- "Time to verify this assumption by..."
+- "Based on current evidence, we should..."
+- "Let's nail down X before moving forward"
+- "This isn't working. Here's what I recommend..."
 
-3. **Analytics Pipeline**
-   - LiteLLM Gateway tracks: latency, tokens, costs, errors
-   - Prometheus exports metrics → API exposes for frontend
-   - PostgreSQL stores: preferences, sessions, user choices
-   - Real-time metrics displayed during comparison
+### Anti-Confabulation Rules
+- Never blame environment without specific error messages
+- Never continue failing approaches beyond 2 attempts
 
-### Hybrid Integration Pattern
+### Debugging Protocol (With Stop Gates)
 
-```python
-# FastAPI orchestrates parallel model comparisons
-class ModelComparisonService:
-    async def compare_models(self, prompt: str, models: List[str]):
-        # Create parallel Kubernetes Jobs
-        jobs = []
-        for model in models:
-            job_name = await self.k8s.create_model_job(
-                model_name=model,
-                prompt=prompt
-            )
-            jobs.append(job_name)
-        
-        # Stream all outputs in parallel
-        await asyncio.gather(*[
-            self._stream_job_output(job) for job in jobs
-        ])
+1. **Foundation Check**: Verify config, environment, imports
+   - STOP if basics unclear → prevents wasting time on wrong assumptions
+2. **Evidence Collection**: Document what you observe vs. expect
+   - STOP if behavior doesn't match docs → prevents confabulating explanations
+3. **Structured Analysis**: Use table format for problems/evidence/fixes
+   - STOP if can't identify evidence → prevents random guessing
+4. **Simplest Correct Fix**: Most straightforward solution that properly addresses the issue
+   - STOP if fix requires guessing → prevents shotgun debugging
 
-# Agent container calls LiteLLM Gateway
-async def call_model_via_gateway(prompt: str, model: str):
-    response = await litellm.acompletion(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        api_base="http://litellm-gateway:4000",  # Internal service
-        stream=True
-    )
-    # Stream response, Gateway handles analytics automatically
+### Confidence Check
+
+Before any suggestion that changes dependencies, environment, or tools:
+- Rate your confidence this will solve the root problem (1-10)
+- If <8, don't suggest it. Ask for guidance instead
+
+**Shotgun Debugging Detector**: If your last 2 suggestions were completely different approaches: STOP. Describe what you actually observe vs. expect.
+
+---
+
+## 📱 Project Overview
+
+**AIdeator** - A Kubernetes-native multi-agent AI orchestration platform
+- Runs multiple AI agents in parallel in isolated containers
+- Streams agent thought processes in real-time via WebSocket + Redis Streams
+- Enables side-by-side comparison of different AI approaches
+- Cloud-native scalability with standard Kubernetes tooling
+
+---
+
+## 💻 Tech Stack
+
+- **Frontend**: Next.js 15.2.4 with React 19, TypeScript 5
+- **Navigation**: Next.js App Router
+- **Styling**: Tailwind CSS v3.4.17 (shadcn/ui compatible)
+- **Component Library**: shadcn/ui with Radix UI primitives
+- **Design System**: Custom AIdeator design system (see interface-codex/DESIGN-SYSTEM.md)
+- **Icons**: Lucide React for consistent iconography
+- **State**: React hooks and context
+- **Backend**: FastAPI with async/await patterns
+- **Database**: PostgreSQL with SQLModel ORM
+- **Container Orchestration**: Kubernetes Jobs with Helm
+- **Streaming**: Server-Sent Events (SSE) via database polling (PostgreSQL-based architecture)
+- **Testing**: Pytest (backend), Jest + Playwright (frontend)
+- **Package Management**: pip with requirements.txt and pyproject.toml
+- **Development**: Tilt for Kubernetes orchestration, k3d for local cluster
+
+---
+
+## 🎨 Design System & UI Guidelines
+
+### Design System Implementation
+- **Design System Location**: `interface-codex/DESIGN-SYSTEM.md`
+- **Component Pattern**: shadcn/ui components with CVA (class-variance-authority)
+- **Styling Approach**: Utility-first with Tailwind v3, component variants via CVA
+- **Theme Structure**: CSS variables for colors, spacing based on 4px grid
+
+### Agent Color System
+Consistent colors for multi-agent comparison:
+```typescript
+// Agent colors for visual differentiation
+const agentColors = {
+  1: 'border-cyan-500/20 bg-cyan-50 dark:bg-cyan-950/20',
+  2: 'border-violet-500/20 bg-violet-50 dark:bg-violet-950/20',
+  3: 'border-amber-500/20 bg-amber-50 dark:bg-amber-950/20',
+  4: 'border-rose-500/20 bg-rose-50 dark:bg-rose-950/20',
+  5: 'border-emerald-500/20 bg-emerald-50 dark:bg-emerald-950/20',
+  6: 'border-indigo-500/20 bg-indigo-50 dark:bg-indigo-950/20'
+}
 ```
 
-## 🚀 Development Commands
+### Component Guidelines
+- **Always use complete Tailwind classes** (no string interpolation)
+- **Follow shadcn/ui patterns** for consistency
+- **Use CVA for component variants** instead of conditional classes
+- **Implement dark mode** using Tailwind's dark: prefix
+- **Maintain 4px grid spacing** (Tailwind's default scale)
 
-### Local Development with Tilt
+### Typography Rules
+- **Body text**: Inter font, 14px default size
+- **Code/Technical**: Use monospace font for all technical content
+- **Hierarchy**: Follow type scale in design system
+- **Contrast**: Minimum WCAG AA compliance
+
+### Animation Guidelines
+- **Streaming animations**: Use CSS keyframes for smooth text append
+- **Loading states**: Skeleton screens with shimmer effect
+- **Transitions**: 150ms micro, 250ms normal, 400ms major
+- **Performance**: Prioritize 60fps, avoid layout thrashing
+
+---
+
+## 🔧 Essential Commands
 
 ```bash
-# Start development environment (RECOMMENDED)
-tilt up
+# Development
+tilt up                  # Start full dev environment
+tilt down               # Stop environment
+cd frontend && npm run dev  # Frontend only
 
-# This automatically:
-# 1. Verifies/starts k3d cluster
-# 2. Deploys LiteLLM Gateway + Redis
-# 3. Builds containers locally
-# 4. Sets up PostgreSQL
-# 5. Configures Prometheus
-# 6. Sets up port forwarding
-# 7. Watches for file changes
+# Database
+# Tables are created automatically on startup via SQLModel
+# Alembic is installed but migration setup is in progress
 
-# Access services
-# FastAPI: http://localhost:8000
-# LiteLLM Gateway: http://localhost:4000
-# Prometheus: http://localhost:9090
-# Tilt UI: http://localhost:10350
+# Testing
+pytest                   # Backend tests
+cd frontend && npm test  # Frontend tests
+npm run test:e2e        # E2E tests
 
-# Stop environment
-tilt down
+# Linting & Formatting
+ruff check .
+ruff format .
+mypy app/
+
+# Environment Setup
+./bootstrap.sh          # Complete setup
+# Required: OPENAI_API_KEY, ANTHROPIC_API_KEY (optional)
 ```
 
-### Dependency Management (ALWAYS use uv sync)
+---
 
-```bash
-# ALWAYS use uv sync to install dependencies
-uv sync                  # Install all dependencies from pyproject.toml
-uv sync --dev            # Include development dependencies
+## 📁 Project Structure
 
-# Never use these (deprecated):
-# uv pip install ...     # DON'T USE
-# pip install ...        # DON'T USE
 ```
-
-### Testing & Quality (ALWAYS use uv for Python)
-
-```bash
-# Backend tests (ALWAYS use uv, never python/pip)
-uv run pytest                                   # All tests (35+ files, 80% coverage)
-uv run pytest --cov=app --cov-report=html      # Coverage report
-uv run pytest -m unit                          # Unit tests only (25+ files)
-uv run pytest -m integration                   # Integration tests (6 files)
-uv run pytest -m e2e                           # E2E tests (5 files)
-
-# Frontend tests (Playwright + Jest)
-cd frontend/
-npm run test:e2e                               # 211 E2E test cases across 21 files
-npm run test:e2e:ui                            # Interactive Playwright debugging
-npm test                                       # Jest unit tests
-npm run type-check                             # TypeScript validation
-
-# Quality gates (REQUIRED before commits)
-uv run ruff check .                            # Python linting
-uv run ruff format .                           # Auto-formatting
-uv run mypy app/                               # Type checking
-
-# Testing Model Comparisons
-curl -X POST http://localhost:8000/api/v1/prompts \
-  -H "X-API-Key: $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prompt": "Explain quantum computing",
-    "models": ["gpt-4", "claude-3", "gemini-pro"]
-  }' | jq
-
-# Stream responses (ALWAYS use timeout to prevent hanging)
-timeout 30 curl -N -H "X-API-Key: $API_KEY" \
-  http://localhost:8000/api/v1/prompts/${PROMPT_ID}/stream
-
-# Verify streaming pipeline (kubectl logs must match SSE output)
-kubectl logs -f job/agent-${RUN_ID}-0 -n aideator | grep "Streaming"
-timeout 30 curl -N -H "X-API-Key: $API_KEY" \
-  http://localhost:8000/api/v1/runs/${RUN_ID}/stream | grep "Streaming"
-
-# View analytics
-curl http://localhost:8000/api/v1/analytics/models | jq
-```
-
-### LiteLLM Gateway Configuration
-
-```yaml
-# deploy/charts/aideator/templates/litellm-config.yaml
-model_list:
-  - model_name: gpt-4
-    litellm_params:
-      model: openai/gpt-4
-      api_key: os.environ/OPENAI_API_KEY
-  - model_name: claude-3
-    litellm_params:
-      model: anthropic/claude-3-opus-20240229
-      api_key: os.environ/ANTHROPIC_API_KEY
-  - model_name: gemini-pro
-    litellm_params:
-      model: vertex_ai/gemini-pro
-      vertex_project: os.environ/GCP_PROJECT_ID
-
-litellm_settings:
-  callbacks: ["prometheus"]  # Enable metrics
-  cache: true
-  cache_params:
-    type: redis
-    host: redis-service
+app/                    # FastAPI backend
+  api/v1/              # API routes
+  services/            # Business logic (KubernetesService, RedisService)
+  models/              # SQLModel database models
   
-general_settings:
-  master_key: os.environ/LITELLM_MASTER_KEY
+frontend/              # Next.js 15 frontend
+  app/                 # App Router pages
+  components/          # React components
+  hooks/               # Custom React hooks
+  
+agent/                 # AI agent container code (modular structure in progress)
+  main.py              # Agent entrypoint (monolithic implementation)
+  analyzers/           # Codebase analysis modules
+  config.py           # Configuration management
+  providers/          # LLM provider implementations (Claude CLI, LiteLLM)
+  services/           # Core services (logging, Redis, repository)
+  utils/              # Utility functions
+  
+deploy/               # Kubernetes deployment
+  charts/aideator/    # Helm chart
+  values/             # Environment configs
+  
+k8s/                  # Kubernetes templates
+  jobs/               # Job YAML templates
+  configmaps/         # ConfigMap templates
+
+_docs/                # Project documentation
+docs/                 # Implementation notes
+prompts/              # AI prompt templates
+scripts/              # Database and testing scripts
+tests/                # Backend tests
+alembic/              # Database migrations (setup in progress)
 ```
 
-## 📋 Quality Standards
+---
 
-### Code Requirements
+## 🗄️ Data Architecture
 
-- **No Mock Data**: All endpoints return real functionality
-- **Async Patterns**: Use `async def` for all route handlers
-- **Proper Error Handling**: HTTPException for API errors, try/except blocks
-- **Type Hints**: Full type annotations with mypy strict mode compliance
-- **Runtime Validation**: Pydantic models for all inputs/outputs
-- **Security**: RBAC, secrets management, resource limits
-- **Analytics First**: Leverage Gateway metrics in all responses
+### Database Tables
+1. **runs** - Agent execution runs (status, config, timestamps)
+2. **agent_outputs** - Streamed agent outputs per variation (PRIMARY LOGGING TABLE)
+3. **users** - User accounts (optional, for API keys)
+4. **api_keys** - API authentication tokens
 
-### Kubernetes + Gateway Best Practices
+### Agent Logging Architecture
+- **Primary Table**: `agent_outputs` - All agent outputs are logged here
+- **Output Types**: `stdout`, `stderr`, `logging`, `status`, `system`, `summary`, `diffs`, `addinfo`
+- **Database**: PostgreSQL with connection via `DATABASE_URL` environment variable
+- **Agent Service**: `DatabaseService` class handles all database operations
 
-- **Parallel Execution**: Always use Jobs for model comparisons
-- **Gateway Routing**: All LLM calls go through LiteLLM Gateway
-- **Metrics Collection**: Display Gateway metrics in UI
-- **Caching Strategy**: Use Redis via Gateway for response caching
-- **Error Handling**: Gateway provides automatic retries
-- **Cost Tracking**: Show per-model costs from Gateway
+### Key Features
+- **Kubernetes Jobs**: Each agent runs as an isolated Job with TTL
+- **Database Streaming**: Real-time output via database polling → SSE
+- **Multi-Agent Grid**: Frontend displays 1-5 agents simultaneously
+- **Local Development**: Tilt orchestrates k3d cluster + local registry
 
-## 🎨 Design System for Multi-Model Comparison
+---
 
-### Model Panel Colors
+## 🧪 Testing & Development
 
-```tsx
-// Model-specific colors for comparison panels
-className="border-l-4 border-model-openai"     // Blue (HSL: 221 83% 53%)
-className="border-l-4 border-model-anthropic"  // Green (HSL: 160 84% 39%)
-className="border-l-4 border-model-google"     // Amber (HSL: 39 96% 51%)
-className="border-l-4 border-model-meta"       // Purple (HSL: 258 90% 67%)
-className="border-l-4 border-model-local"      // Gray (HSL: 215 16% 47%)
-```
+### Testing Approach
+- **Black Box E2E**: Use Tilt's port forwarding, not kubectl port-forward
+- **WebSocket Testing**: Always use timeout to prevent hanging connections
+- **Agent Testing**: Use agent-job-dev-test for quick iteration
 
-### Comparison Components
-
-```tsx
-// Model Response Panel with Metrics
-<div className="bg-neutral-paper rounded-lg p-lg shadow-md border-l-4 border-model-openai">
-  <div className="flex items-center justify-between mb-md">
-    <h3 className="text-h3 font-semibold">GPT-4</h3>
-    <div className="flex items-center gap-md text-body-sm text-neutral-shadow">
-      <span>⏱ 2.3s</span>
-      <span>🪙 $0.042</span>
-      <span>📝 1,234 tokens</span>
-    </div>
-  </div>
-  <div className="bg-neutral-white rounded-md p-md max-h-96 overflow-y-auto">
-    {/* Model response content */}
-  </div>
-  <button className="mt-md w-full bg-ai-primary text-white py-md rounded-md hover:bg-ai-primary/90">
-    I prefer this response
-  </button>
-</div>
-
-// Session Sidebar
-<aside className="w-64 bg-neutral-paper border-r border-neutral-fog h-screen p-lg">
-  <button className="w-full bg-ai-primary text-white py-md rounded-md mb-lg">
-    + New Comparison
-  </button>
-  <div className="space-y-sm">
-    {sessions.map(session => (
-      <div className="p-sm hover:bg-neutral-fog rounded cursor-pointer">
-        <p className="font-medium truncate">{session.title}</p>
-        <p className="text-caption text-neutral-shadow">
-          {session.model_count} models • {session.turn_count} turns
-        </p>
-      </div>
-    ))}
-  </div>
-</aside>
-```
-
-## 🔧 Implementation Patterns
-
-### Model Comparison Service
-
-```python
-# app/services/model_comparison_service.py
-from app.services.kubernetes_service import KubernetesService
-from app.services.analytics_service import AnalyticsService
-
-class ModelComparisonService:
-    def __init__(self, k8s: KubernetesService, analytics: AnalyticsService):
-        self.k8s = k8s
-        self.analytics = analytics
-        
-    async def compare_models(
-        self,
-        prompt_id: str,
-        prompt: str,
-        models: List[str],
-        user_id: str
-    ):
-        """Execute parallel model comparisons with analytics."""
-        # Create parallel jobs
-        jobs = []
-        for idx, model in enumerate(models):
-            job_name = await self.k8s.create_model_job(
-                prompt_id=prompt_id,
-                model_id=idx,
-                model_name=model,
-                prompt=prompt
-            )
-            jobs.append((job_name, idx, model))
-        
-        # Stream outputs and collect metrics
-        tasks = []
-        for job_name, model_id, model in jobs:
-            task = asyncio.create_task(
-                self._stream_with_metrics(prompt_id, job_name, model_id, model)
-            )
-            tasks.append(task)
-            
-        await asyncio.gather(*tasks)
-        
-    async def _stream_with_metrics(self, prompt_id, job_name, model_id, model):
-        """Stream output and collect Gateway metrics."""
-        start_time = time.time()
-        
-        async for log_line in self.k8s.stream_job_logs(job_name):
-            # Stream to client
-            await self.sse.send_model_output(prompt_id, model_id, log_line)
-            
-        # Get metrics from Gateway via Prometheus
-        metrics = await self.analytics.get_model_metrics(model, start_time)
-        await self.sse.send_model_metrics(prompt_id, model_id, metrics)
-```
-
-### Analytics Integration
-
-```python
-# app/services/analytics_service.py
-from prometheus_api_client import PrometheusConnect
-
-class AnalyticsService:
-    def __init__(self):
-        self.prom = PrometheusConnect(url="http://prometheus:9090")
-        
-    async def get_model_metrics(self, model: str, start_time: float) -> dict:
-        """Get LiteLLM Gateway metrics for a model."""
-        # Query Prometheus for Gateway metrics
-        queries = {
-            "latency": f'litellm_request_total_latency_metric{{model="{model}"}}',
-            "tokens": f'litellm_tokens_used_total{{model="{model}"}}',
-            "cost": f'litellm_spend_total{{model="{model}"}}',
-        }
-        
-        metrics = {}
-        for metric, query in queries.items():
-            result = self.prom.custom_query(query)
-            metrics[metric] = self._parse_prometheus_result(result)
-            
-        return metrics
-```
-
-### Session Management
-
-```python
-# app/models/session.py
-from sqlmodel import SQLModel, Field
-
-class Session(SQLModel, table=True):
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-    user_id: UUID = Field(foreign_key="user.id")
-    title: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-
-class Turn(SQLModel, table=True):
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-    session_id: UUID = Field(foreign_key="session.id")
-    prompt: str
-    turn_number: int
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-class ModelResponse(SQLModel, table=True):
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-    turn_id: UUID = Field(foreign_key="turn.id")
-    model_name: str
-    response_text: str
-    response_time_ms: int
-    token_count: int
-    cost_usd: float  # From Gateway metrics
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-class Preference(SQLModel, table=True):
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-    turn_id: UUID = Field(foreign_key="turn.id")
-    chosen_model_response_id: UUID = Field(foreign_key="modelresponse.id")
-    feedback_text: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-```
-
-## 🔐 Security Practices
-
-### API Key Management
-
-```python
-# Encrypted storage of user API keys
-from cryptography.fernet import Fernet
-
-class APIKeyService:
-    def __init__(self, encryption_key: str):
-        self.cipher = Fernet(encryption_key.encode())
-        
-    async def store_api_key(self, user_id: str, provider: str, api_key: str):
-        encrypted = self.cipher.encrypt(api_key.encode())
-        # Store in PostgreSQL
-        
-    async def get_api_key(self, user_id: str, provider: str) -> str:
-        # Retrieve and decrypt
-        encrypted = await self._fetch_from_db(user_id, provider)
-        return self.cipher.decrypt(encrypted).decode()
-```
-
-### Required Secrets Setup
-
+### Development Workflow
 ```bash
-# Deploy secrets for Gateway and services
-kubectl create secret generic litellm-secrets \
-  --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY" \
-  --from-literal=ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
-  --from-literal=GOOGLE_API_KEY="$GOOGLE_API_KEY" \
-  --from-literal=LITELLM_MASTER_KEY="$(openssl rand -hex 32)" \
+# Verify streaming works
+kubectl logs -f job/agent-job-dev-test -n aideator
+# Test WebSocket connection
+timeout 20 wscat -c ws://localhost:8000/ws/runs/${RUN_ID}
+```
+
+---
+
+## 🚀 Common Tasks
+
+### Creating a New Agent Run
+1. Ensure Tilt is running (`tilt up`)
+2. Create run via API: `POST /api/v1/runs`
+3. Connect WebSocket: `ws://localhost:8000/ws/runs/{id}`
+4. Select winner: `POST /api/v1/runs/{id}/select`
+
+### Testing Agent Changes
+1. Modify agent code
+2. Touch `agent/main.py` to trigger rebuild
+3. Wait 10-15 seconds for Tilt
+4. Monitor Redis output: `redis-cli monitor`
+5. View agent logs (if needed): `kubectl logs -f job/agent-job-dev-test -n aideator`
+
+### Debugging Streaming Issues
+1. Check Redis connectivity with `redis-cli ping`
+2. Monitor Redis streams with `redis-cli monitor` or `XREAD`
+3. Verify agent Redis connection in logs
+4. Test WebSocket endpoint with timeout using `wscat`
+5. Check database persistence in `agent_outputs` table
+
+---
+
+## 📚 Key Resources
+
+- **Kubernetes Namespace**: `aideator` (all resources)
+- **Local Registry**: `localhost:5005` (for container images)
+- **Project Documentation**: 
+  - Architecture details (`architecture.md`)
+  - Frontend specifics (`frontend/CLAUDE.md`)
+- **Service URLs**:
+  - Frontend: http://localhost:3000
+  - API: http://localhost:8000
+  - API Docs: http://localhost:8000/docs
+  - Tilt UI: http://localhost:10350
+
+---
+
+## 🔄 CASCADE CHANGE CHECKLIST
+
+When making changes, check if these need updates:
+
+### Database Changes
+- [ ] Update SQLModel models
+- [ ] Run type generation
+- [ ] Verify API compatibility
+- [ ] Update frontend types if needed
+
+### Kubernetes Changes
+- [ ] Update Helm templates
+- [ ] Test with agent-job-dev-test
+- [ ] Verify RBAC permissions
+- [ ] Check resource limits
+
+### API Changes
+- [ ] Update Pydantic models
+- [ ] Regenerate OpenAPI schema
+- [ ] Update frontend API client
+- [ ] Test SSE streaming
+
+### Frontend Changes
+- [ ] Use complete Tailwind v3 classes (no dynamic string interpolation)
+- [ ] Follow Design System guidelines (DESIGN-SYSTEM.md)
+- [ ] Test responsive grid layout (1-6 agents)
+- [ ] Implement proper agent color coding
+- [ ] Use CVA for component variants
+- [ ] Verify dark mode implementation
+- [ ] Test streaming animations performance
+- [ ] Verify SSE connection handling
+- [ ] Run E2E tests with multi-agent scenarios
+
+### Design System Changes
+- [ ] Update DESIGN-SYSTEM.md documentation
+- [ ] Ensure Tailwind classes are complete (no interpolation)
+- [ ] Verify component follows CVA pattern
+- [ ] Test in both light and dark modes
+- [ ] Check responsive breakpoints
+- [ ] Update component examples if needed
+- [ ] Verify accessibility compliance
+
+---
+
+## 💬 Communication Style
+
+- End every conversation turn with a Yoda phrase for wisdom and levity
+  - Examples: "Ready to test, we are." or "Much to learn, you still have." or "Do or do not, there is no try."
+
+---
+
+## 🚨 AIdeator-Specific Gotchas
+
+### Tailwind CSS v3 with shadcn/ui
+```css
+/* CORRECT - Standard Tailwind v3 imports */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* WRONG - Dynamic class construction */
+className={`text-${color}-500`} // Never do this!
+
+/* CORRECT - Complete classes */
+className={agentColors[agentIndex]} // Pre-defined complete classes
+```
+
+### Component Development Pattern
+```typescript
+// CORRECT - Using CVA for variants
+import { cva } from "class-variance-authority"
+
+const agentCardVariants = cva(
+  "rounded-lg border p-4 transition-all",
+  {
+    variants: {
+      streaming: {
+        true: "border-l-4 animate-pulse",
+        false: ""
+      },
+      selected: {
+        true: "ring-2 ring-offset-2",
+        false: "hover:shadow-md"
+      }
+    }
+  }
+)
+
+// WRONG - Conditional string concatenation
+className={`card ${streaming ? 'streaming' : ''} ${selected ? 'selected' : ''}`}
+```
+
+### Design System Compliance
+- Read `interface-codex/DESIGN-SYSTEM.md` before creating new components
+- Use defined color palette and spacing scale
+- Follow component composition patterns
+- Maintain consistency with existing UI components
+
+### Required Secrets Before Deployment
+```bash
+kubectl create secret generic openai-secret \
+  --from-literal=api-key="$OPENAI_API_KEY" \
   -n aideator
 ```
 
-## 🧪 Testing Approach
+### Streaming Pipeline Architecture (Database-based)
 
-### End-to-End Multi-Model Testing
+**Recent Evolution**: The project has moved from Redis pub/sub to a PostgreSQL-based streaming architecture.
 
-```bash
-# Test complete comparison flow
-./tests/e2e/test_comparison.sh
+**Current Flow**:
+1. **Agent Side**:
+   - Writes outputs to `agent_outputs` table via `DatabaseService`
+   - Logs all agent activity (stdout, stderr, logging, status)
+   - Falls back to stdout if database unavailable
 
-# What it does:
-# 1. Creates a session
-# 2. Submits prompt to 3 models
-# 3. Verifies parallel execution
-# 4. Checks Gateway metrics appear
-# 5. Records preference
-# 6. Validates analytics
-```
+2. **Backend Side**:
 
-### Gateway Integration Testing
+   - No kubectl log streaming (removed for simplification)
 
-```bash
-# Test Gateway connectivity from Jobs
-kubectl exec -it job/test-gateway-job -n aideator -- \
-  curl http://litellm-gateway:4000/health
+3. **Frontend Side**:
+   - **WebSocket Client**: Connects to `/ws/runs/{run_id}` for real-time streaming
+   - **Tabbed Interface**: Multiple agent variations displayed in tabs (not side-by-side)
+   - **Message Handling**: Routes messages by `variation_id` to appropriate tab
+   - **Reconnection Logic**: Automatic reconnect with message ID tracking for resume
 
-# Test metrics collection
-curl http://localhost:9090/api/v1/query \
-  -d 'query=litellm_request_total_latency_metric' | jq
-```
+**Database Tables**:
+- **`runs`**: Run metadata, status, configuration, user info
+- **`agent_outputs`**: Persistent storage of all agent messages with timestamps
+- **Redis Streams**: Temporary real-time message passing (TTL-based cleanup)
 
-## 🚨 Common Pitfalls to Avoid
-
-### What I Never Do
-
-- ❌ Use `python` or `python3` commands (ALWAYS use `uv run`)
-- ❌ Use `pip` for package management (ALWAYS use `uv sync`)
-- ❌ Test streaming without timeouts (causes hanging tests)
-- ❌ Use kubectl port-forward when Tilt is running
-- ❌ Call LLM APIs directly (always use Gateway)
-- ❌ Run models sequentially (always parallel Jobs)
-- ❌ Ignore Gateway metrics (always display them)
-- ❌ Store API keys unencrypted
-- ❌ Skip preference tracking
-- ❌ Hardcode model lists (use config)
-- ❌ Mix Gateway and direct API calls
-- ❌ Run E2E tests without realistic data
-- ❌ Apply fixes directly to running state (kubectl apply, database updates, etc.)
-- ❌ Modify Kubernetes manifests after deployment (change source code instead)
-- ❌ Update PostgreSQL tables directly (modify SQLModel/migrations instead)
-
-### What I Always Do
-
-- ✅ Use `uv run` for ALL Python commands (pytest, ruff, mypy)
-- ✅ Use `npm run test:e2e` for Playwright tests (211 test cases)
-- ✅ Add timeouts to streaming tests: `timeout 30 curl`
-- ✅ Start E2E testing with `tilt up` (not kubectl port-forward)
-- ✅ Use test markers: `uv run pytest -m unit|integration|e2e`
-- ✅ Verify kubectl logs match SSE output for streaming
-- ✅ Route all LLM calls through LiteLLM Gateway
-- ✅ Run models in parallel Kubernetes Jobs
-- ✅ Display metrics from Gateway (time, cost, tokens)
-- ✅ Track user preferences for analytics
-- ✅ Use session management for context
-- ✅ Encrypt API keys in PostgreSQL
-- ✅ Show real-time streaming progress
-- ✅ Test with multiple models simultaneously
-- ✅ Modify source code only (Helm charts, Python code, TypeScript, etc.)
-- ✅ Let deployment tools (Tilt, Helm) apply changes to running state
-- ✅ Use database migrations for schema changes
-
-## 📚 Key Technologies
-
-### Core Stack
-
-- **FastAPI** - Orchestration and API layer
-- **LiteLLM Gateway** - Unified LLM interface with analytics
-- **Kubernetes** - Parallel job execution
-- **PostgreSQL** - Sessions, preferences, encrypted keys
-- **Redis** - Gateway caching layer
-- **Prometheus** - Metrics collection
-- **Next.js 15** - Multi-model comparison UI
-- **Tailwind CSS v4** - Responsive design system
-
-### Analytics Stack
-
-- **LiteLLM Metrics** - Response time, tokens, costs
-- **Prometheus** - Time-series metrics storage
-- **PostgreSQL** - Preference analytics
-- **Real-time SSE** - Live metric updates
-
-## 🎯 MVP Success Criteria
-
-The Multi-Model Comparison Platform successfully:
-
-1. **Parallel Execution**: Runs 3-4 models simultaneously via Kubernetes
-2. **Gateway Integration**: All models accessed through LiteLLM Gateway
-3. **Rich Analytics**: Displays time, cost, tokens from Gateway
-4. **Preference Tracking**: Records and analyzes user choices
-5. **Session Management**: Maintains conversation context
-6. **Real-time Updates**: Streams responses with live metrics
-7. **Production Ready**: Deploys via Helm with all components
-
-______________________________________________________________________
-
-**I am your primary coding assistant for AIdeator. I build production-ready multi-model comparison platforms using Kubernetes for orchestration and LiteLLM Gateway for analytics, ensuring scalability, observability, and rich user insights.**
+### Common Pitfalls
+- Always use timeout when testing WebSocket endpoints
+- Don't use kubectl port-forward when Tilt is running
+- Wait 10+ seconds for Tilt rebuilds
+- Use complete Tailwind class names (no interpolation)
+- Create openai-secret before first deployment
+- PostgreSQL is REQUIRED - agents will fail without database connection
+- Monitor `agent_outputs` table when debugging streaming issues
+- Verify both kubectl logs AND database outputs show same data

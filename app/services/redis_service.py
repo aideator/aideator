@@ -181,6 +181,10 @@ class RedisService:
             if last_ids
             else "0-0",
         }
+        
+        # Add debug stream if requested
+        if last_ids and "debug" in last_ids:
+            streams[f"run:{run_id}:debug"] = last_ids.get("debug", "0-0")
 
         logger.info(f"[REDIS-STREAMS] Reading from streams: {streams}")
 
@@ -233,7 +237,12 @@ class RedisService:
             run_id: The run ID
             max_length: Maximum number of messages to keep per stream
         """
-        streams = [f"run:{run_id}:llm", f"run:{run_id}:stdout", f"run:{run_id}:status"]
+        streams = [
+            f"run:{run_id}:llm", 
+            f"run:{run_id}:stdout", 
+            f"run:{run_id}:status",
+            f"run:{run_id}:debug"
+        ]
 
         for stream_name in streams:
             try:
@@ -252,7 +261,12 @@ class RedisService:
         Args:
             run_id: The run ID
         """
-        streams = [f"run:{run_id}:llm", f"run:{run_id}:stdout", f"run:{run_id}:status"]
+        streams = [
+            f"run:{run_id}:llm", 
+            f"run:{run_id}:stdout", 
+            f"run:{run_id}:status",
+            f"run:{run_id}:debug"
+        ]
 
         for stream_name in streams:
             try:
@@ -263,6 +277,45 @@ class RedisService:
                     f"[REDIS-STREAMS] Failed to delete stream {stream_name}: {e}"
                 )
 
+    async def add_debug_log(
+        self, 
+        run_id: str, 
+        log_line: str, 
+        source: str = "kubectl",
+        is_json: bool = False,
+        metadata: dict[str, Any] | None = None
+    ) -> str:
+        """Add debug log to Redis Stream.
+
+        Args:
+            run_id: The run ID
+            log_line: The log line content
+            source: Source of the log (kubectl, stdout, stderr)
+            is_json: Whether the log line is JSON formatted
+            metadata: Optional metadata
+
+        Returns:
+            Stream message ID
+        """
+        stream_name = f"run:{run_id}:debug"
+        fields = {
+            "content": log_line,
+            "source": source,
+            "is_json": str(is_json),
+            "timestamp": datetime.utcnow().isoformat(),
+            "metadata": json.dumps(metadata or {}),
+        }
+
+        logger.debug(
+            f"[REDIS-STREAMS] Adding debug log to stream: {stream_name}, source: {source}"
+        )
+
+        message_id = await self.client.xadd(stream_name, fields)
+        logger.debug(
+            f"[REDIS-STREAMS] Added debug message {message_id} to stream: {stream_name}"
+        )
+        return message_id
+
     async def get_stream_info(self, run_id: str) -> dict[str, Any]:
         """Get information about streams for a run.
 
@@ -272,7 +325,12 @@ class RedisService:
         Returns:
             Dictionary with stream information
         """
-        streams = [f"run:{run_id}:llm", f"run:{run_id}:stdout", f"run:{run_id}:status"]
+        streams = [
+            f"run:{run_id}:llm", 
+            f"run:{run_id}:stdout", 
+            f"run:{run_id}:status",
+            f"run:{run_id}:debug"
+        ]
 
         info = {}
         for stream_name in streams:

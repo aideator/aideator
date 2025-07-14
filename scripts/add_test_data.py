@@ -35,6 +35,8 @@ async def add_test_data():
             agent_config={"model": "gpt-4", "temperature": 0.7},
             total_tokens_used=45000,
             total_cost_usd=1.35,
+            session_id=None,
+            turn_id=None,
         )
         test_runs.append(run1)
 
@@ -48,6 +50,8 @@ async def add_test_data():
             created_at=datetime.utcnow() - timedelta(minutes=30),
             started_at=datetime.utcnow() - timedelta(minutes=30),
             agent_config={"model": "claude-3-opus", "temperature": 0.5},
+            session_id=None,
+            turn_id=None,
         )
         test_runs.append(run2)
 
@@ -63,6 +67,8 @@ async def add_test_data():
             completed_at=datetime.utcnow() - timedelta(hours=4, minutes=55),
             error_message="Repository not found",
             agent_config={"model": "gpt-3.5-turbo", "temperature": 0.7},
+            session_id=None,
+            turn_id=None,
         )
         test_runs.append(run3)
 
@@ -75,6 +81,8 @@ async def add_test_data():
             status=RunStatus.PENDING,
             created_at=datetime.utcnow() - timedelta(minutes=5),
             agent_config={"model": "gpt-4", "temperature": 0.6},
+            session_id=None,
+            turn_id=None,
         )
         test_runs.append(run4)
 

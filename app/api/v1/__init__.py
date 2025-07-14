@@ -6,6 +6,7 @@ from app.api.v1 import (
     credentials,
     github_auth,
     health,
+    jobs,
     models,
     preferences,
     runs,
@@ -35,3 +36,4 @@ api_router.include_router(
     admin_messaging.router, prefix="/admin-messaging", tags=["Admin Messaging"]
 )
 api_router.include_router(websocket.router, tags=["WebSocket"])
+api_router.include_router(jobs.router, prefix="/jobs", tags=["Jobs"])

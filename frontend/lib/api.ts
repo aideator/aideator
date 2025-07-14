@@ -22,6 +22,8 @@ import {
   CodeRequest,
   CodeResponse,
 } from './types'
+import { useAuth } from './auth-context'
+import { useEffect } from 'react'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -101,21 +103,43 @@ class APIClient {
     return { access_token: data.access_token, api_key: data.api_key }
   }
 
-  // Model definitions API
+  async getModelCatalog(): Promise<{ models: any[], providers: any[], capabilities: string[] }> {
+    try {
+      const response = await this.request<{ models: any[], providers: any[], capabilities: string[] }>('/api/v1/models/catalog')
+      return response
+    } catch (error) {
+      console.error('getModelCatalog: Error occurred', error)
+      throw error
+    }
+  }
+
   async getModelDefinitions(): Promise<string[]> {
     try {
-      interface ModelDefinition {
-        id: string
-        model_name: string
-        display_name: string
+      // Backend returns a direct array of models, not wrapped in an object
+      const response = await this.request<Array<{ id: string; model_name: string; display_name: string; litellm_model_name: string }>>('/api/v1/models/models')
+      
+      // Add defensive checks
+      if (!response) {
+        console.error('getModelDefinitions: No response received')
+        return []
       }
       
-      const response = await this.request<ModelDefinition[]>('/api/v1/models/models')
-      return response.map(model => model.model_name) || ['gpt-4-turbo', 'gpt-3.5-turbo', 'claude-3-sonnet', 'claude-3-haiku']
+      if (!Array.isArray(response)) {
+        console.error('getModelDefinitions: response is not an array', typeof response, response)
+        return []
+      }
+      
+      return response.map((model) => {
+        if (!model || typeof model !== 'object') {
+          console.warn('getModelDefinitions: Invalid model object', model)
+          return 'unknown'
+        }
+        // Use litellm_model_name which is the actual model name to pass to the agent
+        return model.litellm_model_name || model.model_name || model.id
+      }).filter(id => id !== 'unknown')
     } catch (error) {
-      console.error('Error fetching model definitions:', error)
-      // Fallback to common models
-      return ['gpt-4-turbo', 'gpt-3.5-turbo', 'claude-3-sonnet', 'claude-3-haiku']
+      console.error('getModelDefinitions: Error occurred', error)
+      throw error
     }
   }
 
@@ -123,17 +147,6 @@ class APIClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    // Auto-authenticate if needed
-    if (!this.authToken && !endpoint.includes('/auth/')) {
-      try {
-        const credentials = await this.getDevCredentials()
-        this.setAuthToken(credentials.access_token)
-        this.setApiKey(credentials.api_key)
-      } catch (error) {
-        console.warn('Failed to get dev credentials:', error)
-      }
-    }
-
     const url = `${this.baseURL}${endpoint}`
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -148,19 +161,36 @@ class APIClient {
       headers['X-API-Key'] = this.apiKey
     }
 
+    console.log(`🌐 Making request to: ${endpoint}`)
+    console.log('📤 Request headers:', {
+      ...headers,
+      Authorization: headers.Authorization ? `Bearer ${headers.Authorization.substring(7, 27)}...` : 'none',
+      'X-API-Key': headers['X-API-Key'] ? `${headers['X-API-Key'].substring(0, 10)}...` : 'none'
+    })
+
     const config: RequestInit = {
       ...options,
       headers,
     }
 
     const response = await fetch(url, config)
-
+    
+    console.log(`📥 Response: ${response.status} ${response.statusText}`)
+    
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: response.statusText }))
+      const errorText = await response.text()
+      console.error(`❌ API Error for ${endpoint}:`, errorText)
+      let errorDetail = 'Unknown error'
+      
+      try {
+        const errorData = JSON.parse(errorText)
+        errorDetail = errorData.detail || errorData.message || 'Unknown error'
+      } catch {
+        errorDetail = errorText || 'Unknown error'
+      }
+      
       const error: APIError = {
-        detail: typeof errorData.detail === 'string' 
-          ? errorData.detail 
-          : errorData.detail?.message || response.statusText,
+        detail: errorDetail
       }
       throw error
     }
@@ -281,6 +311,22 @@ class APIClient {
     })
     const query = searchParams.toString()
     return this.request<AgentOutput[]>(`/api/v1/runs/${runId}/outputs${query ? `?${query}` : ''}`)
+  }
+
+  async getRunDiffs(
+    runId: string,
+    params: {
+      variation_id?: number
+    } = {}
+  ): Promise<Array<{ oldFile: { name: string; content: string }; newFile: { name: string; content: string } }>> {
+    const searchParams = new URLSearchParams()
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined) {
+        searchParams.append(key, value.toString())
+      }
+    })
+    const query = searchParams.toString()
+    return this.request<Array<{ oldFile: { name: string; content: string }; newFile: { name: string; content: string } }>>(`/api/v1/runs/${runId}/diffs${query ? `?${query}` : ''}`)
   }
 
   async selectWinner(runId: string, winningVariationId: number): Promise<Run> {
@@ -430,11 +476,21 @@ export class WebSocketClient {
 
       this.ws.onerror = (error) => {
         console.error('WebSocket error:', error)
+        console.error('WebSocket readyState:', this.ws?.readyState)
+        console.error('WebSocket URL:', this.url)
         this.onError?.(error)
       }
 
       this.ws.onclose = (event) => {
         console.log('WebSocket closed:', event.code, event.reason)
+        // Log more details about close event
+        if (event.code === 1006) {
+          console.error('WebSocket closed abnormally (1006) - possible authentication issue')
+        } else if (event.code === 1000) {
+          console.log('WebSocket closed normally')
+        } else {
+          console.warn(`WebSocket closed with code: ${event.code}, reason: ${event.reason || 'No reason provided'}`)
+        }
         this.onClose?.()
 
         // Auto-reconnect logic
@@ -477,5 +533,39 @@ export class WebSocketClient {
   }
 }
 
-// Export singleton instance
+// Create and export the singleton API client
 export const apiClient = new APIClient()
+
+// Hook to automatically configure API client with auth context
+export function useAuthenticatedApiClient() {
+  const { token, apiKey } = useAuth()
+  
+  // Set auth credentials on the client
+  if (token) {
+    apiClient.setAuthToken(token)
+  }
+  
+  if (apiKey) {
+    apiClient.setApiKey(apiKey)
+  }
+  
+  return apiClient
+}
+
+// Hook to create authenticated WebSocket client
+export function useAuthenticatedWebSocket(baseUrl: string) {
+  const { apiKey } = useAuth()
+  
+  const createWebSocketClient = (url: string) => {
+    // Append API key to URL if available
+    const wsUrl = apiKey ? `${url}?api_key=${apiKey}` : url
+    console.log('Creating WebSocket client with URL:', wsUrl)
+    console.log('API key available:', !!apiKey)
+    return new WebSocketClient(wsUrl)
+  }
+  
+  return { createWebSocketClient }
+}
+
+// Export the class for testing
+export { APIClient }

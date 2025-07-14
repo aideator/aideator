@@ -178,22 +178,27 @@ async def github_callback(
         select(User).where(col(User.github_id) == str(github_user["id"]))
     )
     user = result.scalar_one_or_none()
+    logger.info(f"🔍 Checking for existing user by GitHub ID {github_user['id']}: {'Found' if user else 'Not found'}")
 
     if not user:
         # Check if user exists by email
         result = await db.execute(select(User).where(col(User.email) == primary_email))
         user = result.scalar_one_or_none()
+        logger.info(f"🔍 Checking for existing user by email {primary_email}: {'Found' if user else 'Not found'}")
 
         if user:
             # Link existing account with GitHub
+            logger.info(f"🔗 Linking existing user {user.id} with GitHub account")
             user.github_id = str(github_user["id"])
             user.github_username = github_user["login"]
             user.github_avatar_url = github_user.get("avatar_url")
             user.auth_provider = "github"
         else:
             # Create new user
+            new_user_id = f"user_{secrets.token_urlsafe(12)}"
+            logger.info(f"👤 Creating new user with ID: {new_user_id}, email: {primary_email}")
             user = User(
-                id=f"user_{secrets.token_urlsafe(12)}",
+                id=new_user_id,
                 email=primary_email,
                 full_name=github_user.get("name", github_user["login"]),
                 github_id=str(github_user["id"]),
@@ -206,6 +211,7 @@ async def github_callback(
                 hashed_password=get_password_hash(secrets.token_urlsafe(32)),
             )
             db.add(user)
+            logger.info(f"✅ User object created and added to session")
 
     # Encrypt and store GitHub access token
     from app.core.encryption import encrypt_token
@@ -213,10 +219,28 @@ async def github_callback(
     user.github_access_token_encrypted = encrypt_token(github_access_token)
     user.updated_at = datetime.utcnow()
 
-    await db.commit()
-    await db.refresh(user)
+    logger.info(f"💾 Committing user {user.id} to database...")
+    try:
+        await db.commit()
+        await db.refresh(user)
+        logger.info(f"✅ User committed and refreshed. Final user ID: {user.id}")
+        
+        # Verify user was actually saved
+        verification_result = await db.execute(
+            select(User).where(col(User.id) == user.id)
+        )
+        verified_user = verification_result.scalar_one_or_none()
+        if verified_user:
+            logger.info(f"✅ Database verification: User {user.id} exists in database")
+        else:
+            logger.error(f"❌ Database verification: User {user.id} NOT found in database after commit!")
+            
+    except Exception as e:
+        logger.error(f"❌ Database commit failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create user account")
 
     # Create access token for our app
+    logger.info(f"🔑 Creating JWT token for user {user.id}")
     access_token = create_access_token(
         data={"sub": user.email, "user_id": user.id},
         expires_delta=timedelta(days=7),  # Longer expiration for OAuth users

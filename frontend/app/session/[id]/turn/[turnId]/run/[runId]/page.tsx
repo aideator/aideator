@@ -1,15 +1,20 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { ArrowLeft, Play, Square, Clock, DollarSign, Users, Terminal, FileText, Zap, Bug } from "lucide-react"
+import { ArrowLeft, Play, Square, Clock, DollarSign, Users, Terminal, FileText, Zap, Bug, GitPullRequest } from "lucide-react"
 import Link from "next/link"
-import { apiClient, WebSocketClient } from "@/lib/api"
+import { apiClient, WebSocketClient, useAuthenticatedApiClient } from "@/lib/api"
 import { Session, Turn, Run, AgentOutput } from "@/lib/types"
+import { useAuthenticatedWebSocket } from "@/lib/api"
+import { useAuth } from "@/lib/auth-context"
+import { DebugWindow } from "@/components/debug-window"
+import { DiffViewer } from "@/diffs/DiffViewer"
+import type { DiffData } from "@/diffs/data"
 
 export default function RunPage() {
   const params = useParams()
@@ -17,53 +22,71 @@ export default function RunPage() {
   const sessionId = params.id as string
   const turnId = params.turnId as string
   const runId = params.runId as string
+  
+  // Get authenticated API and WebSocket clients
+  const apiClient = useAuthenticatedApiClient()
+  const { createWebSocketClient } = useAuthenticatedWebSocket('ws://localhost:8000')
+  
+  // Debug: Check if we have auth
+  const { apiKey, loading: authLoading } = useAuth()
+  useEffect(() => {
+    console.log('Run page - API key available:', !!apiKey, 'Auth loading:', authLoading)
+  }, [apiKey, authLoading])
 
+  // State management
   const [session, setSession] = useState<Session | null>(null)
   const [turn, setTurn] = useState<Turn | null>(null)
   const [run, setRun] = useState<Run | null>(null)
   const [outputs, setOutputs] = useState<AgentOutput[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [wsClient, setWsClient] = useState<WebSocketClient | null>(null)
-  const [debugWsClient, setDebugWsClient] = useState<WebSocketClient | null>(null)
-  const [debugOutputs, setDebugOutputs] = useState<AgentOutput[]>([])
-  const [showDebugView, setShowDebugView] = useState(false)
-
+  const [showSystemDebug, setShowSystemDebug] = useState(false)
+  const [diffDataByVariation, setDiffDataByVariation] = useState<Map<number, DiffData[]>>(new Map())
+  const [diffsReady, setDiffsReady] = useState<Record<number, boolean>>({})
+  const messageIdCounter = useRef(0)
+  const seenMessageIds = useRef(new Set<string>())
+  
+  // Ref for auto-scrolling
   const outputsEndRef = useRef<HTMLDivElement>(null)
 
+  // Load data on mount when authenticated
   useEffect(() => {
-    if (sessionId && turnId && runId) {
+    if (sessionId && turnId && runId && apiKey) {
       loadRunData()
     }
-  }, [sessionId, turnId, runId])
+  }, [sessionId, turnId, runId, apiKey])
 
+  // Cleanup WebSocket on unmount
   useEffect(() => {
-    // Auto-scroll to bottom when new outputs arrive
-    if (outputsEndRef.current) {
-      outputsEndRef.current.scrollIntoView({ behavior: "smooth" })
+    return () => {
+      if (wsClient) {
+        wsClient.close()
+      }
     }
-  }, [outputs])
+  }, [])
 
   const loadRunData = async () => {
     try {
       setIsLoading(true)
-      const [sessionResponse, turnResponse, runResponse, outputsResponse] = await Promise.all([
+      const [sessionResponse, turnResponse, runResponse] = await Promise.all([
         apiClient.getSession(sessionId),
         apiClient.getTurn(sessionId, turnId),
         apiClient.getRun(runId),
-        apiClient.getRunOutputs(runId, {}),
       ])
       setSession(sessionResponse)
       setTurn(turnResponse)
       setRun(runResponse)
-      setOutputs(outputsResponse)
       setError(null)
-
-      // If run is still active, start WebSocket connections
-      if (runResponse.status === "running") {
-        startWebSocketConnection()
-        startDebugWebSocketConnection()
+      
+      // Load existing outputs and diffs after run data is loaded
+      if (runResponse.variations > 0) {
+        // Load outputs for all variations
+        loadExistingOutputs()
+        
+        // Attempt to load diffs for all variations (silently fail if not ready)
+        loadExistingDiffs(runResponse.variations)
       }
     } catch (err) {
       console.error('Failed to load run data:', err)
@@ -73,24 +96,193 @@ export default function RunPage() {
     }
   }
 
-  const startWebSocketConnection = () => {
+  const loadExistingOutputs = async () => {
     try {
-      const apiKey = apiClient.getApiKey()
-      const wsUrl = `ws://localhost:8000/ws/runs/${runId}${apiKey ? `?api_key=${apiKey}` : ''}`
-      const client = new WebSocketClient(wsUrl)
+      // Fetch all outputs from the database
+      const outputs = await apiClient.getRunOutputs(runId, { output_type: 'llm' })
+      
+      // Clear seen message IDs and add existing outputs
+      seenMessageIds.current.clear()
+      const formattedOutputs = outputs.map((output, index) => {
+        const messageId = `existing-${output.id || index}`
+        seenMessageIds.current.add(messageId)
+        return {
+          ...output,
+          id: output.id || messageIdCounter.current++
+        }
+      })
+      
+      setOutputs(formattedOutputs)
+      console.log(`Loaded ${outputs.length} existing outputs from database`)
+    } catch (err) {
+      // Don't show error if outputs aren't ready yet
+      console.log('Could not load existing outputs (may not be ready yet):', err)
+    }
+  }
+
+  const loadExistingDiffs = async (variationCount: number) => {
+    try {
+      // Try to fetch diffs for each variation
+      const diffPromises = Array.from({ length: variationCount }, async (_, i) => {
+        try {
+          const diffs = await apiClient.getRunDiffs(runId, { variation_id: i })
+          if (diffs.length > 0) {
+            // Mark as ready if we got diffs
+            setDiffsReady(prev => ({ ...prev, [i]: true }))
+            return { variation: i, diffs }
+          }
+        } catch (err) {
+          // Silently ignore - diffs may not be ready yet
+          console.log(`Diffs not ready for variation ${i}`)
+        }
+        return { variation: i, diffs: [] }
+      })
+      
+      const results = await Promise.all(diffPromises)
+      
+      // Process any diffs that were available
+      const newDiffMap = new Map<number, DiffData[]>()
+      results.forEach(({ variation, diffs }) => {
+        if (diffs && diffs.length > 0) {
+          const diffData: DiffData[] = diffs.map(diff => ({
+            oldFile: {
+              fileName: diff.oldFile.name,
+              content: diff.oldFile.content
+            },
+            newFile: {
+              fileName: diff.newFile.name,
+              content: diff.newFile.content
+            }
+          }))
+          newDiffMap.set(variation, diffData)
+        }
+      })
+      
+      if (newDiffMap.size > 0) {
+        setDiffDataByVariation(newDiffMap)
+        console.log(`Loaded diffs for ${newDiffMap.size} variations`)
+      }
+    } catch (err) {
+      // Don't show error - diffs may not be ready
+      console.log('Could not load existing diffs:', err)
+    }
+  }
+
+  const fetchDiffsForVariation = async (variationId: number) => {
+    try {
+      const diffs = await apiClient.getRunDiffs(runId, { variation_id: variationId })
+      
+      if (diffs.length > 0) {
+        const diffData: DiffData[] = diffs.map(diff => ({
+          oldFile: {
+            fileName: diff.oldFile.name,
+            content: diff.oldFile.content
+          },
+          newFile: {
+            fileName: diff.newFile.name,
+            content: diff.newFile.content
+          }
+        }))
+        
+        setDiffDataByVariation(prev => {
+          const newMap = new Map(prev)
+          newMap.set(variationId, diffData)
+          return newMap
+        })
+      }
+    } catch (err) {
+      console.error(`Failed to fetch diffs for variation ${variationId}:`, err)
+    }
+  }
+
+  const loadDiffsForAllVariations = async (variationCount: number) => {
+    try {
+      // Fetch diffs for each variation in parallel
+      const diffPromises = Array.from({ length: variationCount }, (_, i) => 
+        apiClient.getRunDiffs(runId, { variation_id: i })
+          .then(diffs => ({ variation: i, diffs }))
+          .catch(err => {
+            console.error(`Failed to load diffs for variation ${i}:`, err)
+            return { variation: i, diffs: [] }
+          })
+      )
+      
+      const results = await Promise.all(diffPromises)
+      
+      // Transform API response to DiffData format and update state
+      const newDiffMap = new Map<number, DiffData[]>()
+      results.forEach(({ variation, diffs }) => {
+        if (diffs.length > 0) {
+          const diffData: DiffData[] = diffs.map(diff => ({
+            oldFile: {
+              fileName: diff.oldFile.name,
+              content: diff.oldFile.content
+            },
+            newFile: {
+              fileName: diff.newFile.name,
+              content: diff.newFile.content
+            }
+          }))
+          newDiffMap.set(variation, diffData)
+        }
+      })
+      
+      setDiffDataByVariation(newDiffMap)
+    } catch (err) {
+      console.error('Failed to load diffs:', err)
+    }
+  }
+
+  const startWebSocketConnection = useCallback(() => {
+    try {
+      // Close existing connection if any
+      if (wsClient) {
+        wsClient.close()
+        setWsClient(null)
+        setIsStreaming(false)
+      }
+      
+      // Clear seen message IDs for fresh start
+      seenMessageIds.current.clear()
+      
+      const wsUrl = `ws://localhost:8000/api/v1/ws/runs/${runId}`
+      const client = createWebSocketClient(wsUrl)
       client.connect({
         onMessage: (message) => {
-          // Handle incoming WebSocket messages for parsed/clean output
-          if (message.type === "llm" || message.type === "stdout" || message.type === "stderr") {
+          // Handle incoming WebSocket messages
+          // Accept LLM output messages
+          if (message.type === "llm") {
+            // Generate or use existing message ID
+            const messageId = message.message_id || `msg-${Date.now()}-${Math.random()}`
+            
+            // Skip if we've already processed this message
+            if (seenMessageIds.current.has(messageId)) {
+              console.log('Skipping duplicate message:', messageId)
+              return
+            }
+            seenMessageIds.current.add(messageId)
+            
             const newOutput: AgentOutput = {
-              id: Date.now() + Math.random(), // Temporary ID
+              id: messageIdCounter.current++,
               run_id: runId,
-              variation_id: parseInt(message.data.variation_id) || 1,
+              variation_id: parseInt(message.data.variation_id) ?? 0,
               content: message.data.content || "",
               timestamp: message.data.timestamp,
               output_type: message.type,
             }
             setOutputs(prev => [...prev, newOutput])
+          }
+          
+          // Handle status messages for diffs
+          if (message.type === "status" && message.data.status === "diffs_ready") {
+            const variationId = message.data.metadata?.variation_id
+            if (variationId !== undefined) {
+              setDiffsReady(prev => ({ ...prev, [variationId]: true }))
+              console.log(`Diffs ready for variation ${variationId}`)
+              
+              // Auto-fetch diffs when ready
+              fetchDiffsForVariation(variationId)
+            }
           }
         },
         onError: (error) => {
@@ -106,50 +298,27 @@ export default function RunPage() {
     } catch (err) {
       console.error('Failed to start WebSocket connection:', err)
     }
-  }
+  }, [wsClient, createWebSocketClient, runId, messageIdCounter, seenMessageIds])
 
-  const startDebugWebSocketConnection = () => {
-    try {
-      const apiKey = apiClient.getApiKey()
-      const debugWsUrl = `ws://localhost:8000/ws/runs/${runId}/debug${apiKey ? `?api_key=${apiKey}` : ''}`
-      const debugClient = new WebSocketClient(debugWsUrl)
-      debugClient.connect({
-        onMessage: (message) => {
-          // Handle debug messages (raw logs)
-          if (message.type === "stdout") {
-            const newOutput: AgentOutput = {
-              id: Date.now() + Math.random(), // Temporary ID
-              run_id: runId,
-              variation_id: parseInt(message.data.variation_id) || 1,
-              content: message.data.content || "",
-              timestamp: message.data.timestamp,
-              output_type: "stdout",
-            }
-            setDebugOutputs(prev => [...prev, newOutput])
-          }
-        },
-        onError: (error) => {
-          console.error('Debug WebSocket error:', error)
-        },
-        onClose: () => {
-          console.log('Debug WebSocket closed')
-        }
-      })
-      setDebugWsClient(debugClient)
-    } catch (err) {
-      console.error('Failed to start debug WebSocket connection:', err)
+  // Auto-start streaming when run data is loaded
+  useEffect(() => {
+    if (run && (run.status === 'running' || run.status === 'pending') && !wsClient) {
+      startWebSocketConnection()
     }
-  }
+  }, [run, wsClient, startWebSocketConnection])
+  
+  // Auto-scroll to bottom when new outputs arrive
+  useEffect(() => {
+    if (outputsEndRef.current) {
+      outputsEndRef.current.scrollIntoView({ behavior: "smooth" })
+    }
+  }, [outputs])
 
   const stopWebSocketConnection = () => {
     if (wsClient) {
       wsClient.close()
       setWsClient(null)
       setIsStreaming(false)
-    }
-    if (debugWsClient) {
-      debugWsClient.close()
-      setDebugWsClient(null)
     }
   }
 
@@ -219,12 +388,12 @@ export default function RunPage() {
     }
   }
 
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return (
       <div className="bg-gray-950 text-gray-50 min-h-screen">
         <div className="container mx-auto max-w-6xl py-8">
           <div className="flex items-center justify-center py-20">
-            <div className="animate-pulse">Loading run...</div>
+            <div className="animate-pulse">{authLoading ? 'Authenticating...' : 'Loading run...'}</div>
           </div>
         </div>
       </div>
@@ -247,8 +416,9 @@ export default function RunPage() {
   }
 
   return (
-    <div className="bg-gray-950 text-gray-50 min-h-screen">
-      <div className="container mx-auto max-w-6xl py-8">
+    <>
+      <div className="bg-gray-950 text-gray-50 min-h-screen pb-32">
+        <div className="container mx-auto max-w-6xl py-8">
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
           <Button
@@ -285,97 +455,13 @@ export default function RunPage() {
           </div>
         </div>
 
-        {/* Run Status and Controls */}
-        <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6 mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-4">
-              <div className="text-sm">
-                <div className="text-gray-400">Status</div>
-                <div className="text-lg font-medium">{run.status}</div>
-              </div>
-              <div className="w-64">
-                <Progress value={getProgress()} className="h-2" />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {run.status === "running" && (
-                <>
-                  {isStreaming ? (
-                    <Button onClick={stopWebSocketConnection} variant="outline" size="sm">
-                      <Square className="w-4 h-4 mr-2" />
-                      Stop Streaming
-                    </Button>
-                  ) : (
-                    <Button onClick={startWebSocketConnection} variant="outline" size="sm">
-                      <Play className="w-4 h-4 mr-2" />
-                      Start Streaming
-                    </Button>
-                  )}
-                  <Button onClick={handleCancelRun} variant="destructive" size="sm">
-                    Cancel Run
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-gray-400" />
-              <div className="text-sm">
-                <div className="text-gray-400">Created</div>
-                <div>{new Date(run.created_at).toLocaleString()}</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Users className="w-4 h-4 text-gray-400" />
-              <div className="text-sm">
-                <div className="text-gray-400">Variations</div>
-                <div>{run.variations}</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <DollarSign className="w-4 h-4 text-gray-400" />
-              <div className="text-sm">
-                <div className="text-gray-400">Cost</div>
-                <div>${run.total_cost_usd?.toFixed(3) || '0.000'}</div>
-              </div>
-            </div>
-            <div className="text-sm">
-              <div className="text-gray-400">Tokens</div>
-              <div>{run.total_tokens_used?.toLocaleString() || '0'}</div>
-            </div>
-          </div>
-
-          {run.github_url && (
-            <div className="mt-4 pt-4 border-t border-gray-800">
-              <div className="text-sm text-gray-400 mb-1">Repository</div>
-              <a
-                href={run.github_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:text-blue-300 text-sm"
-              >
-                {run.github_url}
-              </a>
-            </div>
-          )}
-
-          {run.error_message && (
-            <div className="mt-4 pt-4 border-t border-gray-800">
-              <div className="p-3 bg-red-900/20 border border-red-800 rounded text-sm text-red-300">
-                <strong>Error:</strong> {run.error_message}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <Tabs defaultValue="variation-1" className="w-full">
+        <Tabs defaultValue="variation-0" className="w-full">
           <div className="flex items-center justify-between mb-4">
             <TabsList className="bg-gray-900/50 border border-gray-800">
-              {Array.from({ length: run.variations }, (_, i) => i + 1).map((variation) => (
+              {Array.from({ length: run.variations }, (_, i) => i).map((variation) => (
                 <TabsTrigger key={variation} value={`variation-${variation}`}>
-                  Model {variation}
+                  Model {variation + 1}
                 </TabsTrigger>
               ))}
               <TabsTrigger value="results">Results</TabsTrigger>
@@ -383,23 +469,25 @@ export default function RunPage() {
             </TabsList>
             
             <div className="flex items-center gap-2">
-              <Button
-                variant={showDebugView ? "default" : "outline"}
-                size="sm"
-                onClick={() => setShowDebugView(!showDebugView)}
-                className="gap-2"
-              >
-                <Bug className="w-4 h-4" />
-                Debug {showDebugView ? 'On' : 'Off'}
-              </Button>
+              {process.env.NODE_ENV === 'development' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowSystemDebug(!showSystemDebug)}
+                  className="gap-2"
+                >
+                  <Terminal className="w-4 h-4" />
+                  System Debug
+                </Button>
+              )}
             </div>
           </div>
 
-          {Array.from({ length: run.variations }, (_, i) => i + 1).map((variation) => (
+          {Array.from({ length: run.variations }, (_, i) => i).map((variation) => (
             <TabsContent key={variation} value={`variation-${variation}`} className="space-y-4">
               <div className="bg-gray-900/30 border border-gray-800 rounded-lg">
                 <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-                  <h3 className="font-medium">Model {variation} Output</h3>
+                  <h3 className="font-medium">Model {variation + 1} Output</h3>
                   <div className="flex items-center gap-2">
                     {isStreaming && (
                       <div className="flex items-center gap-2 text-sm text-green-400">
@@ -408,42 +496,70 @@ export default function RunPage() {
                       </div>
                     )}
                     <Badge variant="outline" className="text-xs">
-                      {(showDebugView ? debugOutputs : outputs).filter(o => o.variation_id === variation).length} messages
+                      {outputs.filter(o => o.variation_id === variation).length} messages
                     </Badge>
                   </div>
                 </div>
                 
-                <div className="max-h-96 overflow-y-auto p-4 space-y-2">
-                  {(showDebugView ? debugOutputs : outputs).filter(o => o.variation_id === variation).length === 0 ? (
+                <div className="max-h-[600px] overflow-y-auto p-4 bg-gray-950 rounded font-mono text-sm">
+                  {outputs.filter(o => o.variation_id === variation).length === 0 ? (
                     <div className="text-center py-8 text-gray-400">
                       {run.status === "pending" ? "Waiting for run to start..." : "No output yet"}
                     </div>
                   ) : (
-                    (showDebugView ? debugOutputs : outputs)
-                      .filter(o => o.variation_id === variation)
-                      .map((output) => (
-                        <div
-                          key={output.id}
-                          className={`p-3 rounded border ${getOutputBgColor(output.output_type)}`}
-                        >
-                          <div className="flex items-center gap-2 mb-2">
-                            {getOutputIcon(output.output_type)}
-                            <Badge variant="outline" className="text-xs">
-                              {output.output_type}
-                            </Badge>
-                            <span className="text-xs text-gray-400">
-                              {new Date(output.timestamp).toLocaleTimeString()}
-                            </span>
-                          </div>
-                          <pre className="text-sm whitespace-pre-wrap font-mono">
-                            {output.content}
-                          </pre>
-                        </div>
-                      ))
+                    <div className="space-y-0.5">
+                      {outputs
+                        .filter(o => o.variation_id === variation)
+                        .map((output) => {
+                          // Only showing LLM output now
+                          return (
+                            <div key={output.id} className="text-green-400 whitespace-pre-wrap">
+                              {output.content}
+                            </div>
+                          );
+                        })}
+                    </div>
                   )}
                   <div ref={outputsEndRef} />
                 </div>
               </div>
+              
+              {/* Diff Viewer Section */}
+              {diffsReady[variation] && (
+                <div className="bg-gray-900/30 border border-gray-800 rounded-lg mt-4">
+                  <div className="p-4 border-b border-gray-800 flex items-center justify-between">
+                    <h3 className="font-medium">Code Changes</h3>
+                    <button
+                      onClick={() => {
+                        // TODO: Implement PR creation logic
+                        console.log('Create PR clicked for variation:', variation);
+                      }}
+                      className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/80 rounded-md transition-colors"
+                    >
+                      <GitPullRequest className="h-4 w-4" />
+                      Create Pull Request
+                    </button>
+                  </div>
+                  <div className="p-4">
+                    {diffDataByVariation.get(variation) && diffDataByVariation.get(variation)!.length > 0 ? (
+                      <DiffViewer 
+                        data={diffDataByVariation.get(variation)}
+                        options={{
+                          mode: "unified",
+                          theme: "dark",
+                          wrap: true,
+                          highlight: true,
+                          fontSize: 12
+                        }}
+                      />
+                    ) : (
+                      <div className="text-center py-8 text-gray-400">
+                        <div className="animate-pulse">Loading code changes...</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </TabsContent>
           ))}
 
@@ -471,5 +587,33 @@ export default function RunPage() {
         </Tabs>
       </div>
     </div>
+    
+    {run && (
+      <DebugWindow 
+        runId={runId}
+        variations={run.variations}
+        isOpen={showSystemDebug} 
+        onClose={() => setShowSystemDebug(false)} 
+      />
+    )}
+    
+    {/* Floating Input Area */}
+    <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-gray-950/95 backdrop-blur-sm border-t border-gray-800">
+      <div className="container mx-auto max-w-4xl">
+        <input
+          type="text"
+          placeholder="Request changes or ask a question"
+          className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+              // TODO: Handle submit
+              console.log('Submit:', e.currentTarget.value);
+              e.currentTarget.value = '';
+            }
+          }}
+        />
+      </div>
+    </div>
+    </>
   )
 }

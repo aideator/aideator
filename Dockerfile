@@ -14,8 +14,6 @@ RUN apk --no-cache --update upgrade && apk --no-cache add \
     build-base \
     git \
     curl \
-    nodejs \
-    npm \
     ca-certificates \
     openssl \
     bash
@@ -37,9 +35,6 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Copy Python requirements
 COPY requirements.txt pyproject.toml ./
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Install Claude Code and AI CLI tools globally
-RUN npm install -g @anthropic-ai/claude-code
 
 # Download kubectl
 FROM cgr.dev/chainguard/wolfi-base:latest AS kubectl-builder
@@ -72,10 +67,6 @@ ENV PYTHONPATH="/app:$PYTHONPATH"
 
 # Copy kubectl
 COPY --from=kubectl-builder /kubectl /usr/local/bin/kubectl
-
-# Copy Node.js tools
-COPY --from=python-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
-COPY --from=python-builder /usr/local/bin/claude /usr/local/bin/claude
 
 # Copy application code
 COPY --chown=nonroot:nonroot app/ ./app/

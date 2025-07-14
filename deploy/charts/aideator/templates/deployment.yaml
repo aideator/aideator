@@ -13,6 +13,7 @@ spec:
     metadata:
       labels:
         {{- include "aideator.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: fastapi
     spec:
       serviceAccountName: {{ include "aideator.serviceAccountName" . }}
       securityContext:
@@ -137,6 +138,8 @@ spec:
             - name: LOG_LEVEL
               value: {{ .Values.config.logLevel }}
             - name: DEBUG
+              value: "{{ .Values.config.debug }}"
+            - name: AIDEATOR_DEV_MODE
               value: "{{ .Values.config.debug }}"
             - name: API_V1_PREFIX
               value: {{ .Values.config.apiV1Prefix }}

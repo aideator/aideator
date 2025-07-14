@@ -106,7 +106,7 @@ describe('Home Page', () => {
       run_id: 'run-1',
       session_id: 'session-1',
       turn_id: 'turn-1',
-      websocket_url: 'ws://localhost:8000/ws/runs/run-1',
+              websocket_url: 'ws://localhost:8000/api/v1/ws/runs/run-1',
       polling_url: 'http://localhost:8000/api/v1/runs/run-1/status',
       status: 'pending',
       estimated_duration_seconds: 30,

@@ -3,39 +3,68 @@
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { AutoResizeTextarea } from "@/components/auto-resize-textarea"
+import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { GitBranch, Layers, Mic, Github, Loader2 } from "lucide-react"
+import { Loader2, Send, GitBranch, Layers } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { apiClient } from "@/lib/api"
 import { Session, GitHubRepository, GitHubBranch, CodeRequest } from "@/lib/types"
+import { useAuth } from "@/lib/auth-context"
+import { ModeSwitcher, Mode } from "@/components/mode-switcher"
+import { ModelPicker, ModelVariant } from "@/components/model-picker"
+import { CodeModePicker } from "@/components/code-mode-picker"
+import { randomCost } from "@/lib/utils"
 
 export default function Home() {
+  // Mode state
+  const [mode, setMode] = useState<Mode>("chat")
+  
+  // Common state
   const [taskText, setTaskText] = useState("")
   const [sessions, setSessions] = useState<Session[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isCreatingRun, setIsCreatingRun] = useState(false)
+  
+  // Chat mode state
+  const [selectedModels, setSelectedModels] = useState<ModelVariant[]>([])
+  
+  // Code mode state
+  const [selectedCodeModel, setSelectedCodeModel] = useState("claude-code")
   const [selectedRepo, setSelectedRepo] = useState("")
   const [selectedBranch, setSelectedBranch] = useState("main")
   const [selectedAgentCount, setSelectedAgentCount] = useState("3")
+  const [customRepoUrl, setCustomRepoUrl] = useState("")
   const [repositories, setRepositories] = useState<GitHubRepository[]>([])
   const [branches, setBranches] = useState<GitHubBranch[]>([])
-  const [availableModels, setAvailableModels] = useState<string[]>([])
   const [isLoadingRepos, setIsLoadingRepos] = useState(false)
   const [isLoadingBranches, setIsLoadingBranches] = useState(false)
+  
+  // Legacy model state for compatibility
+  const [availableModels, setAvailableModels] = useState<string[]>([])
   const [, setIsLoadingModels] = useState(false)
   
   const router = useRouter()
+  const { user, loading: authLoading } = useAuth()
 
+  // Wait for auth to load before making API calls
   useEffect(() => {
-    loadSessions()
-    loadPopularRepositories()
-    loadModelDefinitions()
-  }, [])
+    if (!authLoading && user) {
+      loadSessions()
+      loadPopularRepositories()
+      loadModelDefinitions()
+    }
+  }, [authLoading, user])
 
   const loadSessions = async () => {
+    // Don't make API calls if user is not authenticated
+    if (!user) {
+      setSessions([])
+      setIsLoading(false)
+      return
+    }
+
     try {
       setIsLoading(true)
       const response = await apiClient.getSessions({ limit: 50 })
@@ -52,35 +81,35 @@ export default function Home() {
   }
 
   const loadPopularRepositories = async () => {
-    // Default to hello-world-octocat repo instead of API calls
+    // Default to aideator/helloworld repo instead of API calls
     setIsLoadingRepos(true)
     const defaultRepos: GitHubRepository[] = [
       { 
         id: 1, 
-        name: 'Hello-World',
-        full_name: 'octocat/Hello-World', 
+        name: 'helloworld',
+        full_name: 'aideator/helloworld', 
         private: false,
-        html_url: 'https://github.com/octocat/Hello-World',
-        description: 'My first repository on GitHub!', 
+        html_url: 'https://github.com/aideator/helloworld',
+        description: 'A simple hello world application for testing code modifications.', 
         default_branch: 'main'
       }
     ]
     setRepositories(defaultRepos)
-    setSelectedRepo('octocat/Hello-World')
+    setSelectedRepo('aideator/helloworld')
     setIsLoadingRepos(false)
   }
 
   const loadBranches = useCallback(async () => {
     if (!selectedRepo) return
     
-    // Default to main branch for octocat/Hello-World
+    // Default to main branch for aideator/helloworld
     setIsLoadingBranches(true)
     const defaultBranches: GitHubBranch[] = [
       { 
         name: 'main', 
         commit: {
           sha: 'abc123def456',
-          url: 'https://api.github.com/repos/octocat/Hello-World/commits/abc123def456'
+          url: 'https://api.github.com/repos/aideator/helloworld/commits/abc123def456'
         },
         protected: false 
       }
@@ -108,57 +137,163 @@ export default function Home() {
     }
   }
 
-  const handleAsk = async () => {
-    // Create session-only interaction for Q&A mode
-    try {
-      const newSession = await apiClient.createSession({
-        title: taskText.slice(0, 50) + (taskText.length > 50 ? '...' : ''),
-        description: `Q&A session: ${taskText}`,
-        models_used: availableModels.slice(0, parseInt(selectedAgentCount))
-      })
-      
-      router.push(`/session/${newSession.id}`)
-    } catch (err) {
-      console.error('Failed to create session:', err)
-      alert('Failed to create session. Please try again.')
+  const handleChatSubmit = async () => {
+    console.log('🚀 handleChatSubmit called')
+    console.log('📝 Task text:', taskText)
+    console.log('🔐 Auth state:', { user: !!user, authLoading })
+    console.log('🎯 Selected models:', selectedModels)
+    
+    if (!taskText.trim()) {
+      console.warn('❌ No task text provided')
+      return
     }
-  }
-
-  const handleCode = async () => {
-    if (!taskText.trim()) return
+    
+    if (!user) {
+      console.error('❌ User not authenticated')
+      alert('Please sign in to use this feature')
+      return
+    }
+    
+    if (selectedModels.length === 0) {
+      console.error('❌ No models selected')
+      alert('Please select at least one model')
+      return
+    }
     
     try {
       setIsCreatingRun(true)
       
       // Create session first
+      console.log('📋 Creating session...')
+      const newSession = await apiClient.createSession({
+        title: taskText.slice(0, 50) + (taskText.length > 50 ? '...' : ''),
+        description: `Chat session: ${taskText}`,
+        models_used: selectedModels.map(v => v.model_definition_id)
+      })
+      console.log('✅ Session created:', newSession.id)
+      
+      // Create turn
+      console.log('🔄 Creating turn...')
+      const newTurn = await apiClient.createTurn(newSession.id, {
+        prompt: taskText,
+        context: 'Chat conversation',
+        models_requested: selectedModels.map(v => v.model_definition_id)
+      })
+      console.log('✅ Turn created:', newTurn.id)
+      
+      // Execute chat with model variants
+      const chatRequest: CodeRequest = {
+        prompt: taskText,
+        context: 'Chat conversation',
+        model_variants: selectedModels,
+        max_models: selectedModels.length
+      }
+      
+      console.log('💬 Executing chat request:', chatRequest)
+      const response = await apiClient.executeCode(newSession.id, newTurn.id, chatRequest)
+      console.log('✅ Chat execution started, run ID:', response.run_id)
+      
+      // Navigate to the streaming page
+      console.log('🔗 Navigating to run page...')
+      router.push(`/session/${newSession.id}/turn/${newTurn.id}/run/${response.run_id}`)
+    } catch (err: any) {
+      console.error('❌ Failed to create chat session:', err)
+      console.error('Error details:', err.detail || err.message || err)
+      
+      // More specific error messages
+      if (err.detail?.includes('401') || err.detail?.includes('Unauthorized')) {
+        alert('Authentication error. Please sign in again.')
+        router.push('/signin')
+      } else if (err.detail?.includes('404')) {
+        alert('API endpoint not found. Please check your configuration.')
+      } else {
+        alert(`Failed to create chat session: ${err.detail || err.message || 'Unknown error'}`)
+      }
+    } finally {
+      setIsCreatingRun(false)
+    }
+  }
+
+  const handleCodeSubmit = async () => {
+    console.log('🚀 handleCodeSubmit called')
+    console.log('📝 Task text:', taskText)
+    console.log('🔐 Auth state:', { user: !!user, authLoading })
+    console.log('📦 Available models:', availableModels)
+    
+    if (!taskText.trim()) {
+      console.warn('❌ No task text provided')
+      return
+    }
+    
+    if (!user) {
+      console.error('❌ User not authenticated')
+      alert('Please sign in to use this feature')
+      return
+    }
+    
+    if (availableModels.length === 0) {
+      console.error('❌ No models available')
+      alert('No AI models available. Please try again later.')
+      return
+    }
+    
+    try {
+      setIsCreatingRun(true)
+      
+      // Create session first
+      console.log('📋 Creating session...')
       const newSession = await apiClient.createSession({
         title: taskText.slice(0, 50) + (taskText.length > 50 ? '...' : ''),
         description: `Code session: ${taskText}`,
-        models_used: availableModels.slice(0, parseInt(selectedAgentCount))
+        models_used: Array(parseInt(selectedAgentCount)).fill(selectedCodeModel)
       })
+      console.log('✅ Session created:', newSession.id)
       
       // Create turn
+      console.log('🔄 Creating turn...')
       const newTurn = await apiClient.createTurn(newSession.id, {
         prompt: taskText,
-        context: `https://github.com/${selectedRepo}`,
-        models_requested: availableModels.slice(0, parseInt(selectedAgentCount))
+        context: customRepoUrl || `https://github.com/${selectedRepo}`,
+        models_requested: Array(parseInt(selectedAgentCount)).fill(selectedCodeModel)
       })
+      console.log('✅ Turn created:', newTurn.id)
       
       // Execute code with streamlined API
+      // Use selected code model
+      const codeModels = Array(parseInt(selectedAgentCount)).fill(selectedCodeModel)
+      
+      const repoUrl = customRepoUrl || `https://github.com/${selectedRepo}`
       const codeRequest: CodeRequest = {
         prompt: taskText,
-        context: `https://github.com/${selectedRepo}`,
-        models: availableModels.slice(0, parseInt(selectedAgentCount)),
+        context: repoUrl,
+        model_variants: codeModels.map((model, index) => ({
+          id: `code_variant_${index}`,
+          model_definition_id: model,
+          model_parameters: { temperature: 0.7, max_tokens: 1000 }
+        })),
         max_models: parseInt(selectedAgentCount)
       }
-
+      
+      console.log('🤖 Executing code request:', codeRequest)
       const response = await apiClient.executeCode(newSession.id, newTurn.id, codeRequest)
+      console.log('✅ Code execution started, run ID:', response.run_id)
       
       // Navigate to the streaming page
+      console.log('🔗 Navigating to run page...')
       router.push(`/session/${newSession.id}/turn/${newTurn.id}/run/${response.run_id}`)
-    } catch (err) {
-      console.error('Failed to create code session:', err)
-      alert('Failed to create code session. Please try again.')
+    } catch (err: any) {
+      console.error('❌ Failed to create code session:', err)
+      console.error('Error details:', err.detail || err.message || err)
+      
+      // More specific error messages
+      if (err.detail?.includes('401') || err.detail?.includes('Unauthorized')) {
+        alert('Authentication error. Please sign in again.')
+        router.push('/signin')
+      } else if (err.detail?.includes('404')) {
+        alert('API endpoint not found. Please check your configuration.')
+      } else {
+        alert(`Failed to create code session: ${err.detail || err.message || 'Unknown error'}`)
+      }
     } finally {
       setIsCreatingRun(false)
     }
@@ -168,129 +303,196 @@ export default function Home() {
     if (e.metaKey && e.key === "Enter") {
       e.preventDefault()
       if (taskText.trim()) {
-        handleCode()
+        if (mode === "chat") {
+          handleChatSubmit()
+        } else {
+          handleCodeSubmit()
+        }
       }
+    }
+  }
+  
+  const handleSubmit = () => {
+    if (mode === "chat") {
+      handleChatSubmit()
+    } else {
+      handleCodeSubmit()
+    }
+  }
+  
+  const getPlaceholder = () => {
+    return mode === "chat" 
+      ? "What are we chatting about today?\n\nTry: \"Write a short story about a robot who discovers they can dream\""
+      : "Describe a coding task"
+  }
+  
+  const getTitle = () => {
+    return mode === "chat"
+      ? "What are we chatting about today?"
+      : "What are we coding next?"
+  }
+  
+  const canSubmit = () => {
+    const hasText = !!taskText.trim()
+    const notCreating = !isCreatingRun
+    const hasModels = selectedModels.length > 0
+    const hasRepo = !!(selectedRepo || customRepoUrl)
+    const hasCodeModel = !!selectedCodeModel
+    
+    console.log('canSubmit check:', { 
+      mode, 
+      hasText, 
+      notCreating, 
+      hasModels, 
+      selectedModelsCount: selectedModels.length,
+      hasRepo, 
+      hasCodeModel 
+    })
+    
+    if (!hasText || !notCreating) return false
+    
+    if (mode === "chat") {
+      return hasModels
+    } else {
+      return hasRepo && hasCodeModel
     }
   }
 
   return (
     <div className="bg-gray-950 text-gray-50 min-h-screen">
       <div className="container mx-auto max-w-3xl py-16">
-        <div className="flex items-center justify-center mb-8">
-          <h1 className="text-4xl font-medium text-center">What are we coding next?</h1>
+        <div className="flex flex-col items-center mb-8">
+          <ModeSwitcher mode={mode} onModeChange={setMode} className="mb-6" />
+          <h1 className="text-4xl font-medium text-center">{getTitle()}</h1>
         </div>
 
-        <div className="bg-gray-900/80 border border-gray-800 rounded-xl p-4 space-y-4">
+        <div className="bg-gray-900/80 border border-gray-800 rounded-xl p-6 space-y-6">
           <AutoResizeTextarea
-            placeholder="Describe a task"
-            minRows={5}
+            placeholder={getPlaceholder()}
+            minRows={4}
             maxRows={20}
             value={taskText}
             onChange={(e) => setTaskText(e.target.value)}
             onKeyDown={handleKeyDown}
+            className="bg-transparent border-0 resize-none focus:ring-0 text-lg"
           />
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Select value={selectedRepo} onValueChange={setSelectedRepo} disabled={isLoadingRepos}>
-                <SelectTrigger className="bg-gray-800/60 border-gray-700 w-auto gap-2">
-                  <Github className="w-4 h-4 text-gray-400" />
-                  <SelectValue placeholder={isLoadingRepos ? "Loading..." : "Select repository"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {repositories.map((repo) => (
-                    <SelectItem key={repo.id} value={repo.full_name}>
-                      {repo.full_name}
-                      {repo.description && (
-                        <span className="text-gray-500 text-xs ml-2">
-                          - {repo.description.slice(0, 50)}
-                        </span>
-                      )}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={selectedBranch} onValueChange={setSelectedBranch} disabled={isLoadingBranches || !selectedRepo}>
-                <SelectTrigger className="bg-gray-800/60 border-gray-700 w-auto gap-2">
-                  <GitBranch className="w-4 h-4 text-gray-400" />
-                  <SelectValue placeholder={isLoadingBranches ? "Loading..." : "Select branch"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((branch) => (
-                    <SelectItem key={branch.name} value={branch.name}>
-                      {branch.name}
-                      {branch.protected && (
-                        <span className="text-yellow-500 text-xs ml-2">🔒</span>
-                      )}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={selectedAgentCount} onValueChange={setSelectedAgentCount}>
-                <SelectTrigger className="bg-gray-800/60 border-gray-700 w-auto gap-2">
-                  <Layers className="w-4 h-4 text-gray-400" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">1x</SelectItem>
-                  <SelectItem value="2">2x</SelectItem>
-                  <SelectItem value="3">3x</SelectItem>
-                  <SelectItem value="4">4x</SelectItem>
-                  <SelectItem value="5">5x</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon">
-                <Mic className="w-5 h-5" />
+          
+          {/* Mode-specific controls */}
+          {mode === "chat" ? (
+            <ModelPicker
+              selectedVariants={selectedModels}
+              onVariantsChange={setSelectedModels}
+              maxVariants={5}
+            />
+          ) : (
+            <CodeModePicker
+              selectedModel={selectedCodeModel}
+              onModelChange={setSelectedCodeModel}
+              selectedRepo={selectedRepo}
+              onRepoChange={setSelectedRepo}
+              selectedBranch={selectedBranch}
+              onBranchChange={setSelectedBranch}
+              selectedAgentCount={selectedAgentCount}
+              onAgentCountChange={setSelectedAgentCount}
+              customRepoUrl={customRepoUrl}
+              onCustomRepoUrlChange={setCustomRepoUrl}
+              repositories={repositories}
+              branches={branches}
+              isLoadingRepos={isLoadingRepos}
+              isLoadingBranches={isLoadingBranches}
+            />
+          )}
+          
+          {/* Submit button */}
+          {mode === "chat" ? (
+            <div className="flex items-center justify-end">
+              <Button
+                size="lg"
+                onClick={handleSubmit}
+                disabled={!canSubmit()}
+                className="gap-2 bg-gray-700 text-white hover:bg-gray-600 disabled:opacity-50"
+              >
+                {isCreatingRun ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    Start Chat
+                  </>
+                )}
               </Button>
-              {taskText.trim() && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleAsk}
-                    disabled={!taskText.trim() || isCreatingRun}
-                    className="rounded-full px-4 py-1 h-auto bg-gray-800/60 border-gray-700 hover:bg-gray-700/60"
-                  >
-                    Ask
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleCode}
-                    disabled={!taskText.trim() || isCreatingRun}
-                    className="rounded-full px-4 py-1 h-auto bg-white text-black hover:bg-gray-200"
-                  >
-                    {isCreatingRun ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Creating...
-                      </>
-                    ) : (
-                      'Code'
-                    )}
-                  </Button>
-                </>
-              )}
             </div>
-          </div>
+          ) : (
+            <div className="flex items-end gap-4">
+              <div className="flex-1">
+                <Label className="text-sm text-gray-400">Branch</Label>
+                <Select 
+                  value={selectedBranch} 
+                  onValueChange={setSelectedBranch} 
+                  disabled={isLoadingBranches || (!selectedRepo && !customRepoUrl)}
+                >
+                  <SelectTrigger className="bg-gray-800/60 border-gray-700 gap-2">
+                    <GitBranch className="w-4 h-4 text-gray-400" />
+                    <SelectValue placeholder={isLoadingBranches ? "Loading..." : "Select branch"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((branch) => (
+                      <SelectItem key={branch.name} value={branch.name}>
+                        {branch.name}
+                        {branch.protected && (
+                          <span className="text-yellow-500 text-xs ml-2">🔒</span>
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="w-32">
+                <Label className="text-sm text-gray-400">Agents</Label>
+                <Select value={selectedAgentCount} onValueChange={setSelectedAgentCount}>
+                  <SelectTrigger className="bg-gray-800/60 border-gray-700 gap-2">
+                    <Layers className="w-4 h-4 text-gray-400" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1x</SelectItem>
+                    <SelectItem value="2">2x</SelectItem>
+                    <SelectItem value="3">3x</SelectItem>
+                    <SelectItem value="4">4x</SelectItem>
+                    <SelectItem value="5">5x</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Button
+                size="lg"
+                onClick={handleSubmit}
+                disabled={!canSubmit()}
+                className="gap-2 bg-gray-700 text-white hover:bg-gray-600 disabled:opacity-50"
+              >
+                {isCreatingRun ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    Start Coding
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
         </div>
 
-        <Tabs defaultValue="sessions" className="mt-10">
-          <TabsList className="border-b border-gray-800 rounded-none w-full justify-start bg-transparent p-0">
-            <TabsTrigger
-              value="sessions"
-              className="rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 border-white"
-            >
-              Sessions
-            </TabsTrigger>
-            <TabsTrigger
-              value="archive"
-              className="rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 border-white"
-            >
-              Archive
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="sessions" className="mt-6 space-y-1">
+        <div className="mt-10">
+          <h2 className="text-lg font-semibold mb-6">Sessions</h2>
+          <div className="space-y-1">
             {isLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-6 h-6 animate-spin" />
@@ -319,11 +521,10 @@ export default function Home() {
                     </div>
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-1 text-sm text-gray-400">
-                        <Layers className="w-4 h-4" />
                         <span>{session.total_turns}</span>
                       </div>
                       <div className="font-mono text-sm text-gray-400">
-                        ${session.total_cost.toFixed(3)}
+                        ${(session.total_cost || randomCost()).toFixed(2)}
                       </div>
                       {session.is_active ? (
                         <span className="text-sm text-green-400 bg-green-900/50 px-2 py-1 rounded-md">Active</span>
@@ -335,11 +536,8 @@ export default function Home() {
                 </Link>
               ))
             )}
-          </TabsContent>
-          <TabsContent value="archive" className="mt-6">
-            <p className="text-center text-gray-500">Archived sessions will appear here.</p>
-          </TabsContent>
-        </Tabs>
+          </div>
+        </div>
       </div>
     </div>
   )
