@@ -115,17 +115,19 @@ Before any suggestion that changes dependencies, environment, or tools:
 
 ### Frontend (Next.js 15.2.4)
 - **Framework**: Next.js 15.2.4 with React 19, TypeScript 5
-- **Navigation**: Next.js App Router
-- **Styling**: Tailwind CSS v3.4.17 (shadcn/ui compatible)
-- **Component Library**: shadcn/ui with Radix UI primitives (comprehensive set installed)
-- **Design System**: Custom AIdeator design system (see frontend/DESIGN-SYSTEM.md)
-- **Icons**: Lucide React for consistent iconography
-- **State**: React hooks and context
-- **Forms**: React Hook Form with Zod validation
-- **Charts**: Recharts for data visualization
-- **Theming**: next-themes for dark/light mode
-- **Testing**: Jest + Testing Library for unit tests, Playwright for E2E
-- **Code Quality**: ESLint, TypeScript strict mode, Knip for dead code detection
+- **Navigation**: Next.js App Router with simplified page structure
+- **Styling**: Tailwind CSS v3.4.17 (complete classes only, no dynamic interpolation)
+- **Component Library**: Full shadcn/ui implementation with Radix UI primitives
+- **Design System**: Comprehensive AIdeator design system (see frontend/DESIGN-SYSTEM.md)
+- **Icons**: Lucide React v0.454.0 for consistent iconography
+- **State Management**: React hooks with custom hooks (use-agent-logs, use-tasks, use-toast)
+- **Forms**: React Hook Form v7.54.1 with Zod validation
+- **Charts**: Recharts v3.1.0 for data visualization
+- **Theming**: next-themes v0.4.4 for dark/light mode support
+- **Animation**: tailwindcss-animate v1.0.7 with streaming animations
+- **Dialogs**: Vaul v1.1.2 for mobile-optimized drawers
+- **Testing**: Jest v30.0.4 + Testing Library v16.3.0 (unit), Playwright v1.54.1 (E2E)
+- **Code Quality**: ESLint, TypeScript v5 strict mode, Knip v5.61.3 for dead code detection
 
 ### Backend (FastAPI + PostgreSQL)
 - **API Framework**: FastAPI with async/await patterns
@@ -138,12 +140,16 @@ Before any suggestion that changes dependencies, environment, or tools:
 - **Package Management**: uv for fast Python dependency management
 - **Code Quality**: Ruff for linting/formatting, comprehensive pytest suite with coverage
 
-### Agent Runtime
-- **Orchestration**: Kubernetes Jobs managed via Kubernetes API
-- **LLM Providers**: LiteLLM for multi-provider support (OpenAI, Anthropic, etc.)
-- **Repository Analysis**: GitPython for code analysis
-- **Output Streaming**: Database persistence with real-time WebSocket streaming
-- **Isolation**: Each agent runs in isolated containers with resource limits
+### Agent Runtime (Refactored Architecture)
+- **Orchestration**: Modular `AgentOrchestrator` with clean separation of concerns
+- **LLM Providers**: Multiple provider implementations:
+  - `ClaudeCLIProvider` - Claude CLI integration
+  - `LiteLLMCLIProvider` - LiteLLM CLI with subprocess pattern
+  - `GeminiCLIProvider` - Google Gemini CLI integration
+- **Repository Analysis**: `RepositoryAnalyzer` and `CodebaseAnalyzer` modules
+- **Output Streaming**: `DatabaseService` for PostgreSQL persistence + `OutputWriter` for real-time logging
+- **Configuration**: Centralized settings via `config/settings.py` and `config/providers.py`
+- **Container Isolation**: Each agent variation runs in isolated Kubernetes Jobs with resource limits
 
 ### Development & Deployment
 - **Local Development**: Tilt (student-friendly, no Helm complexity) for k3d cluster orchestration
@@ -217,6 +223,9 @@ uv run python scripts/test_api_endpoints.py         # Test decoupled API archite
 uv run alembic upgrade head   # Apply latest migrations
 uv run alembic revision --autogenerate -m "description"  # Create migration
 python -m scripts.add_test_data  # Seed test data
+
+# Agent Container Management (NEW - Force Rebuild)
+./force-rebuild-agent.sh     # Clean, rebuild, push agent container to k3d registry
 
 # Testing Background Processing Workflow (NEW)
 # Submit task (like OpenAI Codex "Run" button)
@@ -308,14 +317,53 @@ k8s/rbac.yaml              # Kubernetes permissions for agent jobs
 
 ```
 app/                    # FastAPI backend
-  api/v1/              # API routes (auth, runs, sessions, admin_messaging, agent_outputs)
+  api/v1/              # API routes
+    auth.py           # Authentication endpoints
+    runs.py           # Task creation and management
+    tasks.py          # Task monitoring and progress
+    sessions.py       # Session management
+    agent_outputs.py  # Agent output streaming
+    admin_messaging.py # Admin messaging
+    credentials.py    # Credential management
+    health.py         # Health check endpoints
+    models.py         # Model management
+    preferences.py    # User preferences
+    websocket.py      # WebSocket connections
+    endpoints/        # Specialized endpoints (admin.py, provider_keys.py)
   core/                # Core services (config, database, dependencies, logging)
-  middleware/          # Custom middleware (development auth bypass, rate limiting)
-  models/              # SQLModel database models (run, session, user, provider_key)
-  schemas/             # Pydantic schemas (auth, common, runs, session, tasks)
+  middleware/          # Custom middleware
+    development.py    # Development auth bypass
+    logging.py        # Request logging
+    rate_limit.py     # Rate limiting
+  models/              # SQLModel database models
+    run.py           # Run/task model
+    session.py       # Session model
+    user.py          # User model
+    provider_key.py  # Encrypted API key model
+    model_definition.py # Model definitions
+    provider.py      # Provider configurations
+  schemas/             # Pydantic schemas
+    auth.py          # Authentication schemas
+    common.py        # Common schemas
+    runs.py          # Run/task schemas
+    session.py       # Session schemas
+    tasks.py         # Task monitoring schemas
+    models.py        # Model schemas
   services/            # Business logic services
-  tasks/               # Background tasks (model sync)
-  utils/               # Utilities (github, openapi)
+    agent_orchestrator.py      # Agent orchestration
+    auth_service.py           # Authentication service
+    database_init.py          # Database initialization
+    encryption_service.py     # Key encryption
+    global_key_service.py     # Global API key management
+    kubernetes_service.py     # Kubernetes job management
+    litellm_model_discovery.py # LiteLLM model discovery
+    model_catalog.py          # Model catalog management
+    model_discovery_service.py # Model discovery
+    model_sync_service.py     # Model synchronization
+    provider_key_service.py   # Provider key management
+    redis_service.py          # Redis integration
+  tasks/               # Background tasks (model_sync_task.py)
+  utils/               # Utilities (github.py, openapi.py)
   
 frontend/              # Next.js 15 frontend (new simplified structure)
   app/                 # App Router pages (main page, session pages, test pages)
@@ -325,14 +373,27 @@ frontend/              # Next.js 15 frontend (new simplified structure)
   
 frontend-old/          # Legacy frontend (complex multi-agent UI)
   
-agent/                 # AI agent container code
+agent/                 # AI agent container code (refactored modular architecture)
   main.py              # Agent entrypoint with AIdeatorAgent class
   main_wrapper.py      # Async wrapper for container execution
-  analyzers/           # Codebase analysis modules
-  config.py           # Configuration management
-  providers/          # LLM provider implementations
-  services/           # Core services (database, logging, redis, repository)
-  utils/              # Utility functions
+  analyzers/           # Codebase analysis modules (codebase.py, repository.py)
+  config/              # Configuration management
+    settings.py        # Main configuration settings
+    providers.py       # Provider-specific configurations
+  core/                # Core orchestration logic
+    orchestrator.py    # Main AgentOrchestrator class
+  providers/           # LLM provider implementations
+    base.py           # Base provider interface
+    claude_cli.py     # Claude CLI provider
+    litellm_cli.py    # LiteLLM CLI provider (new)
+    gemini_cli.py     # Google Gemini CLI provider
+    subprocess_base.py # Base subprocess provider pattern
+  services/            # Core services
+    database_service.py # PostgreSQL persistence service
+    output_writer.py   # Real-time output logging
+    redis.py          # Redis service integration
+  utils/               # Utility functions (errors.py, files.py)
+  scripts/             # Helper scripts (litellm_wrapper.py)
   
 deploy/               # Kubernetes deployment
   charts/aideator/    # Helm chart with comprehensive values
