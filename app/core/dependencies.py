@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, Query, Request, WebSocket, status
+from fastapi import Depends, Header, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -123,39 +123,6 @@ async def get_optional_current_user(
         return None
 
 
-async def get_current_user_from_websocket(
-    websocket: WebSocket,
-    db: AsyncSession,
-) -> User | None:
-    """Get current user from WebSocket query parameters (optional)."""
-    settings = get_settings()
-    
-    # In development modes, always return a test user
-    if settings.simple_dev_mode or not settings.require_api_keys_for_agents:
-        from app.middleware.development import DevelopmentAuthMiddleware
-        middleware = DevelopmentAuthMiddleware(app=None)
-        async with async_session_maker() as dev_db:
-            test_user = await middleware._get_or_create_test_user(dev_db)
-            return test_user
-    
-    try:
-        # Try to get API key from query parameters
-        api_key = websocket.query_params.get("api_key")
-        if not api_key:
-            return None
-
-        from app.core.auth import get_user_from_api_key
-
-        user = await get_user_from_api_key(api_key, db)
-
-        if user and user.is_active:
-            return user
-
-    except Exception:
-        # If auth fails, return None (allow anonymous access for now)
-        pass
-
-    return None
 
 
 # Type aliases for dependency injection

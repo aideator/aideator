@@ -12,7 +12,6 @@ from app.api.v1 import (
     runs,
     sessions,
     tasks,
-    websocket,
 )
 from app.api.v1.endpoints import admin, provider_keys
 
@@ -42,4 +41,3 @@ api_router.include_router(
 api_router.include_router(
     agent_outputs.router, prefix="/agent-outputs", tags=["Agent Outputs"]
 )
-api_router.include_router(websocket.router, tags=["WebSocket"])

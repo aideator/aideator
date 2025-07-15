@@ -214,6 +214,7 @@ async def select_winner(
 
     # Update winning variation
     run.winning_variation_id = request.winning_variation_id
+    run.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(run)
 
@@ -256,6 +257,7 @@ async def cancel_run(
 
     # Update status
     run.status = RunStatus.CANCELLED
+    run.updated_at = datetime.utcnow()
     await db.commit()
 
     logger.info("run_cancelled", run_id=run.run_id)

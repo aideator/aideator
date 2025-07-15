@@ -14,7 +14,7 @@ from agent.services.database_service import DatabaseService
 from agent.services.output_writer import OutputWriter
 from agent.analyzers.repository import RepositoryAnalyzer
 from agent.analyzers.codebase import CodebaseAnalyzer
-from agent.providers.litellm import LiteLLMProvider
+from agent.providers.litellm_cli import LiteLLMCLIProvider
 from agent.providers.claude_cli import ClaudeCLIProvider
 from agent.providers.gemini_cli import GeminiCLIProvider
 from agent.utils.errors import (
@@ -46,8 +46,11 @@ class AgentOrchestrator:
             # Write startup message
             await self.output_writer.write_startup_message()
             
-            # Validate credentials
-            await self._validate_credentials()
+            # Validate credentials (only if required)
+            if self.config.require_api_keys_for_agents:
+                await self._validate_credentials()
+            else:
+                await self.output_writer.write_job_data("🔓 Student mode: Skipping API key validation")
             
             # Execute based on mode
             if self.config.is_code_mode:
@@ -123,7 +126,7 @@ class AgentOrchestrator:
             self.provider = GeminiCLIProvider(self.config, self.output_writer)
         else:
             # Default to LiteLLM
-            self.provider = LiteLLMProvider(self.config, self.output_writer)
+            self.provider = LiteLLMCLIProvider(self.config, self.output_writer)
         
         # Initialize analyzers (only needed for code mode)
         self.repo_analyzer = RepositoryAnalyzer(self.config, self.output_writer)

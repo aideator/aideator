@@ -32,7 +32,7 @@ export default function Home() {
           model_variants: [
             { model_definition_id: "gpt-4o-mini" }
           ],
-          agent_mode: "litellm"
+          agent_mode: "claude-cli"
         })
       })
 
@@ -41,7 +41,7 @@ export default function Home() {
         setTaskText("")
         refetch() // Refresh tasks list
         // Navigate to task page
-        window.location.href = `/task/${result.run_id}`
+        window.location.href = `/task/${result.task_id}`
       } else {
         const error = await response.json()
         alert(`Error creating task: ${error.detail || 'Unknown error'}`)

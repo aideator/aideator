@@ -1,17 +1,7 @@
 import '@testing-library/jest-dom'
 
-// Mock WebSocket for tests
-global.WebSocket = jest.fn().mockImplementation(() => ({
-  close: jest.fn(),
-  send: jest.fn(),
-  addEventListener: jest.fn(),
-  removeEventListener: jest.fn(),
-  readyState: 1,
-  CONNECTING: 0,
-  OPEN: 1,
-  CLOSING: 2,
-  CLOSED: 3,
-}))
+// Mock fetch for tests (if needed)
+global.fetch = global.fetch || jest.fn()
 
 // Mock IntersectionObserver
 global.IntersectionObserver = jest.fn().mockImplementation(() => ({

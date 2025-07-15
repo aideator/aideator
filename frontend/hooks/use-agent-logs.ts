@@ -8,7 +8,7 @@ export interface AgentLog {
   variation_id: number
   content: string
   timestamp: string
-  output_type: 'logging' | 'error' | 'stdout' | 'stderr' | 'status' | 'summary' | 'diffs' | 'addinfo'
+  output_type: 'logging' | 'error' | 'stdout' | 'stderr' | 'status' | 'summary' | 'diffs' | 'addinfo' | 'job_data'
 }
 
 export interface UseAgentLogsReturn {
@@ -28,12 +28,14 @@ export function useAgentLogs(taskId: string): UseAgentLogsReturn {
   const [logs, setLogs] = useState<AgentLog[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const cacheRef = useRef<Map<string, AgentLog[]>>(new Map())
   const lastFetchedRef = useRef<string>('')
 
   const fetchLogs = useCallback(async () => {
     if (!taskId) return
+    
 
     try {
       setError(null)
@@ -49,8 +51,8 @@ export function useAgentLogs(taskId: string): UseAgentLogsReturn {
         return
       }
 
-      // Fetch from API - get logging outputs specifically
-      const response = await fetch(`http://localhost:8000/api/v1/tasks/${taskId}/outputs?output_type=logging`, {
+      // Fetch from API - get logging and job_data outputs (frontend on port 3000, API on port 8000)
+      const response = await fetch(`http://localhost:8000/api/v1/tasks/${taskId}/outputs?output_type=job_data`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -69,8 +71,8 @@ export function useAgentLogs(taskId: string): UseAgentLogsReturn {
 
       const data = await response.json()
       
-      // Transform API response to AgentLog format
-      const fetchedLogs: AgentLog[] = (data.outputs || []).map((output: any) => ({
+      // Transform API response to AgentLog format - API returns array directly
+      const fetchedLogs: AgentLog[] = (Array.isArray(data) ? data : data.outputs || []).map((output: any) => ({
         id: output.id,
         run_id: output.run_id,
         variation_id: output.variation_id,

@@ -25,57 +25,9 @@ spec:
         fsGroup: 1000
       containers:
         - name: agent
-          image: "aideator-agent"
-          imagePullPolicy: Never
+          image: "k3d-registry.localhost:5001/aideator-agent:latest"
+          imagePullPolicy: IfNotPresent
           env:
-            - name: OPENAI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: openai-secret
-                  key: api-key
-                  optional: true
-            - name: ANTHROPIC_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: anthropic-secret
-                  key: api-key
-                  optional: true
-            - name: GEMINI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: gemini-secret
-                  key: api-key
-                  optional: true
-            - name: MISTRAL_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: mistral-secret
-                  key: api-key
-                  optional: true
-            - name: COHERE_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: cohere-secret
-                  key: api-key
-                  optional: true
-            - name: GROQ_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: groq-secret
-                  key: api-key
-                  optional: true
-            - name: PERPLEXITY_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: perplexity-secret
-                  key: api-key
-                  optional: true
-            - name: DEEPSEEK_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: deepseek-secret
-                  key: api-key
-                  optional: true
             - name: AGENT_MODE
               value: "{agent_mode}"
             - name: REPO_URL
@@ -90,10 +42,22 @@ spec:
               value: "INFO"
             - name: PYTHONUNBUFFERED
               value: "1"
-            - name: REDIS_URL
-              value: "redis://aideator-redis:6379/0"
+            # - name: REDIS_URL  # COMMENTED OUT: Redis references removed per user request
+            #   value: "redis://aideator-redis:6379/0"
             - name: DATABASE_URL
               value: "postgresql://aideator:aideator123@aideator-database:5432/aideator"
+            - name: REQUIRE_API_KEYS_FOR_AGENTS
+              value: "false"
+            - name: SIMPLE_DEV_MODE
+              value: "true"
+            - name: DEBUG
+              value: "true"
+            - name: OPENAI_API_KEY
+              value: "{openai_api_key}"
+            - name: ANTHROPIC_API_KEY
+              value: "{anthropic_api_key}"
+            - name: GEMINI_API_KEY
+              value: "{gemini_api_key}"
           command: ["python", "-u", "/app/agent/main.py"]
           resources:
             requests:

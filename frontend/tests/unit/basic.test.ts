@@ -6,8 +6,8 @@ describe('Jest Setup', () => {
     expect(true).toBe(true)
   })
 
-  it('should have WebSocket mock', () => {
-    expect(global.WebSocket).toBeDefined()
-    expect(typeof global.WebSocket).toBe('function')
+  it('should have fetch available', () => {
+    expect(global.fetch).toBeDefined()
+    expect(typeof global.fetch).toBe('function')
   })
 })

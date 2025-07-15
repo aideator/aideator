@@ -17,7 +17,7 @@ export default function TestDatabaseIntegrationPage() {
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold mb-2">Database Integration Test</h1>
           <p className="text-gray-600 dark:text-gray-400">
-            Test the PostgreSQL-based agent logging system with real-time WebSocket streaming
+            Test the PostgreSQL-based agent logging system with HTTP polling
           </p>
         </div>
 
@@ -73,15 +73,15 @@ export default function TestDatabaseIntegrationPage() {
                   <li>• Async/sync compatibility fixed</li>
                   <li>• Database connectivity verified</li>
                   <li>• API endpoints for historical data</li>
-                  <li>• WebSocket client implementation</li>
+                  <li>• HTTP polling client implementation</li>
                 </ul>
               </div>
               <div className="space-y-2">
                 <h4 className="font-medium text-blue-600">🔄 Architecture</h4>
                 <ul className="text-sm space-y-1 text-gray-600">
                   <li>• Agents write to PostgreSQL via DatabaseService</li>
-                  <li>• Real-time streaming via Redis + WebSocket</li>
-                  <li>• Frontend consumes both historical & live data</li>
+                  <li>• Real-time updates via HTTP polling</li>
+                  <li>• Frontend consumes data from PostgreSQL API</li>
                   <li>• Multiple output types classified</li>
                   <li>• Multi-agent variation support</li>
                 </ul>
@@ -116,10 +116,10 @@ export default function TestDatabaseIntegrationPage() {
               <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
                 <h4 className="font-medium mb-2">🎯 What you&apos;ll see:</h4>
                 <ul className="list-disc list-inside space-y-1 text-sm">
-                  <li>Real-time agent outputs as they&apos;re written to PostgreSQL</li>
+                  <li>Agent outputs as they&apos;re written to PostgreSQL</li>
                   <li>Different output types (stdout, status, summary, etc.)</li>
                   <li>Multiple agent variations in separate tabs</li>
-                  <li>Connection status and auto-reconnection</li>
+                  <li>Automatic polling updates every 3 seconds</li>
                   <li>Output statistics and filtering</li>
                 </ul>
               </div>

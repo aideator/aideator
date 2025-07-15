@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Wifi, WifiOff, RotateCcw, Trash2, Terminal } from 'lucide-react'
-import { useAgentOutputs, type AgentOutput, type ConnectionStatus } from '@/hooks/use-agent-outputs'
+import { RefreshCw, Trash2, Terminal, AlertCircle } from 'lucide-react'
+import { useAgentLogs, type AgentLog } from '@/hooks/use-agent-logs'
 import { cn } from '@/lib/utils'
 
 // Agent color system for visual differentiation
@@ -27,28 +27,38 @@ const outputTypeColors = {
   logging: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
   diffs: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
   addinfo: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300',
+  job_data: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300',
+  error: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
 } as const
 
-function ConnectionStatusIndicator({ status }: { status: ConnectionStatus }) {
-  const statusConfig = {
-    connecting: { icon: Wifi, color: 'text-yellow-500', label: 'Connecting...' },
-    connected: { icon: Wifi, color: 'text-green-500', label: 'Connected' },
-    disconnected: { icon: WifiOff, color: 'text-gray-500', label: 'Disconnected' },
-    error: { icon: WifiOff, color: 'text-red-500', label: 'Connection Error' },
+function LoadingStatusIndicator({ isLoading, error }: { isLoading: boolean; error: string | null }) {
+  if (error) {
+    return (
+      <div className="flex items-center gap-2 text-sm">
+        <AlertCircle className="h-4 w-4 text-red-500" />
+        <span className="text-red-500">Error: {error}</span>
+      </div>
+    )
   }
 
-  const config = statusConfig[status]
-  const IconComponent = config.icon
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 text-sm">
+        <RefreshCw className="h-4 w-4 text-blue-500 animate-spin" />
+        <span className="text-blue-500">Loading...</span>
+      </div>
+    )
+  }
 
   return (
     <div className="flex items-center gap-2 text-sm">
-      <IconComponent className={cn('h-4 w-4', config.color)} />
-      <span className={config.color}>{config.label}</span>
+      <RefreshCw className="h-4 w-4 text-green-500" />
+      <span className="text-green-500">Polling active</span>
     </div>
   )
 }
 
-function OutputLine({ output }: { output: AgentOutput }) {
+function OutputLine({ output }: { output: AgentLog }) {
   const typeColor = outputTypeColors[output.output_type] || outputTypeColors.stdout
   const timestamp = new Date(output.timestamp).toLocaleTimeString()
 
@@ -67,7 +77,7 @@ function OutputLine({ output }: { output: AgentOutput }) {
   )
 }
 
-function VariationPanel({ variationId, outputs }: { variationId: number; outputs: AgentOutput[] }) {
+function VariationPanel({ variationId, outputs }: { variationId: number; outputs: AgentLog[] }) {
   const agentColorClass = agentColors[variationId as keyof typeof agentColors] || agentColors[0]
   
   const outputCounts = outputs.reduce((acc, output) => {
@@ -124,37 +134,29 @@ interface AgentOutputViewerProps {
 }
 
 export function AgentOutputViewer({ runId, maxVariations = 6 }: AgentOutputViewerProps) {
-  const { outputs, connectionStatus, reconnect, clearOutputs, getOutputsByVariation } = useAgentOutputs(runId)
+  const { logs, isLoading, error, refetch, getLogsByVariation } = useAgentLogs(runId)
   
   // Get unique variation IDs
-  const variationIds = Array.from(new Set(outputs.map(o => o.variation_id))).sort((a, b) => a - b)
+  const variationIds = Array.from(new Set(logs.map(o => o.variation_id))).sort((a, b) => a - b)
   const displayVariations = variationIds.slice(0, maxVariations)
 
   return (
     <div className="space-y-4">
-      {/* Header with connection status and controls */}
+      {/* Header with status and controls */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <h2 className="text-lg font-semibold">Agent Outputs</h2>
-          <ConnectionStatusIndicator status={connectionStatus} />
+          <LoadingStatusIndicator isLoading={isLoading} error={error} />
         </div>
         <div className="flex items-center gap-2">
           <Button 
             variant="outline" 
             size="sm" 
-            onClick={reconnect}
-            disabled={connectionStatus === 'connecting'}
+            onClick={refetch}
+            disabled={isLoading}
           >
-            <RotateCcw className="h-4 w-4 mr-2" />
-            Reconnect
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={clearOutputs}
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Clear
+            <RefreshCw className={cn('h-4 w-4 mr-2', isLoading && 'animate-spin')} />
+            Refresh
           </Button>
         </div>
       </div>
@@ -166,7 +168,7 @@ export function AgentOutputViewer({ runId, maxVariations = 6 }: AgentOutputViewe
             <div className="text-center text-gray-500">
               <Terminal className="h-8 w-8 mx-auto mb-2" />
               <p>Waiting for agent outputs...</p>
-              <p className="text-sm">Run ID: {runId}</p>
+              <p className="text-sm">Task ID: {runId}</p>
             </div>
           </CardContent>
         </Card>
@@ -174,7 +176,7 @@ export function AgentOutputViewer({ runId, maxVariations = 6 }: AgentOutputViewe
         // Single variation - full width
         <VariationPanel 
           variationId={displayVariations[0]} 
-          outputs={getOutputsByVariation(displayVariations[0])} 
+          outputs={getLogsByVariation(displayVariations[0])} 
         />
       ) : (
         // Multiple variations - use tabs for space efficiency
@@ -188,7 +190,7 @@ export function AgentOutputViewer({ runId, maxVariations = 6 }: AgentOutputViewe
               >
                 Agent {variationId}
                 <Badge variant="secondary" className="ml-2 text-xs">
-                  {getOutputsByVariation(variationId).length}
+                  {getLogsByVariation(variationId).length}
                 </Badge>
               </TabsTrigger>
             ))}
@@ -198,7 +200,7 @@ export function AgentOutputViewer({ runId, maxVariations = 6 }: AgentOutputViewe
             <TabsContent key={variationId} value={variationId.toString()}>
               <VariationPanel 
                 variationId={variationId} 
-                outputs={getOutputsByVariation(variationId)} 
+                outputs={getLogsByVariation(variationId)} 
               />
             </TabsContent>
           ))}
@@ -211,18 +213,20 @@ export function AgentOutputViewer({ runId, maxVariations = 6 }: AgentOutputViewe
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div>
               <span className="text-gray-500">Total Outputs:</span>
-              <span className="ml-2 font-medium">{outputs.length}</span>
+              <span className="ml-2 font-medium">{logs.length}</span>
             </div>
             <div>
               <span className="text-gray-500">Active Variations:</span>
               <span className="ml-2 font-medium">{variationIds.length}</span>
             </div>
             <div>
-              <span className="text-gray-500">Connection:</span>
-              <span className="ml-2 font-medium capitalize">{connectionStatus}</span>
+              <span className="text-gray-500">Status:</span>
+              <span className="ml-2 font-medium capitalize">
+                {error ? 'Error' : isLoading ? 'Loading' : 'Active'}
+              </span>
             </div>
             <div>
-              <span className="text-gray-500">Run ID:</span>
+              <span className="text-gray-500">Task ID:</span>
               <span className="ml-2 font-mono text-xs">{runId}</span>
             </div>
           </div>

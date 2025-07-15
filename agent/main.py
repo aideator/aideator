@@ -139,10 +139,25 @@ async def main():
         # Clean exit
         sys.exit(0)
     except Exception as e:
-        # Ensure error is visible in logs
-        agent.log(f"💥 Fatal error: {e!s}", "ERROR")
+        # Ensure error is visible in logs and database
+        error_msg = f"💥 Fatal error: {e!s}"
+        print(error_msg, flush=True)  # Ensure it's in container logs
+        agent.log(error_msg, "ERROR")
         agent.log("❌ Agent failed", "INFO", status="failed")
         agent.log("🏁 Exiting agent container", "INFO")
+        
+        # Try to write to database if we have a task_id
+        try:
+            if DATABASE_SERVICE_AVAILABLE:
+                db_service = DatabaseService()
+                run_id = os.getenv("RUN_ID", "unknown")
+                run = await db_service.get_run_by_run_id(run_id)
+                if run:
+                    await db_service.write_error(run.task_id, 0, error_msg)
+                await db_service.close()
+        except:
+            pass  # Best effort
+            
         sys.exit(1)
 
 

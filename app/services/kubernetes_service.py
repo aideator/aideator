@@ -60,7 +60,10 @@ class KubernetesService:
             variation_id=variation_id,
             repo_url=repo_url,
             prompt=self._escape_yaml_string(prompt),  # Proper YAML escaping
-            agent_mode=agent_mode or "litellm",  # Default to litellm
+            agent_mode=agent_mode or "claude-cli",  # Default to claude-cli
+            openai_api_key=os.getenv("OPENAI_API_KEY", ""),
+            anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
+            gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
         )
 
         # Create temporary file for job manifest

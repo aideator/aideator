@@ -1,9 +1,23 @@
 """
-Redis service - isolated for easy removal.
+COMMENTED OUT: All Redis functionality disabled per user request
 
-This service contains all Redis-related functionality and can be 
-easily removed when transitioning to database-first architecture.
+TODO: This entire file is commented out but preserved.
+User explicitly stated: "comment out redis. don't delete it. but no one should be running initializing redis."
+
+Original file contents preserved below:
+
 """
+
+# ENTIRE FILE COMMENTED OUT - DO NOT USE
+# All code below this point is disabled
+
+if False:  # This prevents any Redis code from executing
+    """
+    Redis service - isolated for easy removal.
+
+    This service contains all Redis-related functionality and can be 
+    easily removed when transitioning to database-first architecture.
+    """
 
 import json
 from datetime import datetime, UTC

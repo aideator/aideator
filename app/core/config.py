@@ -73,6 +73,7 @@ class Settings(BaseSettings):
     max_prompt_length: int = Field(default=2000, ge=10, le=5000)
     default_agent_model: str = "gpt-4o-mini"
     debug_agent_container: bool = False  # Enable debug logs for agent containers
+    agent_mode: str = "claude-cli"  # Default agent mode (can be overridden by containers)
 
     # Concurrency limits
     max_concurrent_runs: int = Field(default=10, ge=1, le=50)

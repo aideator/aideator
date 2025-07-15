@@ -294,6 +294,7 @@ class AgentOrchestrator:
             run = await db_session.get(Run, task_id)
             if run:
                 run.status = status
+                run.updated_at = datetime.utcnow()
                 await db_session.commit()
         except Exception as e:
             logger.error(f"Failed to update run status: {e}")

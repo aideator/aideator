@@ -30,7 +30,7 @@ class AgentConfig:
     
     # Services
     database_url: str
-    redis_url: Optional[str]
+    # redis_url: Optional[str]  # COMMENTED OUT: Redis references removed per user request
     
     # LiteLLM Gateway (to be removed)
     gateway_url: str
@@ -43,6 +43,9 @@ class AgentConfig:
     
     # Agent mode
     agent_mode: str
+    
+    # Feature flags
+    require_api_keys_for_agents: bool
     
     @classmethod
     def from_environment(cls) -> "AgentConfig":
@@ -64,7 +67,7 @@ class AgentConfig:
         if not database_url:
             raise ValueError("DATABASE_URL environment variable is required")
             
-        redis_url = os.getenv("REDIS_URL")  # Optional for now, will be removed
+        # redis_url = os.getenv("REDIS_URL")  # COMMENTED OUT: Redis references removed per user request
         
         # LiteLLM Gateway (will be removed)
         gateway_url = os.getenv("LITELLM_GATEWAY_URL", "http://aideator-litellm:4000")
@@ -76,7 +79,10 @@ class AgentConfig:
         log_file = work_dir / f"agent_{run_id}_{variation_id}.log"
         
         # Agent mode
-        agent_mode = os.getenv("AGENT_MODE", "litellm")
+        agent_mode = os.getenv("AGENT_MODE", "claude-cli")
+        
+        # Feature flags
+        require_api_keys_for_agents = os.getenv("REQUIRE_API_KEYS_FOR_AGENTS", "true").lower() == "true"
         
         return cls(
             run_id=run_id,
@@ -87,13 +93,14 @@ class AgentConfig:
             temperature=temperature,
             max_tokens=max_tokens,
             database_url=database_url,
-            redis_url=redis_url,
+            # redis_url=redis_url,  # COMMENTED OUT: Redis references removed per user request
             gateway_url=gateway_url,
             gateway_key=gateway_key,
             work_dir=work_dir,
             repo_dir=repo_dir,
             log_file=log_file,
             agent_mode=agent_mode,
+            require_api_keys_for_agents=require_api_keys_for_agents,
         )
     
     @property

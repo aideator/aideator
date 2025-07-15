@@ -19,6 +19,8 @@ class ProviderConfig:
     def __init__(self):
         """Initialize with current API key state."""
         self.available_keys = self._check_available_api_keys()
+        # Check if API key validation is required
+        self.require_api_keys = os.getenv("REQUIRE_API_KEYS_FOR_AGENTS", "true").lower() == "true"
     
     def _check_available_api_keys(self) -> Dict[str, bool]:
         """Check which API keys are available for different providers."""
@@ -93,6 +95,10 @@ class ProviderConfig:
         Returns:
             tuple: (is_valid, error_message)
         """
+        # Skip validation if not required (student mode)
+        if not self.require_api_keys:
+            return True, ""
+            
         provider = self.get_model_provider(model_name)
 
         if not self.available_keys.get(provider, False):

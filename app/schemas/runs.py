@@ -78,9 +78,9 @@ class CreateRunRequest(BaseModel):
         description="Use Claude Code CLI instead of basic Claude API",
     )
     agent_mode: str | None = Field(
-        default="litellm",
+        default="claude-cli",
         description="Agent execution mode: 'litellm', 'claude-cli', 'gemini-cli', or 'openai-codex'",
-        examples=["litellm", "claude-cli", "gemini-cli", "openai-codex"],
+        examples=["claude-cli", "litellm", "gemini-cli", "openai-codex"],
     )
 
     # Session and turn management
@@ -124,7 +124,7 @@ class CreateRunRequest(BaseModel):
         valid_modes = ["litellm", "claude-cli", "gemini-cli", "openai-codex"]
         if v not in [*valid_modes, None]:
             raise ValueError(f"Agent mode must be one of: {', '.join(valid_modes)}")
-        return v or "litellm"
+        return v or "claude-cli"
 
     model_config = {
         "protected_namespaces": (),  # Allow model_ prefixed fields

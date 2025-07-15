@@ -32,7 +32,7 @@ update_settings(max_parallel_updates=3, suppress_unused_image_warnings=["aideato
 allow_k8s_contexts(['k3d-aideator'])
 
 # Configure default registry to use k3d's built-in registry
-default_registry('k3d-registry.localhost:5001')
+default_registry('localhost:5001')
 
 # Create namespace
 namespace_create('aideator')
