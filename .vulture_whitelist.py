@@ -445,8 +445,6 @@ def rotate_key():
     pass  # app/services/encryption_service.py
 
 
-def get_all_supported_models():
-    pass  # app/services/litellm_model_discovery.py
 
 
 def get_models_by_capability():
@@ -461,8 +459,6 @@ def get_model_by_litellm_name_service():
     pass  # app/services/model_catalog.py
 
 
-def get_all_possible_models():
-    pass  # app/services/model_discovery_service.py
 
 
 def get_key_for_model():
@@ -542,8 +538,6 @@ model_parameters = None
 provider_credential_id = None
 _db = None
 helm_chart_path = None
-litellm_model_discovery = None
-model_discovery_service = None
 last_seen_at = None
 max_input_tokens = None
 extra_metadata = None
