@@ -36,6 +36,7 @@ class AIdeatorAgent:
         """Initialize agent - maintains original interface."""
         self.run_id = os.getenv("RUN_ID", "local-test")
         self.variation_id = os.getenv("VARIATION_ID", "0")
+        self.task_id = os.getenv("TASK_ID")
 
         # Initialize the orchestrator that does the real work
         self._orchestrator = AgentOrchestrator()
@@ -105,20 +106,32 @@ async def main():
                 # Try to write a startup message if we have environment variables
                 run_id = os.getenv("RUN_ID", "unknown")
                 variation_id = int(os.getenv("VARIATION_ID", "0"))
+                task_id_env = os.getenv("TASK_ID")
 
-                # Get task_id from run_id
-                run = await db_service.get_run_by_run_id(run_id)
-                if run:
-                    task_id = run.task_id
+                if task_id_env:
+                    # Use task_id directly from environment (unified tasks)
+                    task_id = int(task_id_env)
                     await db_service.write_log(
                         task_id=task_id,
                         variation_id=variation_id,
-                        log_message=f"Agent starting up for run_id={run_id}, task_id={task_id} (MODULAR VERSION)",
+                        log_message=f"Agent starting up for task_id={task_id}, run_id={run_id} (UNIFIED TASK VERSION)",
                         log_level="INFO"
                     )
                     print(f"✅ Wrote startup message to database for task_id={task_id}")
                 else:
-                    print(f"⚠️ Could not find run with run_id={run_id}")
+                    # Fallback to legacy run lookup
+                    run = await db_service.get_run_by_run_id(run_id)
+                    if run:
+                        task_id = run.task_id
+                        await db_service.write_log(
+                            task_id=task_id,
+                            variation_id=variation_id,
+                            log_message=f"Agent starting up for run_id={run_id}, task_id={task_id} (LEGACY VERSION)",
+                            log_level="INFO"
+                        )
+                        print(f"✅ Wrote startup message to database for task_id={task_id}")
+                    else:
+                        print(f"⚠️ Could not find run with run_id={run_id}")
 
             else:
                 print("❌ Database health check failed")
@@ -150,10 +163,18 @@ async def main():
         try:
             if DATABASE_SERVICE_AVAILABLE:
                 db_service = DatabaseService()
-                run_id = os.getenv("RUN_ID", "unknown")
-                run = await db_service.get_run_by_run_id(run_id)
-                if run:
-                    await db_service.write_error(run.task_id, 0, error_msg)
+                task_id_env = os.getenv("TASK_ID")
+                
+                if task_id_env:
+                    # Use task_id directly (unified tasks)
+                    task_id = int(task_id_env)
+                    await db_service.write_error(task_id, 0, error_msg)
+                else:
+                    # Fallback to legacy run lookup
+                    run_id = os.getenv("RUN_ID", "unknown")
+                    run = await db_service.get_run_by_run_id(run_id)
+                    if run:
+                        await db_service.write_error(run.task_id, 0, error_msg)
                 await db_service.close()
         except:
             pass  # Best effort
@@ -163,3 +184,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+# Test change

@@ -22,7 +22,8 @@ from app.core.database import get_session
 from app.core.dependencies import CurrentUserAPIKey
 from app.core.logging import get_logger
 from app.models.run import AgentOutput, Run
-from app.schemas.tasks import TaskListItem, TaskListResponse
+from app.models.task import Task, TaskOutput, TaskStatus
+from app.schemas.tasks import TaskListItem, TaskListResponse, TaskCreate, TaskResponse, TaskOutputResponse
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -38,18 +39,34 @@ def parse_agent_output_content(content: str) -> dict[str, Any]:
 
 async def get_task_metrics(session: AsyncSession, task_id: int) -> dict[str, int]:
     """Get aggregated metrics across all variations for a task."""
-    result = await session.execute(
+    # Check both legacy AgentOutput and new TaskOutput tables
+    legacy_result = await session.execute(
         select(AgentOutput).where(
             AgentOutput.task_id == task_id,
             AgentOutput.output_type == "metrics"
         )
     )
-    metrics_outputs = result.scalars().all()
+    legacy_outputs = legacy_result.scalars().all()
+    
+    new_result = await session.execute(
+        select(TaskOutput).where(
+            TaskOutput.task_id == task_id,
+            TaskOutput.output_type == "metrics"
+        )
+    )
+    new_outputs = new_result.scalars().all()
 
     total_additions = 0
     total_deletions = 0
 
-    for output in metrics_outputs:
+    # Process legacy outputs
+    for output in legacy_outputs:
+        data = parse_agent_output_content(output.content)
+        total_additions += data.get("additions", 0)
+        total_deletions += data.get("deletions", 0)
+    
+    # Process new outputs
+    for output in new_outputs:
         data = parse_agent_output_content(output.content)
         total_additions += data.get("additions", 0)
         total_deletions += data.get("deletions", 0)
@@ -67,63 +84,65 @@ async def list_tasks(
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_session),
 ) -> TaskListResponse:
-    """Get list of tasks for the main page (reads from runs table)."""
+    """Get list of tasks for the main page (unified task model)."""
 
-    # Query runs for the current user, ordered by creation date (newest first)
-    runs_query = (
-        select(Run)
-        .where(Run.user_id == current_user.id)
-        .order_by(desc(Run.created_at))
+    # Query tasks for the current user, ordered by creation date (newest first)
+    tasks_query = (
+        select(Task)
+        .where(Task.user_id == current_user.id)
+        .order_by(desc(Task.created_at))
         .offset(offset)
         .limit(limit)
     )
 
-    result = await db.execute(runs_query)
-    runs = result.scalars().all()
+    result = await db.execute(tasks_query)
+    tasks_db = result.scalars().all()
 
     # Get total count for pagination
-    count_query = select(func.count(Run.task_id)).where(Run.user_id == current_user.id)
+    count_query = select(func.count(Task.id)).where(Task.user_id == current_user.id)
     count_result = await db.execute(count_query)
     total = count_result.scalar() or 0
 
-    # Convert runs to task list items
+    # Convert tasks to task list items
     tasks = []
-    for run in runs:
+    for task in tasks_db:
         # Generate title from prompt (truncate if needed)
-        title = run.prompt or "Untitled Task"
+        title = task.prompt or "Untitled Task"
         if len(title) > 50:
             title = title[:47] + "..."
 
-        # Map task_status to frontend status format
+        # Map TaskStatus to frontend status format
         status_mapping = {
-            "open": "Open",
-            "completed": "Completed",
-            "failed": "Failed"
+            TaskStatus.PENDING: "Open",
+            TaskStatus.RUNNING: "Open",
+            TaskStatus.COMPLETED: "Completed",
+            TaskStatus.FAILED: "Failed",
+            TaskStatus.CANCELLED: "Failed"
         }
-        frontend_status = status_mapping.get(run.task_status, "Open")
+        frontend_status = status_mapping.get(task.status, "Open")
 
         # Generate details string with timestamp and repository info
-        details = f"{run.created_at.strftime('%I:%M %p')} · "
-        if run.github_url:
+        details = f"{task.created_at.strftime('%I:%M %p')} · "
+        if task.github_url:
             # Extract repo name from URL for display
-            repo_name = run.github_url.split("/")[-1] if "/" in run.github_url else run.github_url
+            repo_name = task.github_url.split("/")[-1] if "/" in task.github_url else task.github_url
             details += f"aideator/{repo_name}"
         else:
             details += "Chat Mode"
 
-        # Get number of variations from the run
-        versions = run.variations if run.variations else 1
+        # Get number of variations from the task
+        versions = task.variations if task.variations else 1
 
         # Get aggregated metrics for completed tasks
         additions = None
         deletions = None
-        if run.task_status == "completed":
-            metrics = await get_task_metrics(db, run.task_id)
+        if task.status == TaskStatus.COMPLETED:
+            metrics = await get_task_metrics(db, task.id)
             additions = metrics["additions"]
             deletions = metrics["deletions"]
 
         task_item = TaskListItem(
-            id=str(run.task_id),  # Convert to string for frontend compatibility
+            id=str(task.id),  # Convert to string for frontend compatibility
             title=title,
             details=details,
             status=frontend_status,
@@ -293,6 +312,60 @@ async def get_task_outputs(
     ]
 
 
+@router.post("", response_model=TaskResponse)
+async def create_task(
+    task_data: TaskCreate,
+    current_user: CurrentUserAPIKey,
+    db: AsyncSession = Depends(get_session),
+) -> TaskResponse:
+    """Create a new unified task."""
+    
+    # Extract model configurations from variants
+    model_configs = [
+        {
+            "model_definition_id": variant.model_definition_id,
+            "custom_params": variant.custom_params
+        }
+        for variant in task_data.model_variants
+    ]
+    
+    # Create new task
+    task = Task(
+        github_url=task_data.github_url,
+        prompt=task_data.prompt,
+        agent_mode=task_data.agent_mode,
+        variations=len(task_data.model_variants),
+        model_configs=model_configs,
+        status=TaskStatus.PENDING,
+        user_id=current_user.id,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    
+    db.add(task)
+    await db.commit()
+    await db.refresh(task)
+    
+    return TaskResponse(
+        id=task.id,
+        github_url=task.github_url,
+        prompt=task.prompt,
+        agent_mode=task.agent_mode,
+        status=task.status,
+        variations=task.variations,
+        created_at=task.created_at,
+        started_at=task.started_at,
+        completed_at=task.completed_at,
+        results=task.results,
+        task_metadata=task.task_metadata,
+        total_tokens_used=task.total_tokens_used,
+        total_cost_usd=task.total_cost_usd,
+        error_message=task.error_message,
+        polling_url=f"/api/v1/tasks/{task.id}/outputs",
+        estimated_duration_seconds=300  # Default 5 minutes
+    )
+
+
 @router.get("/{task_id}/variations/{variation_id}/outputs")
 async def get_variation_outputs(
     task_id: int,  # Now takes integer task_id
@@ -300,65 +373,3 @@ async def get_variation_outputs(
     current_user: CurrentUserAPIKey,
     since: datetime | None = Query(
         None, description="ISO timestamp to get outputs after"
-    ),
-    output_type: str | None = Query(None, description="Filter by output type"),
-    limit: int = Query(100, le=1000, description="Maximum number of outputs to return"),
-    db: AsyncSession = Depends(get_session),
-) -> list[dict]:
-    """
-    Get agent outputs for a specific variation of a task.
-    
-    Useful for variation comparison in the task detail page.
-    """
-    # Verify task exists and user has access
-    query = select(Run).where(Run.task_id == task_id)
-    if current_user:
-        query = query.where(Run.user_id == current_user.id)
-
-    result = await db.execute(query)
-    run = result.scalar_one_or_none()
-
-    if not run:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Task not found",
-        )
-
-    # Verify variation_id is valid
-    if variation_id < 0 or variation_id >= run.variations:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid variation ID. Must be between 0 and {run.variations - 1}",
-        )
-
-    # Build query for outputs
-    outputs_query = select(AgentOutput).where(
-        AgentOutput.task_id == task_id,
-        AgentOutput.variation_id == variation_id
-    )
-
-    # Apply filters
-    if since:
-        outputs_query = outputs_query.where(AgentOutput.timestamp > since)
-    if output_type:
-        outputs_query = outputs_query.where(AgentOutput.output_type == output_type)
-
-    # Order by timestamp and limit
-    outputs_query = outputs_query.order_by(AgentOutput.timestamp).limit(limit)
-
-    # Execute query
-    result = await db.execute(outputs_query)
-    outputs = result.scalars().all()
-
-    # Convert to response format
-    return [
-        {
-            "id": output.id,
-            "task_id": output.task_id,  # Changed from run_id to task_id
-            "variation_id": output.variation_id,
-            "content": output.content,
-            "timestamp": output.timestamp.isoformat(),
-            "output_type": output.output_type,
-        }
-        for output in outputs
-    ]

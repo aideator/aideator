@@ -16,15 +16,8 @@ class GlobalKeyService:
         self._keys_cache: dict[str, str] = {}
 
     def get_provider_key(self, provider: str, user_id: str | None = None) -> str | None:
-        """Get API key for provider, using global keys if per-user keys disabled."""
-
-        # If per-user keys are required and we have a user, check user-specific keys first
-        if self.settings.require_per_user_keys and user_id:
-            # TODO: Implement user-specific key lookup
-            # For now, fall back to global keys
-            pass
-
-        # Use global environment variables
+        """Get API key for provider from global environment variables."""
+        # Always use global environment variables (simplified for student project)
         if provider == "openai":
             return self.settings.openai_api_key or os.getenv("OPENAI_API_KEY")
         if provider == "anthropic":

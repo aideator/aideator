@@ -71,8 +71,7 @@ print()
 print('=== FEATURE FLAGS ===')
 print(f'✅ Auto Test User: {getattr(settings, \"auto_create_test_user\", \"not set\")}')
 print(f'✅ Require API Keys for Agents: {getattr(settings, \"require_api_keys_for_agents\", \"not set\")}')
-print(f'✅ Require Per-User Keys: {getattr(settings, \"require_per_user_keys\", \"not set\")}')
-print(f'✅ Enable Kubernetes Secrets: {getattr(settings, \"enable_kubernetes_secrets\", \"not set\")}')
+# Removed: require_per_user_keys and enable_kubernetes_secrets flags - simplified
 print()
 
 print('=== API KEYS ===')

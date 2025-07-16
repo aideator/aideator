@@ -1,5 +1,5 @@
 """
-Agent orchestrator using Kubernetes jobs with Redis Streams.
+Agent orchestrator using Kubernetes jobs with PostgreSQL persistence.
 """
 
 import asyncio
@@ -11,9 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.models.run import Run, RunStatus
+from app.models.task import Task, TaskStatus
 from app.schemas.runs import AgentConfig
 from app.services.kubernetes_service import KubernetesService
-from app.services.redis_service import redis_service
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -27,7 +27,6 @@ class AgentOrchestrator:
         kubernetes_service: KubernetesService,
     ):
         self.kubernetes = kubernetes_service
-        self.redis = redis_service
         self.active_runs: dict[str, dict[str, Any]] = {}
         self._job_count_lock = asyncio.Lock()
         self._total_active_jobs = 0
@@ -79,6 +78,7 @@ class AgentOrchestrator:
         agent_config: AgentConfig | None = None,
         agent_mode: str | None = None,
         db_session: AsyncSession | None = None,
+        use_unified_tasks: bool = False,
     ) -> None:
         """Execute N agent variations using Kubernetes jobs."""
         logger.info(
@@ -105,36 +105,34 @@ class AgentOrchestrator:
             "jobs": [],
         }
 
-        # Initialize Redis connection if needed (only if Redis is enabled)
-        if settings.enable_redis and not await self.redis.health_check():
-            await self.redis.connect()
-
-        # Update run status
+        # Update task/run status
         if db_session:
-            await self._update_run_status(db_session, task_id, RunStatus.RUNNING)
+            if use_unified_tasks:
+                await self._update_task_status(db_session, task_id, TaskStatus.RUNNING)
+            else:
+                await self._update_run_status(db_session, task_id, RunStatus.RUNNING)
 
         try:
             # Increment job count
             await self._increment_job_count(variations)
 
             await self._execute_individual_jobs(
-                task_id, run_id, repo_url, prompt, variations, agent_mode, db_session
+                task_id, run_id, repo_url, prompt, variations, agent_mode, db_session, use_unified_tasks
             )
 
         except Exception as e:
             logger.error(f"Error executing variations for run {run_id}: {e}")
             self.active_runs[run_id]["status"] = "failed"
 
-            # Send error event to Redis (if enabled)
-            if settings.enable_redis:
-                await self.redis.add_status_update(run_id, "failed", {"error": str(e)})
-
             # Decrement job count on failure
             await self._decrement_job_count(variations)
 
             # Update database status
             if db_session:
-                await self._update_run_status(db_session, task_id, RunStatus.FAILED)
+                if use_unified_tasks:
+                    await self._update_task_status(db_session, task_id, TaskStatus.FAILED)
+                else:
+                    await self._update_run_status(db_session, task_id, RunStatus.FAILED)
 
         finally:
             # Clean up run metadata after some time
@@ -149,12 +147,14 @@ class AgentOrchestrator:
         variations: int,
         agent_mode: str | None = None,
         db_session: AsyncSession | None = None,
+        use_unified_tasks: bool = False,
     ) -> None:
         """Execute agents using individual jobs."""
         # Create individual jobs
         jobs = []
         for i in range(variations):
             job_name = await self.kubernetes.create_agent_job(
+                task_id=task_id,
                 run_id=run_id,
                 variation_id=i,
                 repo_url=repo_url,
@@ -166,22 +166,19 @@ class AgentOrchestrator:
         self.active_runs[run_id]["jobs"] = [job[0] for job in jobs]
         self.active_runs[run_id]["status"] = "running"
 
-        # Send start event to Redis
+        # Start agent jobs
         logger.info(f"Starting {len(jobs)} agent jobs for run {run_id}")
-        if settings.enable_redis:
-            await self.redis.add_status_update(run_id, "running", {"job_count": len(jobs)})
 
-        # Agents now handle their own streaming to Redis Streams
+        # Agents handle their own output streaming to PostgreSQL
         # Just wait for all jobs to complete
         await self._wait_for_jobs_completion(run_id, [job_name for job_name, _ in jobs])
 
-        # Send run completion status to Redis
-        if settings.enable_redis:
-            await self.redis.add_status_update(run_id, "completed")
-
         # Update database status
         if db_session:
-            await self._update_run_status(db_session, task_id, RunStatus.COMPLETED)
+            if use_unified_tasks:
+                await self._update_task_status(db_session, task_id, TaskStatus.COMPLETED)
+            else:
+                await self._update_run_status(db_session, task_id, RunStatus.COMPLETED)
 
     async def _wait_for_jobs_completion(
         self, run_id: str, job_names: list[str]
@@ -211,8 +208,6 @@ class AgentOrchestrator:
 
         except Exception as e:
             logger.error(f"Error waiting for job completion: {e}")
-            if settings.enable_redis:
-                await self.redis.add_status_update(run_id, "failed", {"error": str(e)})
 
     async def get_run_status(self, run_id: str) -> dict[str, Any]:
         """Get the status of a run."""
@@ -254,10 +249,6 @@ class AgentOrchestrator:
         # Update run status
         run_data["status"] = "cancelled"
 
-        # Send cancellation event to Redis (if enabled)
-        if settings.enable_redis:
-            await self.redis.add_status_update(run_id, "cancelled")
-
         return success
 
     async def _cleanup_run_metadata(self, run_id: str, delay: int = 3600) -> None:
@@ -298,4 +289,22 @@ class AgentOrchestrator:
                 await db_session.commit()
         except Exception as e:
             logger.error(f"Failed to update run status: {e}")
+            await db_session.rollback()
+    
+    async def _update_task_status(
+        self, db_session: AsyncSession, task_id: int, status: TaskStatus
+    ) -> None:
+        """Update task status in unified tasks table."""
+        try:
+            task = await db_session.get(Task, task_id)
+            if task:
+                task.status = status
+                task.updated_at = datetime.utcnow()
+                if status == TaskStatus.RUNNING and not task.started_at:
+                    task.started_at = datetime.utcnow()
+                elif status in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]:
+                    task.completed_at = datetime.utcnow()
+                await db_session.commit()
+        except Exception as e:
+            logger.error(f"Failed to update task status: {e}")
             await db_session.rollback()

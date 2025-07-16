@@ -17,6 +17,7 @@ class AgentConfig:
     # Core identifiers
     run_id: str
     variation_id: str
+    task_id: int | None
 
     # Repository and prompt
     repo_url: str
@@ -31,9 +32,9 @@ class AgentConfig:
     database_url: str
     # redis_url: Optional[str]  # COMMENTED OUT: Redis references removed per user request
 
-    # LiteLLM Gateway (to be removed)
-    gateway_url: str
-    gateway_key: str
+    # API Keys for direct provider access
+    anthropic_api_key: str | None
+    openai_api_key: str | None
 
     # Working directories
     work_dir: Path
@@ -51,6 +52,8 @@ class AgentConfig:
         """Create configuration from environment variables."""
         run_id = os.getenv("RUN_ID", "local-test")
         variation_id = os.getenv("VARIATION_ID", "0")
+        task_id_env = os.getenv("TASK_ID")
+        task_id = int(task_id_env) if task_id_env else None
 
         # Core settings
         repo_url = os.getenv("REPO_URL", "")
@@ -68,9 +71,9 @@ class AgentConfig:
 
         # redis_url = os.getenv("REDIS_URL")  # COMMENTED OUT: Redis references removed per user request
 
-        # LiteLLM Gateway (will be removed)
-        gateway_url = os.getenv("LITELLM_GATEWAY_URL", "http://aideator-litellm:4000")
-        gateway_key = os.getenv("LITELLM_GATEWAY_KEY", "sk-1234")
+        # API Keys for direct provider access
+        anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+        openai_api_key = os.getenv("OPENAI_API_KEY")
 
         # Working directories
         work_dir = Path(tempfile.mkdtemp(prefix="agent-workspace-"))
@@ -86,6 +89,7 @@ class AgentConfig:
         return cls(
             run_id=run_id,
             variation_id=variation_id,
+            task_id=task_id,
             repo_url=repo_url,
             prompt=prompt,
             model=model,
@@ -93,8 +97,8 @@ class AgentConfig:
             max_tokens=max_tokens,
             database_url=database_url,
             # redis_url=redis_url,  # COMMENTED OUT: Redis references removed per user request
-            gateway_url=gateway_url,
-            gateway_key=gateway_key,
+            anthropic_api_key=anthropic_api_key,
+            openai_api_key=openai_api_key,
             work_dir=work_dir,
             repo_dir=repo_dir,
             log_file=log_file,

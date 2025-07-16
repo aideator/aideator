@@ -56,7 +56,7 @@ docker_build(
         'prompts/',
         'alembic/',
         'alembic.ini',
-        'k8s/',
+        'infra/k8s/',
     ],
 )
 
@@ -89,7 +89,11 @@ local_resource(
 )
 
 # Deploy simple Kubernetes resources - No Helm!
-k8s_yaml(['k8s/database.yaml', 'k8s/api.yaml', 'k8s/rbac.yaml', 'k8s/pvc.yaml', 'k8s/agent-job-configmap.yaml'])
+k8s_yaml(['infra/k8s/database.yaml', 'infra/k8s/rbac.yaml', 'infra/k8s/pvc.yaml', 'infra/k8s/agent-job-configmap.yaml'])
+
+# Process API YAML with environment variable substitution
+api_yaml = local('envsubst < infra/k8s/api.yaml')
+k8s_yaml(api_yaml)
 
 # Configure port forwards - Simple and Predictable
 k8s_resource('aideator-api', port_forwards='8000:8000', labels=['backend'])

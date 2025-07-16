@@ -28,21 +28,12 @@ class Settings(BaseSettings):
     # Authentication Features
     require_user_registration: bool = True  # Keep user system (needed for future features)
     require_api_keys_for_agents: bool = True  # Set false for simple development
-    require_per_user_keys: bool = True  # Set false to use global keys
-    enable_kubernetes_secrets: bool = True  # Set false for local development
-
-    # Security Features
-    # Removed rate limiting - not needed for core functionality
-    enable_cors_strict: bool = True  # Allow all origins in dev
-    enable_jwt_expiration: bool = True  # Long-lived tokens in dev
 
     # Development Shortcuts
     simple_dev_mode: bool = False  # Skip complex setup
     auto_create_test_user: bool = False  # Auto-create test user on startup
 
-    # Redis Features (off by default)
-    enable_redis: bool = False  # Enable Redis connection and streaming features
-    require_redis: bool = False  # Make Redis mandatory (fail if can't connect)
+    # Redis removed - using PostgreSQL polling instead
 
     # Security
     secret_key: str = Field(
@@ -104,6 +95,7 @@ class Settings(BaseSettings):
         env_file=[".env.local", ".env"],  # .env.local takes precedence
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",  # Ignore extra fields during transition
     )
 
     @field_validator("allowed_origins", "allowed_hosts", "allowed_git_hosts")
@@ -179,13 +171,6 @@ class Settings(BaseSettings):
             raise ValueError("Invalid Gemini API key format")
         return v
 
-    @field_validator("redis_url")
-    @classmethod
-    def validate_redis_url(cls, v: str | None) -> str | None:
-        """Validate Redis URL format."""
-        if v is not None and not v.startswith(("redis://", "rediss://")):
-            raise ValueError("Redis URL must start with redis:// or rediss://")
-        return v
 
     @model_validator(mode="after")
     def validate_settings(self) -> "Settings":
@@ -194,11 +179,6 @@ class Settings(BaseSettings):
         if self.simple_dev_mode or self.environment == "development":
             # Auto-configure for development ease
             self.require_api_keys_for_agents = False
-            self.require_per_user_keys = False
-            self.enable_kubernetes_secrets = False
-            self.enable_rate_limiting = False
-            self.enable_cors_strict = False
-            self.enable_jwt_expiration = False
             self.access_token_expire_minutes = 2880  # 48 hours
 
             # Auto-generate keys if empty in development
@@ -229,13 +209,6 @@ class Settings(BaseSettings):
 
         return self
 
-    def get_kubernetes_secrets(self) -> dict[str, str]:
-        """Get secrets to mount in Kubernetes containers."""
-        return {
-            "openai-api-key": self.openai_api_key or "",
-            "anthropic-api-key": self.anthropic_api_key or "",
-            "gemini-api-key": self.gemini_api_key or "",
-        }
 
     @property
     def database_url_async(self) -> str:

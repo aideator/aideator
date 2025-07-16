@@ -31,12 +31,20 @@ class OutputWriter:
             True if initialization successful, False otherwise
         """
         try:
-            run = await self.db_service.get_run_by_run_id(self.config.run_id)
-            if run:
-                self.task_id = run.task_id
+            if self.config.task_id:
+                # Use task_id directly for unified tasks
+                self.task_id = self.config.task_id
+                print(f"✅ Using task_id={self.task_id} from environment (unified tasks)")
                 return True
-            print(f"⚠️ Could not find run with run_id={self.config.run_id}")
-            return False
+            else:
+                # Fallback to legacy run lookup
+                run = await self.db_service.get_run_by_run_id(self.config.run_id)
+                if run:
+                    self.task_id = run.task_id
+                    print(f"✅ Found task_id={self.task_id} via run lookup (legacy)")
+                    return True
+                print(f"⚠️ Could not find run with run_id={self.config.run_id}")
+                return False
         except Exception as e:
             print(f"❌ Failed to initialize OutputWriter: {e}")
             return False
@@ -146,3 +154,39 @@ class OutputWriter:
             message = f"❌ Agent {self.variation_id} failed to complete."
 
         return await self.write_job_data(message)
+
+    async def write_system_status(self, status_message: str) -> bool:
+        """Write system status message.
+        
+        Args:
+            status_message: Status message to log
+            
+        Returns:
+            True if successful
+        """
+        return await self.write_job_data(f"🔧 {status_message}")
+
+    async def write_assistant_response(self, response_text: str) -> bool:
+        """Write assistant response from Claude CLI.
+        
+        Args:
+            response_text: The assistant's response text
+            
+        Returns:
+            True if successful
+        """
+        return await self.write_output(response_text, "assistant_response")
+
+    async def write_debug_info(self, debug_message: str) -> bool:
+        """Write debug information (only in debug mode).
+        
+        Args:
+            debug_message: Debug message to log
+            
+        Returns:
+            True if successful
+        """
+        # Only write debug info if in debug mode
+        if getattr(self.config, 'debug', False):
+            return await self.write_output(f"🐛 {debug_message}", "debug")
+        return True

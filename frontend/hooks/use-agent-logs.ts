@@ -8,7 +8,7 @@ export interface AgentLog {
   variation_id: number
   content: string
   timestamp: string
-  output_type: 'logging' | 'error' | 'stdout' | 'stderr' | 'status' | 'summary' | 'diffs' | 'addinfo' | 'job_data'
+  output_type: 'logging' | 'error' | 'stdout' | 'stderr' | 'status' | 'summary' | 'diffs' | 'addinfo' | 'job_data' | 'assistant_response' | 'debug'
 }
 
 export interface UseAgentLogsReturn {
@@ -51,8 +51,8 @@ export function useAgentLogs(taskId: string): UseAgentLogsReturn {
         return
       }
 
-      // Fetch from API - get logging and job_data outputs (frontend on port 3000, API on port 8000)
-      const response = await fetch(`http://localhost:8000/api/v1/tasks/${taskId}/outputs?output_type=job_data`, {
+      // Fetch from API - get all outputs including assistant responses (frontend on port 3000, API on port 8000)
+      const response = await fetch(`http://localhost:8000/api/v1/tasks/${taskId}/outputs`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

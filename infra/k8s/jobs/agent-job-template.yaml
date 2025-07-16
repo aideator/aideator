@@ -34,6 +34,8 @@ spec:
               value: "{repo_url}"
             - name: PROMPT
               value: {prompt}
+            - name: TASK_ID
+              value: "{task_id}"
             - name: VARIATION_ID
               value: "{variation_id}"
             - name: RUN_ID

@@ -10,9 +10,7 @@ from agent.analyzers.codebase import CodebaseAnalyzer
 from agent.analyzers.repository import RepositoryAnalyzer
 from agent.config.providers import ProviderConfig
 from agent.config.settings import AgentConfig
-from agent.providers.claude_cli import ClaudeCLIProvider
-from agent.providers.gemini_cli import GeminiCLIProvider
-from agent.providers.litellm_cli import LiteLLMCLIProvider
+# Providers imported conditionally to avoid dependency issues
 from agent.services.database_service import DatabaseService
 from agent.services.output_writer import OutputWriter
 from agent.utils.errors import (
@@ -117,14 +115,17 @@ class AgentOrchestrator:
         # Initialize provider configuration
         self.provider_config = ProviderConfig()
 
-        # Initialize LLM provider based on agent mode
+        # Initialize LLM provider based on agent mode (dynamic imports)
         if self.config.agent_mode == "claude-cli":
+            from agent.providers.claude_cli import ClaudeCLIProvider
             self.provider = ClaudeCLIProvider(self.config, self.output_writer)
         elif self.config.agent_mode == "gemini-cli":
+            from agent.providers.gemini_cli import GeminiCLIProvider
             self.provider = GeminiCLIProvider(self.config, self.output_writer)
         else:
-            # Default to LiteLLM
-            self.provider = LiteLLMCLIProvider(self.config, self.output_writer)
+            # Default to Claude CLI
+            from agent.providers.claude_cli import ClaudeCLIProvider
+            self.provider = ClaudeCLIProvider(self.config, self.output_writer)
 
         # Initialize analyzers (only needed for code mode)
         self.repo_analyzer = RepositoryAnalyzer(self.config, self.output_writer)

@@ -26,7 +26,7 @@ class KubernetesService:
         self.helm_chart_path = (
             Path(__file__).parent.parent.parent / "deploy" / "charts" / "aideator"
         )
-        self.job_templates_dir = Path(__file__).parent.parent.parent / "k8s" / "jobs"
+        self.job_templates_dir = Path(__file__).parent.parent.parent / "infra" / "k8s" / "jobs"
         self.kubectl_timeout = 300  # 5 minutes
 
     def _escape_yaml_string(self, value: str) -> str:
@@ -39,6 +39,7 @@ class KubernetesService:
 
     async def create_agent_job(
         self,
+        task_id: int,
         run_id: str,
         variation_id: int,
         repo_url: str,
@@ -56,14 +57,15 @@ class KubernetesService:
 
         # Replace placeholders
         job_yaml = job_yaml.format(
+            task_id=task_id,
             run_id=run_id,
             variation_id=variation_id,
             repo_url=repo_url,
             prompt=self._escape_yaml_string(prompt),  # Proper YAML escaping
             agent_mode=agent_mode or "claude-cli",  # Default to claude-cli
-            openai_api_key=os.getenv("OPENAI_API_KEY", ""),
-            anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
-            gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
+            openai_api_key=settings.openai_api_key or "",
+            anthropic_api_key=settings.anthropic_api_key or "",
+            gemini_api_key=settings.gemini_api_key or "",
         )
 
         # Create temporary file for job manifest

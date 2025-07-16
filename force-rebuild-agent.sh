@@ -54,11 +54,11 @@ while ! kubectl cluster-info >/dev/null 2>&1; do
 done
 
 echo "✅ Cluster is ready! Starting Tilt..."
-tilt up &
+tilt up & 
 TILT_PID=$!
 
 echo "⏳ Waiting for Tilt to initialize..."
-sleep 60
+sleep 10
 
 echo "🏷️ Tagging and pushing to k3d registry..."
 docker tag aideator-agent:latest localhost:5001/aideator-agent:${TIMESTAMP}

@@ -2,7 +2,6 @@ anthropic>=0.18.0
 gitpython>=3.1.0
 tenacity>=8.2.0
 aiofiles>=23.0.0
-litellm>=1.0.0
 # redis>=5.0.0  # COMMENTED OUT: Redis references removed per user request
 sqlalchemy>=2.0.0
 sqlmodel>=0.0.14

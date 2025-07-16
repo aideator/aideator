@@ -54,9 +54,9 @@ spec:
         - name: ENCRYPTION_KEY
           value: "dev-encryption-key-32-chars-minimum-for-aes"
         - name: OPENAI_API_KEY
-          value: "placeholder-set-via-dotenv"
+          value: "$OPENAI_API_KEY"
         - name: ANTHROPIC_API_KEY
-          value: "placeholder-set-via-dotenv"
+          value: "$ANTHROPIC_API_KEY"
         
         # Kubernetes Configuration
         - name: KUBERNETES_NAMESPACE

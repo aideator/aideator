@@ -81,8 +81,8 @@ class CreateRunRequest(BaseModel):
     )
     agent_mode: str | None = Field(
         default="claude-cli",
-        description="Agent execution mode: 'litellm', 'claude-cli', 'gemini-cli', or 'openai-codex'",
-        examples=["claude-cli", "litellm", "gemini-cli", "openai-codex"],
+        description="Agent execution mode: 'claude-cli', 'gemini-cli', or 'openai-codex'",
+        examples=["claude-cli", "gemini-cli", "openai-codex"],
     )
 
     # Removed session and turn management - runs are standalone now
@@ -115,7 +115,7 @@ class CreateRunRequest(BaseModel):
     @classmethod
     def validate_agent_mode(cls, v: str | None) -> str:
         """Validate agent mode."""
-        valid_modes = ["litellm", "claude-cli", "gemini-cli", "openai-codex"]
+        valid_modes = ["claude-cli", "gemini-cli", "openai-codex"]
         if v not in [*valid_modes, None]:
             raise ValueError(f"Agent mode must be one of: {', '.join(valid_modes)}")
         return v or "claude-cli"

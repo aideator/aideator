@@ -107,8 +107,7 @@ def discover_models():
     pass  # app/api/v1/models.py
 
 
-def get_model_by_litellm_name():
-    pass  # app/api/v1/models.py
+# Removed LiteLLM function
 
 
 def get_model_capabilities():
@@ -455,8 +454,7 @@ def get_models_without_api_key():
     pass  # app/services/model_catalog.py
 
 
-def get_model_by_litellm_name_service():
-    pass  # app/services/model_catalog.py
+# Removed LiteLLM service function
 
 
 
