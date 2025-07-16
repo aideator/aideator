@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Add test data directly to SQLite database."""
+"""Add test data directly to SQLite database.
+
+DEPRECATED: This script uses the legacy Run/AgentOutput models.
+Use add_test_data.py instead which uses the new unified Task/TaskOutput models.
+"""
 
 import json
 import random
@@ -17,41 +21,43 @@ def add_test_data():
 
     # Create tables if they don't exist
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS runs (
-            id TEXT PRIMARY KEY,
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             github_url TEXT,
             prompt TEXT,
+            agent_mode TEXT,
             variations INTEGER,
+            model_configs TEXT,
             status TEXT,
-            winning_variation_id INTEGER,
             created_at TIMESTAMP,
+            updated_at TIMESTAMP,
             started_at TIMESTAMP,
             completed_at TIMESTAMP,
-            agent_config TEXT,
             user_id TEXT,
-            api_key_id TEXT,
             results TEXT,
+            metadata TEXT,
             error_message TEXT,
             total_tokens_used INTEGER,
-            total_cost_usd REAL
+            total_cost_usd REAL,
+            internal_run_id TEXT
         )
     """)
 
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS agent_outputs (
+        CREATE TABLE IF NOT EXISTS task_outputs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            run_id TEXT,
+            task_id INTEGER,
             variation_id INTEGER,
             content TEXT,
             timestamp TIMESTAMP,
             output_type TEXT,
-            FOREIGN KEY (run_id) REFERENCES runs(id)
+            FOREIGN KEY (task_id) REFERENCES tasks(id)
         )
     """)
 
     # Clear existing test data
-    cursor.execute("DELETE FROM agent_outputs WHERE run_id LIKE 'test-run-%'")
-    cursor.execute("DELETE FROM runs WHERE id LIKE 'test-run-%'")
+    cursor.execute("DELETE FROM task_outputs WHERE task_id IN (SELECT id FROM tasks WHERE internal_run_id LIKE 'test-run-%')")
+    cursor.execute("DELETE FROM tasks WHERE internal_run_id LIKE 'test-run-%'")
 
     # Create test runs
     now = datetime.utcnow()

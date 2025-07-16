@@ -12,86 +12,136 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.core.database import async_session_maker
-from app.models.run import AgentOutput, Run, RunStatus
+from app.models.task import Task, TaskOutput, TaskStatus
+from app.models.user import User
 
 
 async def add_test_data():
-    """Add test runs and messages to the database."""
+    """Add test tasks and outputs to the database."""
     async with async_session_maker() as session:
-        # Create test runs
-        test_runs = []
+        # Create test user if it doesn't exist
+        test_user = User(
+            id="test-user-001",
+            email="test@example.com",
+            hashed_password="$2b$12$dummy.hash",
+            is_active=True,
+            is_superuser=False,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+            full_name="Test User",
+            max_runs_per_day=50,
+            max_variations_per_run=10
+        )
+        session.add(test_user)
+        await session.commit()
 
-        # Run 1: Completed run with lots of messages
-        run1 = Run(
-            id="test-run-001",
+        # Create test tasks
+        test_tasks = []
+
+        # Task 1: Completed task with lots of outputs
+        task1 = Task(
             github_url="https://github.com/fastapi/fastapi",
             prompt="Analyze this FastAPI repository and suggest performance improvements",
+            agent_mode="claude-cli",
             variations=3,
-            status=RunStatus.COMPLETED,
+            model_configs=[
+                {"model_definition_id": "gpt-4", "custom_params": {"temperature": 0.7}},
+                {"model_definition_id": "gpt-4", "custom_params": {"temperature": 0.5}},
+                {"model_definition_id": "gpt-4", "custom_params": {"temperature": 0.9}}
+            ],
+            status=TaskStatus.COMPLETED,
             created_at=datetime.utcnow() - timedelta(hours=2),
+            updated_at=datetime.utcnow() - timedelta(hours=1, minutes=30),
             started_at=datetime.utcnow() - timedelta(hours=2),
             completed_at=datetime.utcnow() - timedelta(hours=1, minutes=30),
-            winning_variation_id=1,
-            agent_config={"model": "gpt-4", "temperature": 0.7},
+            user_id="test-user-001",
             total_tokens_used=45000,
             total_cost_usd=1.35,
+            internal_run_id="test-run-001"
         )
-        test_runs.append(run1)
+        test_tasks.append(task1)
 
-        # Run 2: Currently running
-        run2 = Run(
-            id="test-run-002",
+        # Task 2: Currently running
+        task2 = Task(
             github_url="https://github.com/tiangolo/sqlmodel",
             prompt="Review the codebase and create comprehensive documentation",
+            agent_mode="claude-cli",
             variations=2,
-            status=RunStatus.RUNNING,
+            model_configs=[
+                {"model_definition_id": "claude-3-opus", "custom_params": {"temperature": 0.5}},
+                {"model_definition_id": "claude-3-opus", "custom_params": {"temperature": 0.7}}
+            ],
+            status=TaskStatus.RUNNING,
             created_at=datetime.utcnow() - timedelta(minutes=30),
+            updated_at=datetime.utcnow() - timedelta(minutes=5),
             started_at=datetime.utcnow() - timedelta(minutes=30),
-            agent_config={"model": "claude-3-opus", "temperature": 0.5},
+            user_id="test-user-001",
+            internal_run_id="test-run-002"
         )
-        test_runs.append(run2)
+        test_tasks.append(task2)
 
-        # Run 3: Failed run
-        run3 = Run(
-            id="test-run-003",
+        # Task 3: Failed task
+        task3 = Task(
             github_url="https://github.com/invalid/repo",
             prompt="This will fail",
+            agent_mode="claude-cli",
             variations=1,
-            status=RunStatus.FAILED,
+            model_configs=[
+                {"model_definition_id": "gpt-3.5-turbo", "custom_params": {"temperature": 0.7}}
+            ],
+            status=TaskStatus.FAILED,
             created_at=datetime.utcnow() - timedelta(hours=5),
+            updated_at=datetime.utcnow() - timedelta(hours=4, minutes=55),
             started_at=datetime.utcnow() - timedelta(hours=5),
             completed_at=datetime.utcnow() - timedelta(hours=4, minutes=55),
             error_message="Repository not found",
-            agent_config={"model": "gpt-3.5-turbo", "temperature": 0.7},
+            user_id="test-user-001",
+            internal_run_id="test-run-003"
         )
-        test_runs.append(run3)
+        test_tasks.append(task3)
 
-        # Run 4: Pending run
-        run4 = Run(
-            id="test-run-004",
+        # Task 4: Pending task
+        task4 = Task(
             github_url="https://github.com/pydantic/pydantic",
             prompt="Analyze type safety and suggest improvements",
+            agent_mode="claude-cli",
             variations=4,
-            status=RunStatus.PENDING,
+            model_configs=[
+                {"model_definition_id": "gpt-4", "custom_params": {"temperature": 0.6}},
+                {"model_definition_id": "gpt-4", "custom_params": {"temperature": 0.4}},
+                {"model_definition_id": "gpt-4", "custom_params": {"temperature": 0.8}},
+                {"model_definition_id": "gpt-4", "custom_params": {"temperature": 0.5}}
+            ],
+            status=TaskStatus.PENDING,
             created_at=datetime.utcnow() - timedelta(minutes=5),
-            agent_config={"model": "gpt-4", "temperature": 0.6},
+            updated_at=datetime.utcnow() - timedelta(minutes=5),
+            user_id="test-user-001",
+            internal_run_id="test-run-004"
         )
-        test_runs.append(run4)
+        test_tasks.append(task4)
 
-        # Add runs to session
-        for run in test_runs:
-            session.add(run)
+        # Add tasks to session
+        for task in test_tasks:
+            session.add(task)
+        
+        await session.commit()
+        
+        # Get the task IDs for creating outputs
+        await session.refresh(task1)
+        await session.refresh(task2)
+        await session.refresh(task3)
+        await session.refresh(task4)
 
-        # Create agent outputs for the runs
+        # Create task outputs 
         outputs = []
 
-        # Messages for run1 (completed)
+        # Messages for task1 (completed)
         base_time = datetime.utcnow() - timedelta(hours=2)
         for variation in range(3):
             # Initial status
             outputs.append(
-                AgentOutput(
-                    run_id="test-run-001",
+                TaskOutput(
+                    task_id=task1.id,
                     variation_id=variation,
                     content=json.dumps(
                         {
@@ -121,8 +171,8 @@ async def add_test_data():
 
             for i, msg in enumerate(messages):
                 outputs.append(
-                    AgentOutput(
-                        run_id="test-run-001",
+                    TaskOutput(
+                        task_id=task1.id,
                         variation_id=variation,
                         content=msg,
                         output_type="stdout",
@@ -132,8 +182,8 @@ async def add_test_data():
 
             # Add some logging
             outputs.append(
-                AgentOutput(
-                    run_id="test-run-001",
+                TaskOutput(
+                    task_id=task1.id,
                     variation_id=variation,
                     content=json.dumps(
                         {
@@ -151,8 +201,8 @@ async def add_test_data():
 
             # Summary
             outputs.append(
-                AgentOutput(
-                    run_id="test-run-001",
+                TaskOutput(
+                    task_id=task1.id,
                     variation_id=variation,
                     content=f"## Summary for Variation {variation}\n\n"
                     + "### Key Findings:\n"
@@ -170,8 +220,8 @@ async def add_test_data():
 
             # Completion status
             outputs.append(
-                AgentOutput(
-                    run_id="test-run-001",
+                TaskOutput(
+                    task_id=task1.id,
                     variation_id=variation,
                     content=json.dumps(
                         {
@@ -185,12 +235,12 @@ async def add_test_data():
                 )
             )
 
-        # Messages for run2 (currently running)
+        # Messages for task2 (currently running)
         base_time2 = datetime.utcnow() - timedelta(minutes=30)
         for variation in range(2):
             outputs.append(
-                AgentOutput(
-                    run_id="test-run-002",
+                TaskOutput(
+                    task_id=task2.id,
                     variation_id=variation,
                     content=json.dumps(
                         {
@@ -217,8 +267,8 @@ async def add_test_data():
 
             for i, msg in enumerate(ongoing_messages[: random.randint(4, 7)]):  # noqa: S311
                 outputs.append(
-                    AgentOutput(
-                        run_id="test-run-002",
+                    TaskOutput(
+                        task_id=task2.id,
                         variation_id=variation,
                         content=msg,
                         output_type="stdout",
@@ -227,11 +277,11 @@ async def add_test_data():
                     )
                 )
 
-        # Error messages for run3 (failed)
+        # Error messages for task3 (failed)
         base_time3 = datetime.utcnow() - timedelta(hours=5)
         outputs.append(
-            AgentOutput(
-                run_id="test-run-003",
+            TaskOutput(
+                task_id=task3.id,
                 variation_id=0,
                 content="🚀 Starting repository analysis...",
                 output_type="stdout",
@@ -240,8 +290,8 @@ async def add_test_data():
         )
 
         outputs.append(
-            AgentOutput(
-                run_id="test-run-003",
+            TaskOutput(
+                task_id=task3.id,
                 variation_id=0,
                 content="ERROR: Failed to clone repository: Repository not found",
                 output_type="stderr",
@@ -250,8 +300,8 @@ async def add_test_data():
         )
 
         outputs.append(
-            AgentOutput(
-                run_id="test-run-003",
+            TaskOutput(
+                task_id=task3.id,
                 variation_id=0,
                 content=json.dumps(
                     {
@@ -268,7 +318,7 @@ async def add_test_data():
             )
         )
 
-        # No messages for run4 (pending)
+        # No messages for task4 (pending)
 
         # Add all outputs to session
         for output in outputs:
@@ -277,11 +327,11 @@ async def add_test_data():
         # Commit all data
         await session.commit()
 
-        print(f"✅ Added {len(test_runs)} test runs")
-        print(f"✅ Added {len(outputs)} agent outputs")
-        print("\nTest runs created:")
-        for run in test_runs:
-            print(f"  - {run.id}: {run.status.value} ({run.github_url})")
+        print(f"✅ Added {len(test_tasks)} test tasks")
+        print(f"✅ Added {len(outputs)} task outputs")
+        print("\nTest tasks created:")
+        for task in test_tasks:
+            print(f"  - {task.id}: {task.status.value} ({task.github_url})")
 
 
 async def main():
