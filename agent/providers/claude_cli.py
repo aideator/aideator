@@ -37,19 +37,19 @@ class ClaudeCLIProvider(BaseProvider):
         Returns:
             Generated response text
         """
-        await self.write_job_data(f"🤖 Starting Claude CLI generation")
+        await self.output_writer.write_system_status("Starting Claude CLI generation")
         
         # Log API key for debugging (first 10 chars only)
         api_key = os.getenv("ANTHROPIC_API_KEY", "NOT_SET")
         masked_key = api_key[:10] + "..." if len(api_key) > 10 else api_key
-        await self.write_job_data(f"🔑 Anthropic API key: {masked_key}")
+        await self.output_writer.write_debug_info(f"Anthropic API key: {masked_key}")
         
         try:
             # Change to repository directory for context
             original_dir = os.getcwd()
             os.chdir(self.config.repo_dir)
 
-            await self.write_job_data(f"📁 Working directory: {self.config.repo_dir}")
+            await self.output_writer.write_debug_info(f"Working directory: {self.config.repo_dir}")
 
             # Execute Claude CLI with streaming arguments
             args = [
@@ -62,7 +62,7 @@ class ClaudeCLIProvider(BaseProvider):
                 prompt,
             ]
 
-            await self.write_job_data(f"🔧 Executing: {' '.join(args)}")
+            await self.output_writer.write_debug_info(f"Executing: {' '.join(args)}")
 
             process = await asyncio.create_subprocess_exec(
                 args[0],
@@ -82,7 +82,7 @@ class ClaudeCLIProvider(BaseProvider):
             data_chunks = 0
             total_bytes = 0
 
-            await self.write_job_data(f"🚀 Claude CLI process started (PID: {process.pid})")
+            await self.output_writer.write_system_status(f"Claude CLI process started (PID: {process.pid})")
 
             try:
                 # Read stdout in real-time chunks
@@ -95,8 +95,8 @@ class ClaudeCLIProvider(BaseProvider):
                     total_bytes += len(chunk)
 
                     chunk_text = chunk.decode("utf-8", errors="ignore")
-                    await self.write_job_data(
-                        f"📡 Chunk #{data_chunks} ({len(chunk)} bytes): {chunk_text[:100]}{'...' if len(chunk_text) > 100 else ''}"
+                    await self.output_writer.write_debug_info(
+                        f"Chunk #{data_chunks} ({len(chunk)} bytes): {chunk_text[:100]}{'...' if len(chunk_text) > 100 else ''}"
                     )
 
                     # Process the chunk immediately (streaming approach)
@@ -109,31 +109,31 @@ class ClaudeCLIProvider(BaseProvider):
                             try:
                                 # Try to parse as JSON first (Claude CLI stream format)
                                 json_data = json.loads(line)
-                                await self.write_job_data(f"📋 JSON message type: {json_data.get('type', 'unknown')}")
+                                await self.output_writer.write_debug_info(f"JSON message type: {json_data.get('type', 'unknown')}")
 
                                 # Extract content from JSON message
                                 if json_data.get("type") == "assistant" and json_data.get("message", {}).get("content"):
                                     for content_item in json_data["message"]["content"]:
                                         if content_item.get("type") == "text" and content_item.get("text"):
                                             text_content = content_item["text"]
-                                            # Write to database for frontend consumption
-                                            await self.write_job_data(text_content)
+                                            # Write clean assistant response to database
+                                            await self.output_writer.write_assistant_response(text_content)
                                             collected_output.append(text_content)
                                         elif content_item.get("type") == "tool_use":
-                                            tool_info = f"🔧 Using tool: {content_item.get('name', 'unknown')}"
-                                            await self.write_job_data(tool_info + "\n")
+                                            tool_info = f"Using tool: {content_item.get('name', 'unknown')}"
+                                            await self.output_writer.write_system_status(tool_info)
                                             collected_output.append(tool_info + "\n")
 
                             except json.JSONDecodeError:
                                 # If not JSON, treat as plain text output
-                                await self.write_job_data(f"📝 Plain text: {line[:50]}{'...' if len(line) > 50 else ''}")
-                                await self.write_job_data(line + "\n")
+                                await self.output_writer.write_debug_info(f"Plain text: {line[:50]}{'...' if len(line) > 50 else ''}")
+                                await self.output_writer.write_assistant_response(line + "\n")
                                 collected_output.append(line + "\n")
 
                 # Handle any remaining buffer content
                 if buffer.strip():
-                    await self.write_job_data(f"📝 Final buffer: {buffer[:50]}{'...' if len(buffer) > 50 else ''}")
-                    await self.write_job_data(buffer)
+                    await self.output_writer.write_debug_info(f"Final buffer: {buffer[:50]}{'...' if len(buffer) > 50 else ''}")
+                    await self.output_writer.write_assistant_response(buffer)
                     collected_output.append(buffer)
 
                 # Wait for process to complete
@@ -152,15 +152,15 @@ class ClaudeCLIProvider(BaseProvider):
 
                     # Still return collected output if we got some
                     if collected_output:
-                        await self.write_job_data(f"⚠️ Returning partial output despite error. Collected {len(collected_output)} chunks")
+                        await self.output_writer.write_system_status(f"Returning partial output despite error. Collected {len(collected_output)} chunks")
                         return "".join(collected_output)
                     
                     raise ProviderError(f"Claude CLI failed with exit code {process.returncode}: {error_msg}")
 
                 # Success case
                 response = "".join(collected_output)
-                await self.write_job_data(
-                    f"✅ Claude CLI completed successfully. Chunks: {data_chunks}, Bytes: {total_bytes}, Response: {len(response)} chars"
+                await self.output_writer.write_system_status(
+                    f"Claude CLI completed successfully. Chunks: {data_chunks}, Bytes: {total_bytes}, Response: {len(response)} chars"
                 )
 
                 return response if response else "No output received from Claude CLI"

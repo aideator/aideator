@@ -11,14 +11,20 @@ local_resource(
     'k3d-cluster',
     cmd='''
     if ! k3d cluster list | grep -q aideator; then
+        echo "🚀 Creating k3d registry..."
+        k3d registry create registry.localhost --port 5001 || echo "Registry may already exist"
         echo "🚀 Creating k3d cluster 'aideator' (Docker Desktop mode)..."
         k3d cluster create aideator \
             --api-port 6550 \
             --port "8000:8000@loadbalancer" \
             --port "5432:5432@loadbalancer" \
+            --k3s-arg "--disable=traefik@server:0" \
+            --registry-use k3d-registry.localhost:5001 \
             --wait \
             --timeout 120s \
             --agents 1
+        echo "🔧 Fixing kubectl context to use localhost..."
+        kubectl config set-cluster k3d-aideator --server=https://localhost:6550
         echo "✅ k3d cluster 'aideator' created successfully!"
     else
         echo "✅ k3d cluster 'aideator' already exists"

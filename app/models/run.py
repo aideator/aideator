@@ -41,15 +41,14 @@ class Run(SQLModel, table=True):
         description="Legacy run identifier used in Kubernetes job names",
     )
 
-    # --- Original columns (unchanged) ---
+    # --- Core columns ---
     github_url: str = Field(index=True)
     prompt: str
-    variations: int
+    variations: int = Field(default=1)  # Number of model variations to run
     status: RunStatus = Field(
         default=RunStatus.PENDING,
-        index=True,
+        sa_column=Column("status", String, nullable=False, index=True)
     )
-    winning_variation_id: int | None = Field(default=None)
     task_status: str = Field(default="open", index=True)
 
     # Timestamps
@@ -62,7 +61,6 @@ class Run(SQLModel, table=True):
     agent_config: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     run_metadata: dict[str, Any] | None = Field(default=None, sa_column=Column("metadata", JSON))
     user_id: str | None = Field(default=None, index=True)
-    api_key_id: str | None = Field(default=None, index=True)
     results: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     error_message: str | None = Field(default=None)
 
@@ -83,14 +81,14 @@ class AgentOutput(SQLModel, table=True):
     """
     Database model for agent outputs.
 
-    FK is now `task_id → runs.task_id`.
+    Each output belongs to a specific variation (0, 1, 2, etc.) within a run.
     """
 
     __tablename__ = "agent_outputs"
 
     id: int | None = Field(default=None, primary_key=True)
     task_id: int = Field(foreign_key="runs.task_id", index=True)
-    variation_id: int = Field(index=True)
+    variation_id: int = Field(default=0, index=True)  # Which model variation (0, 1, 2, etc.)
     content: str
     timestamp: datetime = Field(default_factory=datetime.utcnow, index=True)
     output_type: str = Field(

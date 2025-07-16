@@ -29,6 +29,10 @@ const outputTypeColors = {
   addinfo: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300',
   job_data: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300',
   error: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+  // New output types
+  assistant_response: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
+  system_status: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+  debug_info: 'bg-gray-100 text-gray-600 dark:bg-gray-800/50 dark:text-gray-400',
 } as const
 
 function LoadingStatusIndicator({ isLoading, error }: { isLoading: boolean; error: string | null }) {
@@ -85,6 +89,14 @@ function VariationPanel({ variationId, outputs }: { variationId: number; outputs
     return acc
   }, {} as Record<string, number>)
 
+  // Filter outputs by type for different tabs
+  const assistantOutputs = outputs.filter(o => o.output_type === 'assistant_response')
+  const systemOutputs = outputs.filter(o => o.output_type === 'system_status')
+  const debugOutputs = outputs.filter(o => o.output_type === 'debug_info')
+  const errorOutputs = outputs.filter(o => o.output_type === 'error')
+  const diffOutputs = outputs.filter(o => o.output_type === 'diffs')
+  const legacyOutputs = outputs.filter(o => !['assistant_response', 'system_status', 'debug_info', 'error', 'diffs'].includes(o.output_type))
+
   return (
     <Card className={cn('h-full', agentColorClass)}>
       <CardHeader className="pb-3">
@@ -109,20 +121,135 @@ function VariationPanel({ variationId, outputs }: { variationId: number; outputs
         </div>
       </CardHeader>
       <CardContent className="p-0">
-        <ScrollArea className="h-[500px]">
-          {outputs.length === 0 ? (
-            <div className="flex items-center justify-center h-32 text-gray-500">
-              <Terminal className="h-8 w-8 mr-2" />
-              <span>No outputs yet...</span>
-            </div>
-          ) : (
-            <div className="space-y-0">
-              {outputs.map((output, index) => (
-                <OutputLine key={`${output.id}-${index}`} output={output} />
-              ))}
-            </div>
-          )}
-        </ScrollArea>
+        <Tabs defaultValue="conversation" className="w-full">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="conversation" className="text-xs">
+              Conversation
+              {assistantOutputs.length > 0 && (
+                <Badge variant="secondary" className="ml-1 text-xs">
+                  {assistantOutputs.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="system" className="text-xs">
+              System
+              {systemOutputs.length > 0 && (
+                <Badge variant="secondary" className="ml-1 text-xs">
+                  {systemOutputs.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="debug" className="text-xs">
+              Debug
+              {debugOutputs.length > 0 && (
+                <Badge variant="secondary" className="ml-1 text-xs">
+                  {debugOutputs.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="errors" className="text-xs">
+              Errors
+              {errorOutputs.length > 0 && (
+                <Badge variant="secondary" className="ml-1 text-xs">
+                  {errorOutputs.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="diffs" className="text-xs">
+              Diffs
+              {diffOutputs.length > 0 && (
+                <Badge variant="secondary" className="ml-1 text-xs">
+                  {diffOutputs.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="conversation">
+            <ScrollArea className="h-[500px]">
+              {assistantOutputs.length === 0 ? (
+                <div className="flex items-center justify-center h-32 text-gray-500">
+                  <Terminal className="h-8 w-8 mr-2" />
+                  <span>No conversation outputs yet...</span>
+                </div>
+              ) : (
+                <div className="space-y-0">
+                  {assistantOutputs.map((output, index) => (
+                    <OutputLine key={`${output.id}-${index}`} output={output} />
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </TabsContent>
+          
+          <TabsContent value="system">
+            <ScrollArea className="h-[500px]">
+              {systemOutputs.length === 0 ? (
+                <div className="flex items-center justify-center h-32 text-gray-500">
+                  <Terminal className="h-8 w-8 mr-2" />
+                  <span>No system outputs yet...</span>
+                </div>
+              ) : (
+                <div className="space-y-0">
+                  {systemOutputs.map((output, index) => (
+                    <OutputLine key={`${output.id}-${index}`} output={output} />
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </TabsContent>
+          
+          <TabsContent value="debug">
+            <ScrollArea className="h-[500px]">
+              {debugOutputs.length === 0 ? (
+                <div className="flex items-center justify-center h-32 text-gray-500">
+                  <Terminal className="h-8 w-8 mr-2" />
+                  <span>No debug outputs yet...</span>
+                </div>
+              ) : (
+                <div className="space-y-0">
+                  {debugOutputs.map((output, index) => (
+                    <OutputLine key={`${output.id}-${index}`} output={output} />
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </TabsContent>
+          
+          <TabsContent value="errors">
+            <ScrollArea className="h-[500px]">
+              {errorOutputs.length === 0 ? (
+                <div className="flex items-center justify-center h-32 text-gray-500">
+                  <Terminal className="h-8 w-8 mr-2" />
+                  <span>No error outputs yet...</span>
+                </div>
+              ) : (
+                <div className="space-y-0">
+                  {errorOutputs.map((output, index) => (
+                    <OutputLine key={`${output.id}-${index}`} output={output} />
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </TabsContent>
+          
+          <TabsContent value="diffs">
+            <ScrollArea className="h-[500px]">
+              {diffOutputs.length === 0 ? (
+                <div className="flex items-center justify-center h-32 text-gray-500">
+                  <Terminal className="h-8 w-8 mr-2" />
+                  <span>No diff outputs yet...</span>
+                </div>
+              ) : (
+                <div className="space-y-0">
+                  {diffOutputs.map((output, index) => (
+                    <OutputLine key={`${output.id}-${index}`} output={output} />
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </TabsContent>
+        </Tabs>
       </CardContent>
     </Card>
   )

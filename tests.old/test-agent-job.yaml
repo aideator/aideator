@@ -1,0 +1,78 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "agent-database-test"
+  namespace: aideator
+  labels:
+    app: aideator-agent
+    run-id: "database-test"
+    variation-id: "0"
+    component: agent
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: aideator-agent
+        run-id: "database-test"
+        variation-id: "0"
+        component: agent
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: agent
+          image: "aideator-agent"
+          imagePullPolicy: Never
+          env:
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openai-secret
+                  key: api-key
+                  optional: true
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: anthropic-secret
+                  key: api-key
+                  optional: true
+            - name: AGENT_MODE
+              value: "litellm"
+            - name: REPO_URL
+              value: "https://github.com/fastapi/fastapi"
+            - name: PROMPT
+              value: "Test database connectivity and write a message to agent_outputs table"
+            - name: VARIATION_ID
+              value: "0"
+            - name: RUN_ID
+              value: "database-test"
+            - name: LOG_LEVEL
+              value: "INFO"
+            - name: DEBUG
+              value: "true"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: REDIS_URL
+              value: "redis://aideator-redis:6379/0"
+            - name: DATABASE_URL
+              value: "postgresql://aideator:aideator123@aideator-database:5432/aideator"
+          command: ["python", "-u", "/app/agent/main.py"]
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+      volumes:
+        - name: workspace
+          emptyDir:
+            sizeLimit: 1Gi

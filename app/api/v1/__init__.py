@@ -5,15 +5,11 @@ from app.api.v1 import (
     admin_messaging,
     agent_outputs,
     auth,
-    credentials,
     health,
-    models,
-    preferences,
     runs,
-    sessions,
     tasks,
 )
-from app.api.v1.endpoints import admin, provider_keys
+from app.api.v1.endpoints import admin
 
 api_router = APIRouter()
 
@@ -22,15 +18,7 @@ api_router.include_router(health.router, tags=["System"])
 api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 api_router.include_router(runs.router, prefix="/runs", tags=["Runs"])
 api_router.include_router(tasks.router, prefix="/tasks", tags=["Tasks"])
-api_router.include_router(sessions.router, tags=["Sessions"])
-api_router.include_router(preferences.router, tags=["Preferences"])
-api_router.include_router(models.router, prefix="/models", tags=["Models"])
-api_router.include_router(
-    credentials.router, prefix="/credentials", tags=["Credentials"]
-)
-api_router.include_router(
-    provider_keys.router, prefix="/provider-keys", tags=["Provider Keys"]
-)
+# Removed sessions, preferences, credentials, and provider-keys routers - simplified for dev mode
 api_router.include_router(admin.router, prefix="/admin", tags=["Admin"])
 api_router.include_router(
     admin_messaging.router, prefix="/admin-messaging", tags=["Admin Messaging"]

@@ -236,6 +236,87 @@ class DatabaseService:
             output_type="logging"
         )
     
+    async def write_assistant_response(
+        self,
+        task_id: int,
+        variation_id: int,
+        response: str,
+        timestamp: Optional[datetime] = None
+    ) -> bool:
+        """
+        Write clean assistant response to database.
+        
+        Args:
+            task_id: The task ID
+            variation_id: The variation number
+            response: Clean AI assistant response
+            timestamp: Optional timestamp
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        return await self.write_agent_output(
+            task_id=task_id,
+            variation_id=variation_id,
+            content=response,
+            output_type="assistant_response",
+            timestamp=timestamp
+        )
+    
+    async def write_system_status(
+        self,
+        task_id: int,
+        variation_id: int,
+        status_message: str,
+        timestamp: Optional[datetime] = None
+    ) -> bool:
+        """
+        Write system status update to database.
+        
+        Args:
+            task_id: The task ID
+            variation_id: The variation number
+            status_message: System status message
+            timestamp: Optional timestamp
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        return await self.write_agent_output(
+            task_id=task_id,
+            variation_id=variation_id,
+            content=status_message,
+            output_type="system_status",
+            timestamp=timestamp
+        )
+    
+    async def write_debug_info(
+        self,
+        task_id: int,
+        variation_id: int,
+        debug_message: str,
+        timestamp: Optional[datetime] = None
+    ) -> bool:
+        """
+        Write debug information to database.
+        
+        Args:
+            task_id: The task ID
+            variation_id: The variation number
+            debug_message: Debug information
+            timestamp: Optional timestamp
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        return await self.write_agent_output(
+            task_id=task_id,
+            variation_id=variation_id,
+            content=debug_message,
+            output_type="debug_info",
+            timestamp=timestamp
+        )
+    
     async def close(self):
         """Close database connections."""
         try:

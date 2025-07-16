@@ -66,7 +66,7 @@ class CreateRunRequest(BaseModel):
         examples=["Add comprehensive error handling to all API endpoints"],
     )
 
-    # Model selection system
+    # Model selection system (restored for variations)
     model_variants: list[ModelVariantCreate] = Field(
         ...,
         description="List of model variants to run in parallel",
@@ -83,15 +83,7 @@ class CreateRunRequest(BaseModel):
         examples=["claude-cli", "litellm", "gemini-cli", "openai-codex"],
     )
 
-    # Session and turn management
-    session_id: str | None = Field(
-        None,
-        description="Session ID for multi-turn conversations. If not provided, a new session will be created.",
-    )
-    turn_id: str | None = Field(
-        None,
-        description="Turn ID for this specific turn. If not provided, a new turn will be created.",
-    )
+    # Removed session and turn management - runs are standalone now
 
     @field_validator("github_url")
     @classmethod
@@ -143,11 +135,6 @@ class CreateRunRequest(BaseModel):
                         "provider_credential_id": "cred_anthropic_456",
                         "model_parameters": {"temperature": 0.5},
                     },
-                    {
-                        "model_definition_id": "model_gpt4_openai",
-                        "provider_credential_id": "cred_openai_123",
-                        "model_parameters": {"temperature": 0.9},
-                    },
                 ],
             }
         },
@@ -168,8 +155,7 @@ class CreateRunResponse(BaseModel):
     estimated_duration_seconds: int = Field(
         ..., description="Estimated time to complete"
     )
-    session_id: str = Field(..., description="Session ID for this run")
-    turn_id: str = Field(..., description="Turn ID for this run")
+    # Removed session_id and turn_id - runs are standalone now
 
     model_config = {
         "protected_namespaces": (),  # Allow model_ prefixed fields
@@ -182,8 +168,7 @@ class CreateRunResponse(BaseModel):
                 "polling_url": "/api/v1/runs/1/outputs",
                 "status": "accepted",
                 "estimated_duration_seconds": 120,
-                "session_id": "session_abc123",
-                "turn_id": "turn_def456",
+                # Removed session/turn references
             }
         },
     }
@@ -199,9 +184,6 @@ class RunDetails(BaseModel):
         ..., description="Model variants in this run"
     )
     status: RunStatus = Field(..., description="Current status")
-    winning_variation_id: int | None = Field(
-        None, description="ID of selected variation"
-    )
     created_at: datetime = Field(..., description="Creation timestamp")
     started_at: datetime | None = Field(None, description="Start timestamp")
     completed_at: datetime | None = Field(None, description="Completion timestamp")
@@ -230,7 +212,6 @@ class RunDetails(BaseModel):
                     }
                 ],
                 "status": "completed",
-                "winning_variation_id": 1,
                 "created_at": "2024-01-01T00:00:00Z",
                 "started_at": "2024-01-01T00:00:10Z",
                 "completed_at": "2024-01-01T00:02:00Z",
@@ -273,19 +254,4 @@ class RunListItem(BaseModel):
     }
 
 
-class SelectWinnerRequest(BaseModel):
-    """Request to select a winning variation."""
-
-    winning_variation_id: int = Field(
-        ...,
-        ge=0,
-        description="ID of the winning variation",
-    )
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "winning_variation_id": 2,
-            }
-        }
-    }
+# Removed SelectWinnerRequest - no variation comparison needed

@@ -12,7 +12,7 @@ from app.core.dependencies import CurrentUserAPIKey
 from app.core.deps import get_orchestrator
 from app.core.logging import get_logger
 from app.models.run import AgentOutput, Run, RunStatus
-from app.models.session import Session, Turn
+# Removed session imports - no longer using sessions
 from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.runs import (
@@ -20,7 +20,6 @@ from app.schemas.runs import (
     CreateRunResponse,
     RunDetails,
     RunListItem,
-    SelectWinnerRequest,
 )
 from app.schemas.tasks import TaskListResponse, TaskListItem
 from app.services.agent_orchestrator import AgentOrchestrator
@@ -53,9 +52,7 @@ async def create_run(
     # 1.  Generate legacy string id (used in job names & Redis streams)
     run_id = f"run-{uuid.uuid4().hex}"
     
-    # 1.5 Generate session_id and turn_id if not provided
-    session_id = request.session_id or str(uuid.uuid4())
-    turn_id = request.turn_id or str(uuid.uuid4())
+    # Removed session/turn ID generation - runs are standalone now
 
     # 2.  Insert Run row – we *do not* provide task_id (auto-increment)
     run = Run(
@@ -98,8 +95,7 @@ async def create_run(
         polling_url=f"{settings.api_v1_prefix}/runs/{run.run_id}/outputs",
         status="accepted",
         estimated_duration_seconds=len(request.model_variants) * 40,
-        session_id=session_id,
-        turn_id=turn_id,
+        # Removed session/turn parameters - runs are standalone
     )
 
 
@@ -177,54 +173,7 @@ async def get_run(
     return run
 
 
-@router.post(
-    "/{task_id}/select",
-    response_model=RunDetails,
-    summary="Select winning variation",
-)
-async def select_winner(
-    task_id: int,
-    request: SelectWinnerRequest,
-    current_user: CurrentUserAPIKey,
-    db: AsyncSession = Depends(get_session),
-) -> Run:
-    """Select the winning variation for a completed run."""
-    query = select(Run).where(Run.task_id == task_id).where(Run.user_id == current_user.id)
-
-    result = await db.execute(query)
-    run = result.scalar_one_or_none()
-
-    if run is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Run not found",
-        )
-
-    if run.status != RunStatus.COMPLETED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Can only select winner for completed runs",
-        )
-
-    if request.winning_variation_id >= run.variations:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid variation ID. Must be between 0 and {run.variations - 1}",
-        )
-
-    # Update winning variation
-    run.winning_variation_id = request.winning_variation_id
-    run.updated_at = datetime.utcnow()
-    await db.commit()
-    await db.refresh(run)
-
-    logger.info(
-        "winner_selected",
-        run_id=run.run_id,
-        variation_id=request.winning_variation_id,
-    )
-
-    return run
+# Removed select_winner endpoint - no variation comparison needed
 
 
 @router.delete(
@@ -318,7 +267,7 @@ async def get_agent_outputs(
         )
 
     # Build query for outputs
-    outputs_query = select(AgentOutput).where(AgentOutput.run_id == run_id)
+    outputs_query = select(AgentOutput).where(AgentOutput.task_id == run.task_id)
 
     # Apply filters
     if since:
@@ -339,7 +288,7 @@ async def get_agent_outputs(
     return [
         {
             "id": output.id,
-            "run_id": output.run_id,
+            "task_id": output.task_id,
             "variation_id": output.variation_id,
             "content": output.content,
             "timestamp": output.timestamp.isoformat(),
