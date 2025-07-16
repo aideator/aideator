@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 
 export interface AgentError {
   id: number
-  run_id: string
+  task_id: string
   variation_id: number
   content: string
   timestamp: string
@@ -62,7 +62,7 @@ export function useAgentErrors(taskId: string): UseAgentErrorsReturn {
       const allErrors = [
         ...(errorData.outputs || []).map((output: any) => ({
           id: output.id,
-          run_id: output.run_id,
+          task_id: output.task_id,
           variation_id: output.variation_id,
           content: output.content,
           timestamp: output.timestamp,
@@ -70,7 +70,7 @@ export function useAgentErrors(taskId: string): UseAgentErrorsReturn {
         })),
         ...(stderrData.outputs || []).map((output: any) => ({
           id: output.id,
-          run_id: output.run_id,
+          task_id: output.task_id,
           variation_id: output.variation_id,
           content: output.content,
           timestamp: output.timestamp,

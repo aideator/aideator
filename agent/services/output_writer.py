@@ -25,25 +25,19 @@ class OutputWriter:
         self.variation_id = int(config.variation_id)
 
     async def initialize(self) -> bool:
-        """Initialize the output writer by getting task_id from run_id.
+        """Initialize the output writer using task_id from environment.
         
         Returns:
             True if initialization successful, False otherwise
         """
         try:
             if self.config.task_id:
-                # Use task_id directly for unified tasks
+                # Use task_id directly from environment (unified tasks)
                 self.task_id = self.config.task_id
                 print(f"✅ Using task_id={self.task_id} from environment (unified tasks)")
                 return True
             else:
-                # Fallback to lookup using legacy RUN_ID encoded in internal_run_id
-                task = await self.db_service.get_task_by_internal_run_id(self.config.run_id)
-                if task:
-                    self.task_id = task.id
-                    print(f"✅ Found task_id={self.task_id} via internal_run_id lookup (legacy)")
-                    return True
-                print(f"⚠️ Could not find task with internal_run_id={self.config.run_id}")
+                print(f"❌ No TASK_ID found in environment")
                 return False
         except Exception as e:
             print(f"❌ Failed to initialize OutputWriter: {e}")
@@ -135,7 +129,7 @@ class OutputWriter:
 
     async def write_startup_message(self) -> bool:
         """Write agent startup message."""
-        message = f"🚀 Agent {self.variation_id} starting for run {self.config.run_id}"
+        message = f"🚀 Agent {self.variation_id} starting for task {self.task_id}"
         return await self.write_job_data(message)
 
     async def write_completion_message(self, success: bool, response_length: int = 0) -> bool:

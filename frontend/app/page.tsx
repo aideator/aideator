@@ -21,7 +21,7 @@ export default function Home() {
     if (!taskText.trim()) return
 
     try {
-      const response = await fetch('/api/v1/runs', {
+      const response = await fetch('/api/v1/tasks', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -29,10 +29,9 @@ export default function Home() {
         body: JSON.stringify({
           github_url: "https://github.com/fastapi/fastapi",
           prompt: taskText.trim(),
-          model_variants: [
-            { model_definition_id: "gpt-4o-mini" }
-          ],
-          agent_mode: "claude-cli"
+          model_names: ["gpt-4o-mini"],
+          agent_mode: "claude-cli",
+          variations: 1,
         })
       })
 

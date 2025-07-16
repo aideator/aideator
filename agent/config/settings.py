@@ -50,10 +50,12 @@ class AgentConfig:
     @classmethod
     def from_environment(cls) -> "AgentConfig":
         """Create configuration from environment variables."""
-        run_id = os.getenv("RUN_ID", "local-test")
         variation_id = os.getenv("VARIATION_ID", "0")
         task_id_env = os.getenv("TASK_ID")
         task_id = int(task_id_env) if task_id_env and task_id_env.isdigit() else None
+        
+        # Generate run_id from task_id for backward compatibility (used in log files, etc.)
+        run_id = f"task-{task_id}-{variation_id}" if task_id else "local-test"
 
         # Core settings
         repo_url = os.getenv("REPO_URL", "")

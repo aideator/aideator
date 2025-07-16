@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useRef } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -83,6 +84,16 @@ function OutputLine({ output }: { output: AgentLog }) {
 
 function VariationPanel({ variationId, outputs }: { variationId: number; outputs: AgentLog[] }) {
   const agentColorClass = agentColors[variationId as keyof typeof agentColors] || agentColors[0]
+  const scrollAreaRefs = useRef<{ [key: string]: HTMLDivElement | null }>({})
+  
+  // Auto-scroll to bottom when new outputs arrive
+  useEffect(() => {
+    Object.values(scrollAreaRefs.current).forEach(ref => {
+      if (ref) {
+        ref.scrollTop = ref.scrollHeight
+      }
+    })
+  }, [outputs])
   
   const outputCounts = outputs.reduce((acc, output) => {
     acc[output.output_type] = (acc[output.output_type] || 0) + 1
@@ -166,7 +177,10 @@ function VariationPanel({ variationId, outputs }: { variationId: number; outputs
           </TabsList>
           
           <TabsContent value="conversation">
-            <ScrollArea className="h-[500px]">
+            <ScrollArea 
+              className="h-[500px]"
+              ref={(el) => scrollAreaRefs.current['conversation'] = el}
+            >
               {assistantOutputs.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-gray-500">
                   <Terminal className="h-8 w-8 mr-2" />
@@ -183,7 +197,10 @@ function VariationPanel({ variationId, outputs }: { variationId: number; outputs
           </TabsContent>
           
           <TabsContent value="system">
-            <ScrollArea className="h-[500px]">
+            <ScrollArea 
+              className="h-[500px]"
+              ref={(el) => scrollAreaRefs.current['system'] = el}
+            >
               {systemOutputs.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-gray-500">
                   <Terminal className="h-8 w-8 mr-2" />
@@ -200,7 +217,10 @@ function VariationPanel({ variationId, outputs }: { variationId: number; outputs
           </TabsContent>
           
           <TabsContent value="debug">
-            <ScrollArea className="h-[500px]">
+            <ScrollArea 
+              className="h-[500px]"
+              ref={(el) => scrollAreaRefs.current['debug'] = el}
+            >
               {debugOutputs.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-gray-500">
                   <Terminal className="h-8 w-8 mr-2" />
@@ -217,7 +237,10 @@ function VariationPanel({ variationId, outputs }: { variationId: number; outputs
           </TabsContent>
           
           <TabsContent value="errors">
-            <ScrollArea className="h-[500px]">
+            <ScrollArea 
+              className="h-[500px]"
+              ref={(el) => scrollAreaRefs.current['errors'] = el}
+            >
               {errorOutputs.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-gray-500">
                   <Terminal className="h-8 w-8 mr-2" />
@@ -234,7 +257,10 @@ function VariationPanel({ variationId, outputs }: { variationId: number; outputs
           </TabsContent>
           
           <TabsContent value="diffs">
-            <ScrollArea className="h-[500px]">
+            <ScrollArea 
+              className="h-[500px]"
+              ref={(el) => scrollAreaRefs.current['diffs'] = el}
+            >
               {diffOutputs.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-gray-500">
                   <Terminal className="h-8 w-8 mr-2" />
@@ -256,12 +282,12 @@ function VariationPanel({ variationId, outputs }: { variationId: number; outputs
 }
 
 interface AgentOutputViewerProps {
-  runId: string
+  taskId: string
   maxVariations?: number
 }
 
-export function AgentOutputViewer({ runId, maxVariations = 6 }: AgentOutputViewerProps) {
-  const { logs, isLoading, error, refetch, getLogsByVariation } = useAgentLogs(runId)
+export function AgentOutputViewer({ taskId, maxVariations = 6 }: AgentOutputViewerProps) {
+  const { logs, isLoading, error, refetch, getLogsByVariation } = useAgentLogs(taskId)
   
   // Get unique variation IDs
   const variationIds = Array.from(new Set(logs.map(o => o.variation_id))).sort((a, b) => a - b)
@@ -295,7 +321,7 @@ export function AgentOutputViewer({ runId, maxVariations = 6 }: AgentOutputViewe
             <div className="text-center text-gray-500">
               <Terminal className="h-8 w-8 mx-auto mb-2" />
               <p>Waiting for agent outputs...</p>
-              <p className="text-sm">Task ID: {runId}</p>
+              <p className="text-sm">Task ID: {taskId}</p>
             </div>
           </CardContent>
         </Card>
@@ -354,7 +380,7 @@ export function AgentOutputViewer({ runId, maxVariations = 6 }: AgentOutputViewe
             </div>
             <div>
               <span className="text-gray-500">Task ID:</span>
-              <span className="ml-2 font-mono text-xs">{runId}</span>
+              <span className="ml-2 font-mono text-xs">{taskId}</span>
             </div>
           </div>
         </CardContent>

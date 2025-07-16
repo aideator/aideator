@@ -84,7 +84,7 @@ COPY --from=python-builder /usr/local/bin/claude /usr/local/bin/claude
 
 # Copy application code
 COPY --chown=nonroot:nonroot app/ ./app/
-COPY --chown=nonroot:nonroot k8s/ ./k8s/
+COPY --chown=nonroot:nonroot infra/k8s/ ./k8s/
 COPY --chown=nonroot:nonroot alembic/ ./alembic/
 COPY --chown=nonroot:nonroot alembic.ini ./
 COPY --chown=nonroot:nonroot scripts/ ./scripts/

@@ -9,6 +9,7 @@ This API handles the task monitoring side of the architecture:
 Enhanced to support frontend mock data structure replacement.
 """
 
+import asyncio # Added for create_task
 import json
 from datetime import datetime
 from typing import Any
@@ -19,13 +20,80 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.core.database import get_session
-from app.core.dependencies import CurrentUserAPIKey
+from app.core.dependencies import CurrentUserAPIKey, get_orchestrator # get_orchestrator added
 from app.core.logging import get_logger
 from app.models.task import Task, TaskOutput, TaskStatus
-from app.schemas.tasks import TaskListItem, TaskListResponse
+from app.schemas.tasks import ( # Modified import
+    TaskListItem,
+    TaskListResponse,
+    CreateTaskRequest,
+    CreateTaskResponse,
+)
+from app.services.agent_orchestrator import AgentOrchestrator # New import
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+@router.post(
+    "",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=CreateTaskResponse,
+    summary="Create a new task",
+    description="Submit a new repository-analysis task and enqueue agent variations.",
+)
+async def create_task(
+    request: CreateTaskRequest,
+    current_user: CurrentUserAPIKey,
+    db: AsyncSession = Depends(get_session),
+    orchestrator: AgentOrchestrator = Depends(get_orchestrator),
+) -> CreateTaskResponse:
+    """Insert Task row ➜ trigger AgentOrchestrator ➜ return polling URLs."""
+    # Derive variation count
+    variations = request.variations or len(request.model_names)
+
+    # Insert Task row
+    new_task = Task(
+        github_url=request.github_url,
+        prompt=request.prompt,
+        agent_mode=request.agent_mode or "claude-cli",
+        variations=variations,
+        model_configs=[{"model": m} for m in request.model_names],
+        status=TaskStatus.PENDING,
+        user_id=current_user.id if current_user else None,
+    )
+    db.add(new_task)
+    await db.commit()
+    await db.refresh(new_task)
+
+    # Build internal run_id for compatibility (uuid-like)
+    import uuid
+
+    run_id = f"task-{new_task.id}-{uuid.uuid4().hex[:8]}"
+    new_task.internal_run_id = run_id
+    await db.commit()
+
+    # Fire-and-forget orchestration (no await to avoid blocking request)
+    # NOTE: Do not pass HTTP request session to background tasks!
+    asyncio.create_task(
+        orchestrator.execute_variations(
+            task_id=new_task.id,
+            run_id=run_id,
+            repo_url=request.github_url,
+            prompt=request.prompt,
+            variations=variations,
+            agent_mode=request.agent_mode,
+            db_session=None,  # Background task creates its own session
+        )
+    )
+
+    base_url = "/api/v1/tasks"
+    return CreateTaskResponse(
+        task_id=new_task.id,
+        websocket_url=f"/ws/tasks/{new_task.id}",
+        polling_url=f"{base_url}/{new_task.id}/outputs",
+        status="pending",
+    )
 
 
 def parse_agent_output_content(content: str) -> dict[str, Any]:

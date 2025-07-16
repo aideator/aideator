@@ -34,9 +34,10 @@ class AIdeatorAgent:
 
     def __init__(self):
         """Initialize agent - maintains original interface."""
-        self.run_id = os.getenv("RUN_ID", "local-test")
         self.variation_id = os.getenv("VARIATION_ID", "0")
         self.task_id = os.getenv("TASK_ID")
+        # Generate run_id from task_id for backward compatibility
+        self.run_id = f"task-{self.task_id}-{self.variation_id}" if self.task_id else "local-test"
 
         # Initialize the orchestrator that does the real work
         self._orchestrator = AgentOrchestrator()
@@ -103,10 +104,11 @@ async def main():
             if await db_service.health_check():
                 print("✅ Database connection successful")
 
-                # Try to write a startup message if we have environment variables
-                run_id = os.getenv("RUN_ID", "unknown")
+                # Try to write a startup message if we have environment variables  
                 variation_id = int(os.getenv("VARIATION_ID", "0"))
                 task_id_env = os.getenv("TASK_ID")
+                # Generate run_id from task_id for backward compatibility
+                run_id = f"task-{task_id_env}-{variation_id}" if task_id_env else "unknown"
 
                 if task_id_env:
                     # Use task_id directly from environment (unified tasks)
@@ -171,7 +173,9 @@ async def main():
                     await db_service.write_error(task_id, 0, error_msg)
                 else:
                     # Fallback to legacy run lookup using internal_run_id
-                    run_id = os.getenv("RUN_ID", "unknown")
+                    # Generate run_id from task_id for backward compatibility
+                    variation_id = int(os.getenv("VARIATION_ID", "0"))
+                    run_id = f"task-{task_id_env}-{variation_id}" if task_id_env else "unknown"
                     task = await db_service.get_task_by_internal_run_id(run_id)
                     if task:
                         await db_service.write_error(task.id, 0, error_msg)

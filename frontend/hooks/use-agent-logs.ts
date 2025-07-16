@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 
 export interface AgentLog {
   id: number
-  run_id: string
+  task_id: string
   variation_id: number
   content: string
   timestamp: string
@@ -74,15 +74,15 @@ export function useAgentLogs(taskId: string): UseAgentLogsReturn {
       // Transform API response to AgentLog format - API returns array directly
       const fetchedLogs: AgentLog[] = (Array.isArray(data) ? data : data.outputs || []).map((output: any) => ({
         id: output.id,
-        run_id: output.run_id,
+        task_id: output.task_id,
         variation_id: output.variation_id,
         content: output.content,
         timestamp: output.timestamp,
         output_type: output.output_type
       }))
 
-      // Sort by timestamp in reverse chronological order (newest first)
-      fetchedLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      // Sort by timestamp in chronological order (oldest first, newest at bottom like chat/terminal)
+      fetchedLogs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
 
       setLogs(fetchedLogs)
       

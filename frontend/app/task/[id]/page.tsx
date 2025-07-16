@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, use } from "react"
+import { useState, use, useEffect, useRef } from "react"
 import { FileCode, Terminal, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -57,6 +57,14 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
   const { task, loading, error } = useTaskDetail(id)
   const { logs, isLoading: logsLoading, error: logsError, getLogsByVariation, hasLogsForVariation } = useAgentLogs(id)
   const { errors, isLoading: errorsLoading, error: errorsError, getErrorsByVariation, hasErrorsForVariation } = useAgentErrors(id)
+  const logsContainerRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll to bottom when new logs arrive
+  useEffect(() => {
+    if (logsContainerRef.current) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight
+    }
+  }, [logs, activeVersion])
 
   if (loading) {
     return (
@@ -143,7 +151,7 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
     }
 
     return (
-      <div className="space-y-2">
+      <div ref={logsContainerRef} className="space-y-2 max-h-full overflow-y-auto">
         {variationLogs.map((log) => (
           <div key={log.id} className="flex gap-3 text-sm">
             <span className="text-gray-500 text-xs w-24 flex-shrink-0">

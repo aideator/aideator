@@ -26,7 +26,7 @@ class KubernetesService:
         self.helm_chart_path = (
             Path(__file__).parent.parent.parent / "deploy" / "charts" / "aideator"
         )
-        self.job_templates_dir = Path(__file__).parent.parent.parent / "infra" / "k8s" / "jobs"
+        self.job_templates_dir = Path(__file__).parent.parent.parent / "k8s" / "jobs"
         self.kubectl_timeout = 300  # 5 minutes
 
     def _escape_yaml_string(self, value: str) -> str:
@@ -48,7 +48,7 @@ class KubernetesService:
         agent_mode: str | None = None,
     ) -> str:
         """Create a Kubernetes job for an agent variation."""
-        job_name = f"agent-{run_id}-{variation_id}"
+        job_name = f"task-{task_id}-{variation_id}"
 
         # Use file-based template for reliable operation
         template_path = self.job_templates_dir / "agent-job-template.yaml"
@@ -126,7 +126,31 @@ class KubernetesService:
         """Cancel all agent jobs for a run."""
         logger.info(f"Cancelling run {run_id}")
 
-        # Get all jobs for this run
+        # Get all jobs for this run (try both old and new label formats)
+        job_names = []
+        
+        # First try new format (task-id)
+        cmd = [
+            "kubectl",
+            "get",
+            "jobs",
+            "--namespace",
+            self.namespace,
+            "-l",
+            f"task-id={run_id}",
+            "-o",
+            "json",
+        ]
+        result = await self._run_kubectl_command(cmd)
+        
+        if result.returncode == 0:
+            try:
+                jobs_data = json.loads(result.stdout)
+                job_names.extend([job["metadata"]["name"] for job in jobs_data["items"]])
+            except json.JSONDecodeError:
+                pass
+        
+        # Also try old format (run-id) for backward compatibility
         cmd = [
             "kubectl",
             "get",
@@ -139,35 +163,30 @@ class KubernetesService:
             "json",
         ]
         result = await self._run_kubectl_command(cmd)
+        
+        if result.returncode == 0:
+            try:
+                jobs_data = json.loads(result.stdout)
+                job_names.extend([job["metadata"]["name"] for job in jobs_data["items"]])
+            except json.JSONDecodeError:
+                pass
 
-        if result.returncode != 0:
-            logger.error(f"Failed to get jobs for run {run_id}")
-            return False
+        if not job_names:
+            logger.info(f"No jobs found for run {run_id}")
+            return True
 
-        try:
-            jobs_data = json.loads(result.stdout)
-            job_names = [job["metadata"]["name"] for job in jobs_data["items"]]
+        # Delete all jobs for this run
+        success = True
+        for job_name in job_names:
+            if not await self.delete_job(job_name):
+                success = False
 
-            if not job_names:
-                logger.info(f"No jobs found for run {run_id}")
-                return True
+        if success:
+            logger.info(f"Successfully cancelled run {run_id}")
+        else:
+            logger.error(f"Failed to cancel some jobs for run {run_id}")
 
-            # Delete all jobs for this run
-            success = True
-            for job_name in job_names:
-                if not await self.delete_job(job_name):
-                    success = False
-
-            if success:
-                logger.info(f"Successfully cancelled run {run_id}")
-            else:
-                logger.error(f"Failed to cancel some jobs for run {run_id}")
-
-            return success
-
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse kubectl output for run {run_id}: {e}")
-            return False
+        return success
 
     async def get_job_status(self, job_name: str) -> dict[str, Any]:
         """Get the status of a Kubernetes job."""
@@ -280,8 +299,8 @@ class KubernetesService:
 
     def _extract_variation_id(self, pod_name: str) -> int | None:
         """Extract variation ID from pod name."""
-        # Pod names follow pattern: agent-{run_id}-{variation_id}-{suffix}
-        # or batch-{run_id}-{index}-{suffix}
+        # Pod names follow pattern: task-{task_id}-{variation_id}-{suffix}
+        # or batch-{run_id}-{index}-{suffix} (legacy)
         parts = pod_name.split("-")
         if len(parts) >= 3:
             try:

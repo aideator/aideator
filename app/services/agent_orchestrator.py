@@ -145,6 +145,7 @@ class AgentOrchestrator:
         jobs = []
         for i in range(variations):
             job_name = await self.kubernetes.create_agent_job(
+                task_id=task_id,
                 run_id=run_id,
                 variation_id=i,
                 repo_url=repo_url,

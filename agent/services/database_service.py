@@ -96,16 +96,78 @@ class DatabaseService:
             return None
 
     async def get_task_by_internal_run_id(self, internal_run_id: str) -> Task | None:
-        """Get a task by its internal_run_id (Kubernetes job identifier)."""
+        """Get a task by its internal_run_id (Kubernetes job identifier).
+        
+        DUAL LOOKUP: Tries unified tasks table first, then legacy runs table for compatibility.
+        """
         try:
             async with self.async_session_factory() as session:
+                # Try unified tasks table first
                 query = select(Task).where(Task.internal_run_id == internal_run_id)
                 result = await session.execute(query)
-                return result.scalar_one_or_none()
+                task = result.scalar_one_or_none()
+                
+                if task:
+                    logger.debug(f"Found task {task.id} via unified table")
+                    return task
+                
+                # DUAL LOOKUP: Also try legacy runs table
+                legacy_query = select(Run).where(Run.run_id == internal_run_id)
+                legacy_result = await session.execute(legacy_query)
+                legacy_run = legacy_result.scalar_one_or_none()
+                
+                if legacy_run:
+                    logger.debug(f"Found legacy run {legacy_run.task_id} via legacy table")
+                    # Convert legacy Run to Task for compatibility
+                    return Task(
+                        id=legacy_run.task_id,
+                        internal_run_id=legacy_run.run_id,
+                        github_url=legacy_run.github_url,
+                        prompt=legacy_run.prompt,
+                        variations=legacy_run.variations,
+                        status=TaskStatus(legacy_run.status.value),
+                        created_at=legacy_run.created_at,
+                        started_at=legacy_run.started_at,
+                        completed_at=legacy_run.completed_at,
+                        agent_config=legacy_run.agent_config,
+                        metadata=legacy_run.run_metadata,
+                        user_id=legacy_run.user_id,
+                        results=legacy_run.results,
+                        error_message=legacy_run.error_message
+                    )
+                
+                logger.debug(f"No task found for internal_run_id {internal_run_id}")
+                return None
+                
         except Exception as e:
             logger.error(
                 f"Failed to get task by internal_run_id {internal_run_id}: {e}"
             )
+            return None
+
+    async def _get_legacy_task_id_for_unified_task(self, session: AsyncSession, unified_task_id: int) -> int | None:
+        """
+        Helper method to find the legacy runs.task_id that corresponds to a unified tasks.id.
+        This is needed for dual write during migration.
+        """
+        try:
+            # First get the unified task to find its internal_run_id
+            unified_query = select(Task).where(Task.id == unified_task_id)
+            unified_result = await session.execute(unified_query)
+            unified_task = unified_result.scalar_one_or_none()
+            
+            if not unified_task or not unified_task.internal_run_id:
+                return None
+                
+            # Then find the legacy run with matching run_id
+            legacy_query = select(Run).where(Run.run_id == unified_task.internal_run_id)
+            legacy_result = await session.execute(legacy_query)
+            legacy_run = legacy_result.scalar_one_or_none()
+            
+            return legacy_run.task_id if legacy_run else None
+            
+        except Exception as e:
+            logger.error(f"Failed to find legacy task_id for unified task {unified_task_id}: {e}")
             return None
 
     async def write_task_output(
@@ -118,24 +180,46 @@ class DatabaseService:
     ) -> bool:
         """
         Canonical writer for the unified task_outputs table.
+        DUAL WRITE: Writes to both task_outputs and agent_outputs for safety during migration.
         """
+        write_timestamp = timestamp or datetime.utcnow()
+        
         try:
             async with self.async_session_factory() as session:
-                output = TaskOutput(
+                # Write to unified task_outputs table
+                task_output = TaskOutput(
                     task_id=task_id,
                     variation_id=variation_id,
                     content=content,
                     output_type=output_type,
-                    timestamp=timestamp or datetime.utcnow()
+                    timestamp=write_timestamp
                 )
-                session.add(output)
+                session.add(task_output)
+                
+                # DUAL WRITE: Also write to legacy agent_outputs table for safety
+                # Need to find the legacy runs.task_id that corresponds to this unified tasks.id
+                legacy_task_id = await self._get_legacy_task_id_for_unified_task(session, task_id)
+                
+                if legacy_task_id:
+                    agent_output = AgentOutput(
+                        task_id=legacy_task_id,
+                        variation_id=variation_id,
+                        content=content,
+                        output_type=output_type,
+                        timestamp=write_timestamp
+                    )
+                    session.add(agent_output)
+                    logger.debug(f"Dual write: Also wrote to agent_outputs with legacy task_id {legacy_task_id}")
+                else:
+                    logger.warning(f"Could not find legacy task_id for unified task {task_id}, skipping agent_outputs write")
+                
                 await session.commit()
                 logger.debug(
-                    f"Wrote {output_type} output for task {task_id}, variation {variation_id}"
+                    f"Dual write: Wrote {output_type} output for task {task_id}, variation {variation_id}"
                 )
                 return True
         except Exception as e:
-            logger.error(f"Failed to write task output: {e}")
+            logger.error(f"Failed to write task output (dual write): {e}")
             try:
                 await session.rollback()
             except Exception:

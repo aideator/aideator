@@ -1,119 +1,137 @@
 # AIdeator
 
-**Kubernetes-native multi-agent AI orchestration platform for background code analysis and generation**
+**Simple multi-agent AI comparison platform for coding tasks**
 
-AIdeator provides a robust, scalable infrastructure for running multiple AI coding agents in parallel, enabling side-by-side comparison of different AI approaches to the same coding task. Built with modern cloud-native principles, it offers reliable background processing similar to enterprise AI development tools.
+AIdeator enables side-by-side comparison of different AI approaches to the same coding task. Built with a student-friendly development philosophy, it prioritizes simplicity and quick setup over architectural complexity. Think GitHub Actions for AI agents - submit a task, agents run in containers, view results.
 
 ## 🚀 Key Features
 
-### Decoupled Background Processing
-- **Submit & Monitor**: Submit coding tasks and monitor progress independently
-- **Background Execution**: AI agents run autonomously in isolated Kubernetes containers
-- **Reliable Persistence**: All outputs streamed to PostgreSQL for consistent monitoring
-- **Real-time Updates**: Live progress tracking through database polling
+### Simple Multi-Agent Comparison
+- **2-Page Frontend**: Submit tasks → View results (no complex navigation)
+- **3-Endpoint API**: POST /runs, GET /runs/{id}, GET /runs/{id}/outputs
+- **Container Execution**: Agents run in isolated containers (Podman locally, Kubernetes in cloud)
+- **Side-by-Side Results**: Compare different AI approaches and implementations
 
-### Multi-Agent Comparison
-- **Parallel Processing**: Run up to 6 AI agents simultaneously on the same task
-- **Side-by-Side Analysis**: Compare different AI approaches and implementations
-- **Multiple Providers**: Support for OpenAI, Anthropic, and other LLM providers via LiteLLM
-- **Comprehensive Outputs**: Logs, errors, diffs, and code changes captured per agent
+### GitHub Actions-Like Workflow
+- **Submit & Go**: Submit coding tasks and agents run in background
+- **Job Execution**: Each agent runs as an independent container job
+- **Progress Monitoring**: Real-time logs and outputs via database polling
+- **Multiple Providers**: Support for OpenAI, Anthropic, and other LLM providers
 
-### Cloud-Native Architecture
-- **Kubernetes Jobs**: Each agent runs in an isolated container with resource limits
-- **Horizontal Scaling**: Scale agents independently based on workload
-- **Standard Tooling**: Built on proven Kubernetes patterns and tooling
-- **Local Development**: Student-friendly k3d setup with Tilt orchestration
+### Student-Friendly Development
+- **10-Minute Setup**: Simple installation with minimal complexity
+- **XDG-Compliant Storage**: Data stored in standard system directories
+- **Daemon Management**: Proper start/stop/restart commands
+- **Single Database**: PostgreSQL for everything (no Redis complexity)
 
-## 🔄 Workflow Architecture
+## 🔄 Simplified Architecture
 
-### 1. Task Submission
+### Core Components
+- **Frontend**: 2 pages (Submit + Results)
+- **API**: 3 endpoints (create run, get run, get outputs)
+- **Database**: Single PostgreSQL instance
+- **Containers**: Podman (local) or Kubernetes (cloud)
+
+### Workflow
 ```
-User Input → POST /api/v1/runs → Database → Kubernetes Jobs → Background Processing
-```
-
-### 2. Background Processing
-```
-K8s Jobs → Write to PostgreSQL → Continue independently
-```
-
-### 3. Task Monitoring
-```
-User Navigation → GET /api/v1/tasks/{id} → Read Database → Display Progress
+1. Submit Task → POST /api/v1/runs → Database Entry → Container Job
+2. Monitor Progress → GET /api/v1/runs/{id}/outputs → Database → Display
 ```
 
-## 🛠️ Tech Stack
+### Data Flow
+- **Single Table**: `runs` table stores everything
+- **No Sessions**: Stateless operation
+- **No Complex Auth**: Simple development mode
+- **Container Logs**: All outputs captured in database
 
-**Frontend**: Next.js 15 with React 19, TypeScript, Tailwind CSS, shadcn/ui
-**Backend**: FastAPI with async/await, PostgreSQL, SQLModel ORM
-**Agent Runtime**: Kubernetes Jobs with LiteLLM for multi-provider support
-**Development**: Tilt + k3d for local Kubernetes development
-**Infrastructure**: Docker multi-stage builds, Prometheus metrics, structured logging
+## 🛠️ Simplified Tech Stack
+
+**Frontend**: Next.js 15 with React 19, TypeScript, Tailwind CSS, shadcn/ui  
+**Backend**: FastAPI with PostgreSQL, SQLModel ORM  
+**Agent Runtime**: Podman (local) or Kubernetes (cloud) containers  
+**Development**: Simple daemon management with systemd  
+**Database**: PostgreSQL only (no Redis complexity)  
+**LLM Gateway**: LiteLLM for multi-provider support
 
 ## 📁 Project Structure
 
 ```
-app/                    # FastAPI backend API
-frontend/              # Next.js frontend application
+app/                    # FastAPI backend (simplified API)
+frontend/              # Next.js frontend (2 pages: submit + results)
 agent/                 # AI agent container code
-k8s/                   # Kubernetes deployment templates
-alembic/               # Database migrations
-scripts/               # Development and validation scripts
+alembic/               # Database migrations (simplified schema)
+scripts/               # Setup and validation scripts
+deploy/                # Installation and daemon management
 ```
 
-## 🚀 Quick Start
+## 🚀 Quick Start (10-Minute Setup)
 
 ### Prerequisites
-- Docker Desktop with Kubernetes enabled
-- k3d cluster management
-- Tilt for development orchestration
-- Node.js 18+ and Python 3.11+
+- Linux/macOS system
+- Python 3.11+ and Node.js 18+
+- Podman or Docker installed
 
-### Development Setup
+### Installation (Recommended)
 ```bash
-# Clone and setup
+# Clone and install as system package
 git clone <repository-url>
 cd aideator
+
+# Install system-wide (creates daemons, data directories)
+sudo make install
+
+# Configure API keys
+aideator config set OPENAI_API_KEY="your-openai-key"
+aideator config set ANTHROPIC_API_KEY="your-anthropic-key"  # optional
+
+# Start services
+aideator start
+
+# Access application
+open http://localhost:3000  # Frontend
+open http://localhost:8000  # API
+```
+
+### Development Setup (Alternative)
+```bash
+# Clone repository
+git clone <repository-url>
+cd aideator
+
+# Run interactive setup
+./setup-development.sh
 
 # Start development environment
 tilt up
 
 # Run database migrations (one-time)
 tilt trigger database-migrate
-
-# Access services
-open http://localhost:3000  # Frontend
-open http://localhost:8000  # API
-open http://localhost:10350 # Tilt Dashboard
 ```
 
-### Environment Configuration
-```bash
-# Required API keys
-export OPENAI_API_KEY="your-openai-key"
-export ANTHROPIC_API_KEY="your-anthropic-key"  # optional
-```
+## 🎯 Core Use Case: Multi-Agent Comparison
 
-## 🎯 Core Workflow
+### Simple 2-Page Workflow
+1. **Submit Page** (`http://localhost:3000`)
+   - Enter GitHub repository URL and coding prompt
+   - Select AI models to compare (GPT-4, Claude, etc.)
+   - Submit task → Container jobs start in background
 
-### Creating a Task
-1. **Navigate** to the main page (`http://localhost:3000`)
-2. **Enter** GitHub repository URL and coding prompt
-3. **Select** number of agent variations (1-6)
-4. **Submit** - task is queued for background processing
-5. **Redirected** to task monitoring page
+2. **Results Page** (`http://localhost:3000/runs/{id}`)
+   - View side-by-side outputs from different AI models
+   - Compare approaches, code changes, and reasoning
+   - All outputs captured in real-time via database polling
 
-### Monitoring Progress
-- **Real-time logs** from each agent variation
-- **Error tracking** with detailed error analysis
-- **Code diffs** showing proposed changes
-- **Side-by-side comparison** of different AI approaches
+### What You Get
+- **Different AI Perspectives**: See how GPT-4 vs Claude approaches the same task
+- **Code Comparison**: View proposed changes side-by-side
+- **Execution Logs**: Full transparency into AI reasoning process
+- **Error Analysis**: Understand where different models succeed/fail
 
-### Agent Variations
-Each agent runs independently in its own container:
-- **Isolated execution** with resource limits
-- **Different models** (GPT-4, Claude, etc.)
-- **Comprehensive logging** of all actions
-- **Automatic cleanup** after completion
+### Container Execution
+- **Isolated Jobs**: Each AI model runs in separate container
+- **Resource Limits**: Prevents runaway processes
+- **Automatic Cleanup**: Containers terminate after completion
+- **Progress Tracking**: Real-time status via database
 
 ## 🔧 Development Commands
 

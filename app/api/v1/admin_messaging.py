@@ -35,13 +35,13 @@ async def get_overview(
 ) -> dict[str, Any]:
     """Get overall database statistics."""
     # Total tasks
-    total_tasks = await db.scalar(select(func.count(Task.id)))
+    total_runs = await db.scalar(select(func.count(Task.id)))
 
     # Tasks by status
     status_counts = await db.execute(
         select(Task.status, func.count(Task.id)).group_by(Task.status)
     )
-    tasks_by_status = {status.value: count for status, count in status_counts}
+    runs_by_status = {status.value: count for status, count in status_counts}
 
     # Total messages
     total_messages = await db.scalar(select(func.count(TaskOutput.id)))
@@ -56,7 +56,7 @@ async def get_overview(
 
     # Recent activity (last 24 hours)
     yesterday = datetime.utcnow() - timedelta(days=1)
-    recent_tasks = await db.scalar(
+    recent_runs = await db.scalar(
         select(func.count(Task.id)).where(Task.created_at > yesterday)
     )
     recent_messages = await db.scalar(
@@ -74,11 +74,11 @@ async def get_overview(
     except Exception:
         db_size = 0
 
-    # Average messages per task
-    avg_messages = total_messages / max(total_tasks, 1)
+    # Average messages per run
+    avg_messages = total_messages / max(total_runs, 1)
 
-    # Active tasks count
-    active_tasks = await db.scalar(
+    # Active runs count
+    active_runs = await db.scalar(
         select(func.count(Task.id)).where(
             or_(
                 Task.status == TaskStatus.RUNNING,
@@ -88,30 +88,30 @@ async def get_overview(
     )
 
     return {
-        "active_tasks": active_tasks or 0,
+        "active_runs": active_runs or 0,
         "total_messages": total_messages or 0,
         "recent_messages_1h": recent_messages or 0,
         "timestamp": datetime.utcnow().isoformat(),
     }
 
 
-@router.get("/tasks", summary="Get current tasks")
-async def get_tasks(
+@router.get("/runs", summary="Get current runs")
+async def get_runs(
     limit: int = Query(10, le=50),
     db: AsyncSession = Depends(get_session),
     current_user: User | None = Depends(get_current_user_dev_bypass),
 ) -> list[dict[str, Any]]:
-    """Get active tasks with message metrics."""
+    """Get active runs with message metrics."""
     # Build query
     query = select(Task).order_by(desc(Task.created_at)).limit(limit)
 
-    # Get tasks
+    # Get runs
     result = await db.execute(query)
-    tasks = result.scalars().all()
+    runs = result.scalars().all()
 
-    # Get message counts for each task
-    task_list = []
-    for task in tasks:
+    # Get message counts for each run
+    run_list = []
+    for run in runs:
         # Get message counts by variation
         variation_counts = await db.execute(
             select(
@@ -119,7 +119,7 @@ async def get_tasks(
                 func.count(TaskOutput.id).label("count"),
                 func.max(TaskOutput.timestamp).label("last_message"),
             )
-            .where(TaskOutput.task_id == task.id)
+            .where(TaskOutput.task_id == run.id)
             .group_by(TaskOutput.variation_id)
         )
 
@@ -137,32 +137,32 @@ async def get_tasks(
                 last_message_time = last_msg
 
         # Calculate message rate
-        if task.started_at and last_message_time:
-            duration = (last_message_time - task.started_at).total_seconds()
+        if run.started_at and last_message_time:
+            duration = (last_message_time - run.started_at).total_seconds()
             message_rate = total_messages / max(duration, 1)
         else:
             message_rate = 0
 
-        task_list.append(
+        run_list.append(
             {
-                "id": task.id,
-                "status": task.status.value,
-                "github_url": getattr(task, "github_url", "") or "",
-                "prompt": (task.prompt[:100] + "..." if len(task.prompt) > 100 else task.prompt) if task.prompt else "",
-                "variations": getattr(task, "variations", 1) or 1,
-                "created_at": task.created_at.isoformat(),
-                "started_at": task.started_at.isoformat() if task.started_at else None,
+                "id": run.id,
+                "status": run.status.value,
+                "github_url": getattr(run, "github_url", "") or "",
+                "prompt": (run.prompt[:100] + "..." if len(run.prompt) > 100 else run.prompt) if run.prompt else "",
+                "variations": getattr(run, "variations", 1) or 1,
+                "created_at": run.created_at.isoformat(),
+                "started_at": run.started_at.isoformat() if run.started_at else None,
                 "message_count": total_messages,
                 "message_rate_per_second": round(message_rate, 2),
                 "variation_metrics": variation_data,
-                "internal_run_id": getattr(task, "internal_run_id", None),
+                "winning_variation_id": getattr(run, "winning_variation_id", None),
             }
         )
 
-    return task_list
+    return run_list
 
 
-@router.get("/messages", summary="Get recent messages across all tasks")
+@router.get("/messages", summary="Get recent messages across all runs")
 async def get_message_stream(
     limit: int = Query(100, le=500),
     offset: int = Query(0),
@@ -194,7 +194,7 @@ async def get_message_stream(
         if len(conditions) == 1:
             query = query.where(conditions[0])
         elif len(conditions) > 1:
-            query = query.where(and_(*conditions))  # type: ignore[missing-argument]
+            query = query.where(and_(*conditions))
 
     # Get total count
     count_query = select(func.count()).select_from(query.subquery())
@@ -214,7 +214,7 @@ async def get_message_stream(
         "messages": [
             {
                 "id": msg.id,
-                "task_id": msg.task_id,
+                "run_id": msg.task_id, # This field is still named 'run_id' in the output for compatibility with frontend, but holds task_id
                 "variation_id": msg.variation_id,
                 "content": msg.content,
                 "timestamp": msg.timestamp.isoformat(),
@@ -254,7 +254,7 @@ async def search_messages(
     return [
         {
             "id": msg.id,
-            "task_id": msg.task_id,
+            "run_id": msg.task_id, # This field is still named 'run_id' in the output for compatibility with frontend, but holds task_id
             "variation_id": msg.variation_id,
             "content": msg.content[:500] + "..." if len(msg.content) > 500 else msg.content,
             "timestamp": msg.timestamp.isoformat(),
@@ -276,9 +276,9 @@ async def get_live_activity(
     # Get activity from last 5 minutes
     since = datetime.utcnow() - timedelta(minutes=5)
 
-    # Get active containers (tasks with recent messages)
+    # Get active containers (runs with recent messages)
     active_containers_query = select(
-        TaskOutput.task_id,
+        TaskOutput.task_id.label("task_id"),
         TaskOutput.variation_id,
         func.count(TaskOutput.id).label("message_count"),
         func.max(TaskOutput.timestamp).label("latest_timestamp"),
@@ -335,7 +335,7 @@ async def health_check(
 
         # Test write (create and delete a test record)
         test_output = TaskOutput(
-            task_id=999999,  # Use a test task ID
+            run_id="health-check-test", # This should likely be task_id, but keeping run_id for now as it's the column name
             variation_id=0,
             content="Health check test",
             output_type="system",
