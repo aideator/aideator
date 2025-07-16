@@ -5,8 +5,6 @@ Handles API key validation and provider detection.
 """
 
 import os
-from typing import Dict, Tuple
-
 
 # Constants for validation
 MIN_API_KEY_LENGTH = 10
@@ -15,14 +13,14 @@ MIN_GENERIC_KEY_LENGTH = 5
 
 class ProviderConfig:
     """Manages API keys and provider validation."""
-    
+
     def __init__(self):
         """Initialize with current API key state."""
         self.available_keys = self._check_available_api_keys()
         # Check if API key validation is required
         self.require_api_keys = os.getenv("REQUIRE_API_KEYS_FOR_AGENTS", "true").lower() == "true"
-    
-    def _check_available_api_keys(self) -> Dict[str, bool]:
+
+    def _check_available_api_keys(self) -> dict[str, bool]:
         """Check which API keys are available for different providers."""
         available_keys = {}
 
@@ -46,8 +44,8 @@ class ProviderConfig:
         # Check Gemini API Key
         gemini_key = os.getenv("GEMINI_API_KEY")
         available_keys["gemini"] = bool(
-            gemini_key 
-            and gemini_key.strip() 
+            gemini_key
+            and gemini_key.strip()
             and gemini_key.startswith("AIza")
         )
 
@@ -89,7 +87,7 @@ class ProviderConfig:
         # Default to openai for unknown models
         return "openai"
 
-    def validate_model_credentials(self, model_name: str) -> Tuple[bool, str]:
+    def validate_model_credentials(self, model_name: str) -> tuple[bool, str]:
         """Validate that credentials are available for the requested model.
 
         Returns:
@@ -98,7 +96,7 @@ class ProviderConfig:
         # Skip validation if not required (student mode)
         if not self.require_api_keys:
             return True, ""
-            
+
         provider = self.get_model_provider(model_name)
 
         if not self.available_keys.get(provider, False):

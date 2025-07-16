@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.database import get_session
-from app.core.deps import get_orchestrator
+from app.core.dependencies import get_orchestrator
 from app.core.logging import get_logger
 from app.services.agent_orchestrator import AgentOrchestrator
 

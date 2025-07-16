@@ -9,8 +9,6 @@ Tests the separation between:
 """
 
 import asyncio
-import json
-from datetime import datetime
 
 import httpx
 
@@ -18,16 +16,16 @@ import httpx
 async def test_api_endpoints():
     """Test the separated API endpoints."""
     base_url = "http://localhost:8000"
-    
+
     print("🧪 Testing Task-Run Architecture API Endpoints")
     print("=" * 50)
-    
+
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Test 1: List tasks (should be empty initially)
         print("\n1️⃣ Testing GET /api/v1/tasks")
         response = await client.get(f"{base_url}/api/v1/tasks")
         print(f"   Status: {response.status_code}")
-        
+
         if response.status_code == 200:
             data = response.json()
             print(f"   Tasks found: {len(data.get('tasks', []))}")
@@ -36,7 +34,7 @@ async def test_api_endpoints():
         else:
             print(f"   ❌ Failed: {response.text}")
             return
-        
+
         # Test 2: Create a run (task submission)
         print("\n2️⃣ Testing POST /api/v1/runs")
         run_data = {
@@ -52,30 +50,30 @@ async def test_api_endpoints():
             "use_claude_code": False,
             "agent_mode": "litellm"
         }
-        
+
         response = await client.post(
             f"{base_url}/api/v1/runs",
             json=run_data
         )
         print(f"   Status: {response.status_code}")
-        
+
         if response.status_code == 202:  # Accepted for processing
             data = response.json()
-            run_id = data.get('run_id')
+            run_id = data.get("run_id")
             print(f"   Run created: {run_id}")
             print(f"   WebSocket URL: {data.get('websocket_url')}")
             print("   ✅ Run creation works")
-            
+
             # Test 3: Check tasks list again (should have 1 task now)
             print("\n3️⃣ Testing GET /api/v1/tasks (after run creation)")
             await asyncio.sleep(1)  # Brief pause
             response = await client.get(f"{base_url}/api/v1/tasks")
-            
+
             if response.status_code == 200:
                 data = response.json()
                 print(f"   Tasks found: {len(data.get('tasks', []))}")
-                if data.get('tasks'):
-                    task = data['tasks'][0]
+                if data.get("tasks"):
+                    task = data["tasks"][0]
                     print(f"   First task ID: {task.get('id')}")
                     print(f"   First task title: {task.get('title')}")
                     print(f"   First task status: {task.get('status')}")
@@ -83,11 +81,11 @@ async def test_api_endpoints():
             else:
                 print(f"   ❌ Failed: {response.text}")
                 return
-            
+
             # Test 4: Get specific task details
             print("\n4️⃣ Testing GET /api/v1/tasks/{task_id}")
             response = await client.get(f"{base_url}/api/v1/tasks/{run_id}")
-            
+
             if response.status_code == 200:
                 data = response.json()
                 print(f"   Task ID: {data.get('id')}")
@@ -98,11 +96,11 @@ async def test_api_endpoints():
             else:
                 print(f"   ❌ Failed: {response.text}")
                 return
-            
+
             # Test 5: Get task outputs (may be empty if agents haven't started)
             print("\n5️⃣ Testing GET /api/v1/tasks/{task_id}/outputs")
             response = await client.get(f"{base_url}/api/v1/tasks/{run_id}/outputs")
-            
+
             if response.status_code == 200:
                 data = response.json()
                 print(f"   Agent outputs found: {len(data)}")
@@ -113,11 +111,11 @@ async def test_api_endpoints():
             else:
                 print(f"   ❌ Failed: {response.text}")
                 return
-                
+
         else:
             print(f"   ❌ Failed: {response.text}")
             return
-    
+
     print("\n🎉 All API endpoint tests passed!")
     print("\n📝 Architecture Summary:")
     print("   • POST /api/v1/runs → Creates task, fires Kubernetes jobs")

@@ -14,8 +14,6 @@ from app.core.database import create_db_and_tables
 from app.core.logging import setup_logging
 from app.middleware.development import DevelopmentAuthMiddleware
 from app.middleware.logging import LoggingMiddleware
-from app.services.redis_service import redis_service
-from app.tasks.model_sync_task import model_sync_task
 
 # Using Kubernetes service for container orchestration
 from app.utils.openapi import custom_openapi
@@ -34,39 +32,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await create_db_and_tables()
     logger.info("Database initialized")
 
-    # Start model sync task
-    await model_sync_task.start()
-    logger.info("Model sync task started")
 
     # Kubernetes connections are handled via kubectl
     # No persistent connection needed at the server level
 
-    # Initialize Redis (conditionally - off by default)
-    if settings.enable_redis:
-        try:
-            await redis_service.connect()
-            logger.info("Redis connected successfully")
-        except Exception as e:
-            logger.error(f"Redis connection failed: {e}")
-            if settings.require_redis:
-                raise RuntimeError("Redis connection is required for streaming.")
-            else:
-                logger.warning("Redis connection failed - continuing without streaming features")
-    else:
-        logger.info("Redis disabled by configuration (enable_redis=False)")
+    # Redis removed - using PostgreSQL polling for task monitoring
 
     yield
 
-    # Shutdown Redis if it was enabled
-    if settings.enable_redis:
-        await redis_service.disconnect()
-        logger.info("Redis disconnected")
-
     logger.info("Shutting down application")
-
-    # Stop model sync task
-    await model_sync_task.stop()
-    logger.info("Model sync task stopped")
 
 
 def create_application() -> FastAPI:
@@ -158,15 +132,11 @@ def create_application() -> FastAPI:
     @app.get("/health", tags=["System"])
     async def health_check() -> dict[str, Any]:
         """Health check endpoint."""
-        redis_healthy = True  # Default to healthy when disabled
-        if settings.enable_redis:
-            redis_healthy = await redis_service.health_check()
-
         return {
-            "status": "healthy" if redis_healthy else "degraded",
+            "status": "healthy",
             "version": settings.version,
             "orchestration": "kubernetes",
-            "redis": "healthy" if redis_healthy else "disabled",
+            "database": "postgresql",
         }
 
     return app

@@ -2,7 +2,6 @@
 """Create an admin API key for testing the dashboard."""
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -10,12 +9,13 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from app.core.database import get_async_session
-from app.models.user import User, ApiKey
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-import secrets
 import hashlib
+import secrets
+
+from sqlalchemy import select
+
+from app.core.database import get_async_session
+from app.models.user import ApiKey, User
 
 
 async def create_admin_api_key():
@@ -27,7 +27,7 @@ async def create_admin_api_key():
                 select(User).where(User.email == "admin@aideator.dev")
             )
             admin_user = result.scalar_one_or_none()
-            
+
             if not admin_user:
                 # Create admin user
                 admin_user = User(
@@ -38,11 +38,11 @@ async def create_admin_api_key():
                 db.add(admin_user)
                 await db.flush()
                 print(f"Created admin user: {admin_user.email}")
-            
+
             # Generate API key
             api_key = f"aideator_admin_{secrets.token_urlsafe(32)}"
             key_hash = hashlib.sha256(api_key.encode()).hexdigest()
-            
+
             # Create API key record
             api_key_record = ApiKey(
                 user_id=admin_user.id,
@@ -52,7 +52,7 @@ async def create_admin_api_key():
             )
             db.add(api_key_record)
             await db.commit()
-            
+
             print("\n" + "="*60)
             print("🔑 Admin API Key Created Successfully!")
             print("="*60)
@@ -63,9 +63,9 @@ async def create_admin_api_key():
             print("\n💡 Copy this API key and paste it in the admin dashboard")
             print("   when prompted. This key will not be shown again!")
             print("\n🚀 Now refresh your admin dashboard to use it.")
-            
+
             return api_key
-            
+
         except Exception as e:
             print(f"❌ Error creating API key: {e}")
             await db.rollback()

@@ -6,10 +6,10 @@ Slim orchestrator that maintains external interface compatibility.
 """
 
 import asyncio
+import logging
 import os
 import sys
-import logging
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 # Import the orchestrator that contains the main logic
 from agent.core.orchestrator import AgentOrchestrator
@@ -31,18 +31,18 @@ class AIdeatorAgent:
     This class preserves the exact interface that Kubernetes and tests expect,
     while delegating all actual work to the modular orchestrator.
     """
-    
+
     def __init__(self):
         """Initialize agent - maintains original interface."""
         self.run_id = os.getenv("RUN_ID", "local-test")
         self.variation_id = os.getenv("VARIATION_ID", "0")
-        
+
         # Initialize the orchestrator that does the real work
         self._orchestrator = AgentOrchestrator()
-        
+
         # Set up basic logging for interface compatibility
         self._setup_logging()
-    
+
     def _setup_logging(self):
         """Set up basic logging for interface compatibility."""
         logging.basicConfig(
@@ -50,23 +50,23 @@ class AIdeatorAgent:
             format="%(asctime)s - %(levelname)s - %(message)s"
         )
         self.logger = logging.getLogger(f"agent_{self.run_id}_{self.variation_id}")
-    
+
     async def run(self) -> None:
         """Main agent execution - delegates to orchestrator."""
         self.log("🚀 Starting AIdeator Agent (modular version)", "INFO")
-        
+
         try:
             # Delegate all the real work to the orchestrator
             await self._orchestrator.execute()
-            
+
             # Sleep for 600 seconds (10 minutes) before exit on success
             self.log("⏱️ Sleeping for 600 seconds before exit", "INFO")
             await asyncio.sleep(600)
-            
+
         except Exception as e:
             self.log(f"💥 Fatal error: {e!s}", "ERROR")
             raise
-    
+
     def log(self, message: str, level: str = "INFO", **kwargs):
         """
         Structured logging - maintains interface compatibility.
@@ -79,12 +79,12 @@ class AIdeatorAgent:
             "message": message,
             **kwargs,
         }
-        
+
         # Print to stdout for debugging (maintains original behavior)
         if os.getenv("DEBUG") == "true":
             import json
             print(json.dumps(log_entry), flush=True)
-        
+
         # Log with standard logger
         self.logger.log(
             getattr(logging, level, logging.INFO),
@@ -94,18 +94,18 @@ class AIdeatorAgent:
 
 async def main():
     """Main entry point - maintains exact signature."""
-    
+
     # Test database connection early (maintains original behavior)
     if DATABASE_SERVICE_AVAILABLE:
         try:
             db_service = DatabaseService()
             if await db_service.health_check():
                 print("✅ Database connection successful")
-                
+
                 # Try to write a startup message if we have environment variables
                 run_id = os.getenv("RUN_ID", "unknown")
                 variation_id = int(os.getenv("VARIATION_ID", "0"))
-                
+
                 # Get task_id from run_id
                 run = await db_service.get_run_by_run_id(run_id)
                 if run:
@@ -119,7 +119,7 @@ async def main():
                     print(f"✅ Wrote startup message to database for task_id={task_id}")
                 else:
                     print(f"⚠️ Could not find run with run_id={run_id}")
-                    
+
             else:
                 print("❌ Database health check failed")
             await db_service.close()
@@ -129,13 +129,13 @@ async def main():
             print(f"DATABASE_ERROR: {e}")
     else:
         print("❌ DatabaseService not available due to import error")
-    
+
     # Create and run the agent (maintains original interface)
     agent = AIdeatorAgent()
     try:
         # Run the agent
         await agent.run()
-        
+
         # Clean exit
         sys.exit(0)
     except Exception as e:
@@ -145,7 +145,7 @@ async def main():
         agent.log(error_msg, "ERROR")
         agent.log("❌ Agent failed", "INFO", status="failed")
         agent.log("🏁 Exiting agent container", "INFO")
-        
+
         # Try to write to database if we have a task_id
         try:
             if DATABASE_SERVICE_AVAILABLE:
@@ -157,7 +157,7 @@ async def main():
                 await db_service.close()
         except:
             pass  # Best effort
-            
+
         sys.exit(1)
 
 

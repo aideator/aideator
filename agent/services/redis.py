@@ -20,15 +20,15 @@ if False:  # This prevents any Redis code from executing
     """
 
 import json
-from datetime import datetime, UTC
-from typing import Optional, Any, Dict
+from datetime import UTC, datetime
+from typing import Any
 
-from agent.utils.errors import format_configuration_error, ConfigurationError
+from agent.utils.errors import ConfigurationError, format_configuration_error
 
 
 class RedisService:
     """Redis service for streaming - isolated for removal."""
-    
+
     def __init__(self, config):
         """Initialize Redis service.
         
@@ -38,14 +38,14 @@ class RedisService:
         self.config = config
         self.redis_client = None
         self.redis_url = config.redis_url
-        
+
         if not self.redis_url:
             error_msg = format_configuration_error(
-                "REDIS_URL", 
+                "REDIS_URL",
                 "Redis URL is required for streaming functionality"
             )
             raise ConfigurationError(error_msg)
-    
+
     async def connect(self) -> bool:
         """Connect to Redis.
         
@@ -57,20 +57,20 @@ class RedisService:
 
             self.redis_client = redis.from_url(self.redis_url, decode_responses=True)
             await self.redis_client.ping()
-            
+
             # Test stream access
             test_stream = f"run:{self.config.run_id}:test"
             test_id = await self.redis_client.xadd(test_stream, {"test": "connection"})
-            
+
             # Clean up test stream
             await self.redis_client.delete(test_stream)
-            
+
             return True
-            
+
         except Exception as e:
             print(f"❌ Redis connection failed: {e}")
             return False
-    
+
     async def publish_output(self, content: str, variation_id: str) -> bool:
         """Publish agent output to Redis streams.
         
@@ -83,7 +83,7 @@ class RedisService:
         """
         if not self.redis_client:
             return False
-            
+
         try:
             stream_name = f"run:{self.config.run_id}:llm"
             fields = {
@@ -95,12 +95,12 @@ class RedisService:
 
             message_id = await self.redis_client.xadd(stream_name, fields)
             return True
-            
+
         except Exception as e:
             print(f"❌ Failed to publish to Redis: {e}")
             return False
-    
-    async def publish_status(self, status: str, metadata: Optional[Dict[str, Any]] = None) -> bool:
+
+    async def publish_status(self, status: str, metadata: dict[str, Any] | None = None) -> bool:
         """Publish status update to Redis streams.
         
         Args:
@@ -112,7 +112,7 @@ class RedisService:
         """
         if not self.redis_client:
             return False
-            
+
         try:
             stream_name = f"run:{self.config.run_id}:status"
             fields = {
@@ -120,14 +120,14 @@ class RedisService:
                 "timestamp": datetime.now(UTC).isoformat(),
                 "metadata": json.dumps(metadata or {}),
             }
-            
+
             message_id = await self.redis_client.xadd(stream_name, fields)
             return True
-            
+
         except Exception as e:
             print(f"❌ Failed to publish status to Redis: {e}")
             return False
-    
+
     async def close(self) -> None:
         """Close Redis connection."""
         if self.redis_client:

@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 from app.core.config import get_settings
 from app.models.run import RunStatus
-from app.schemas.models import ModelVariantCreate, ModelVariantResponse
+# Removed LiteLLM model schemas - using simple model names now
 
 settings = get_settings()
 
@@ -66,12 +66,13 @@ class CreateRunRequest(BaseModel):
         examples=["Add comprehensive error handling to all API endpoints"],
     )
 
-    # Model selection system (restored for variations)
-    model_variants: list[ModelVariantCreate] = Field(
-        ...,
-        description="List of model variants to run in parallel",
+    # Multiple model variants for comparison
+    model_names: list[str] = Field(
+        default=["claude-3-5-sonnet"],
+        description="List of models to run in parallel for comparison",
+        examples=[["claude-3-5-sonnet", "gpt-4o-mini", "gemini-pro"]],
         min_length=1,
-        max_length=settings.max_variations,
+        max_length=6,
     )
     use_claude_code: bool = Field(
         default=False,
@@ -124,18 +125,7 @@ class CreateRunRequest(BaseModel):
             "example": {
                 "github_url": "https://github.com/fastapi/fastapi",
                 "prompt": "Add comprehensive error handling to all API endpoints",
-                "model_variants": [
-                    {
-                        "model_definition_id": "model_gpt4_openai",
-                        "provider_credential_id": "cred_openai_123",
-                        "model_parameters": {"temperature": 0.7},
-                    },
-                    {
-                        "model_definition_id": "model_claude_3_5_sonnet_anthropic",
-                        "provider_credential_id": "cred_anthropic_456",
-                        "model_parameters": {"temperature": 0.5},
-                    },
-                ],
+                "model_names": ["claude-3-5-sonnet", "gpt-4o-mini"],
             }
         },
     }
@@ -180,9 +170,7 @@ class RunDetails(BaseModel):
     id: str = Field(..., description="Unique identifier")
     github_url: str = Field(..., description="Repository URL")
     prompt: str = Field(..., description="Agent prompt")
-    model_variants: list[ModelVariantResponse] = Field(
-        ..., description="Model variants in this run"
-    )
+    model_names: list[str] = Field(..., description="Models used in this run")
     status: RunStatus = Field(..., description="Current status")
     created_at: datetime = Field(..., description="Creation timestamp")
     started_at: datetime | None = Field(None, description="Start timestamp")
@@ -199,18 +187,7 @@ class RunDetails(BaseModel):
                 "id": "run_1234567890abcdef",
                 "github_url": "https://github.com/fastapi/fastapi",
                 "prompt": "Add error handling",
-                "model_variants": [
-                    {
-                        "id": "variant_123",
-                        "run_id": "run_1234567890abcdef",
-                        "variation_id": 0,
-                        "model_definition_id": "model_gpt4_openai",
-                        "status": "completed",
-                        "tokens_used": 150,
-                        "cost_usd": 0.004,
-                        "response_time_ms": 2500,
-                    }
-                ],
+                "model_names": ["claude-3-5-sonnet", "gpt-4o-mini"],
                 "status": "completed",
                 "created_at": "2024-01-01T00:00:00Z",
                 "started_at": "2024-01-01T00:00:10Z",

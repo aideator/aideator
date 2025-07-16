@@ -8,7 +8,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.runs import router
-from app.core.deps import get_orchestrator
+from app.core.dependencies import get_orchestrator
 from app.models.run import Run, RunStatus
 from app.models.user import User
 from app.schemas.runs import CreateRunRequest, SelectWinnerRequest

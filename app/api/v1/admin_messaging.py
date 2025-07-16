@@ -4,12 +4,11 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, delete, desc, func, or_, select, text
+from sqlalchemy import and_, desc, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_session
-from app.core.dependencies import get_current_user_from_api_key
 from app.core.config import get_settings
+from app.core.database import get_session
 from app.core.logging import get_logger
 from app.models.run import AgentOutput, Run, RunStatus
 from app.models.user import User
@@ -148,15 +147,15 @@ async def get_runs(
             {
                 "id": run.id,
                 "status": run.status.value,
-                "github_url": getattr(run, 'github_url', '') or '',
-                "prompt": (run.prompt[:100] + "..." if len(run.prompt) > 100 else run.prompt) if run.prompt else '',
-                "variations": getattr(run, 'variations', 1) or 1,
+                "github_url": getattr(run, "github_url", "") or "",
+                "prompt": (run.prompt[:100] + "..." if len(run.prompt) > 100 else run.prompt) if run.prompt else "",
+                "variations": getattr(run, "variations", 1) or 1,
                 "created_at": run.created_at.isoformat(),
                 "started_at": run.started_at.isoformat() if run.started_at else None,
                 "message_count": total_messages,
                 "message_rate_per_second": round(message_rate, 2),
                 "variation_metrics": variation_data,
-                "winning_variation_id": getattr(run, 'winning_variation_id', None),
+                "winning_variation_id": getattr(run, "winning_variation_id", None),
             }
         )
 
@@ -276,7 +275,7 @@ async def get_live_activity(
     """Get live container activity in the last 5 minutes."""
     # Get activity from last 5 minutes
     since = datetime.utcnow() - timedelta(minutes=5)
-    
+
     # Get active containers (runs with recent messages)
     active_containers_query = select(
         AgentOutput.run_id,
@@ -291,10 +290,10 @@ async def get_live_activity(
     ).order_by(
         desc("latest_timestamp")
     ).limit(10)
-    
+
     result = await db.execute(active_containers_query)
     container_activity = []
-    
+
     for row in result:
         container_activity.append({
             "run_id": row.run_id,
@@ -303,7 +302,7 @@ async def get_live_activity(
             "latest_timestamp": row.latest_timestamp.isoformat(),
             "latest_message": (row.latest_message[:100] + "..." if len(row.latest_message) > 100 else row.latest_message) if row.latest_message else ""
         })
-    
+
     return {
         "active_containers": len(container_activity),
         "container_activity": container_activity,

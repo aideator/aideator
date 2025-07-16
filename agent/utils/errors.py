@@ -4,38 +4,32 @@ Centralized error handling and user-friendly error messages.
 Provides consistent error formatting across all providers and services.
 """
 
-from typing import Optional
 
 
 class AgentError(Exception):
     """Base exception for agent errors."""
-    pass
 
 
 class ConfigurationError(AgentError):
     """Configuration-related errors."""
-    pass
 
 
 class ProviderError(AgentError):
     """Provider-related errors."""
-    pass
 
 
 class RepositoryError(AgentError):
     """Repository analysis errors."""
-    pass
 
 
 class DatabaseError(AgentError):
     """Database connection errors."""
-    pass
 
 
 def format_api_error(error: Exception, provider: str) -> str:
     """Format API errors with user-friendly messages."""
     error_str = str(error).lower()
-    
+
     if "authentication" in error_str or "api key" in error_str or "unauthorized" in error_str:
         return f"""
 🔑 **Authentication Error**
@@ -54,7 +48,7 @@ The {provider.title()} API rejected the request due to authentication issues.
 
 Original error: {error}
 """
-    
+
     if "rate limit" in error_str or "quota" in error_str:
         return f"""
 ⏱️ **Rate Limit Exceeded**
@@ -72,7 +66,7 @@ The {provider.title()} API rate limit has been exceeded.
 
 Original error: {error}
 """
-    
+
     if "model" in error_str and ("not found" in error_str or "does not exist" in error_str):
         return f"""
 🤖 **Model Not Available**
@@ -91,7 +85,7 @@ The requested model is not available or does not exist.
 
 Original error: {error}
 """
-    
+
     # Generic error
     return f"""
 ⚠️ **API Request Failed**
@@ -158,7 +152,7 @@ Original error: {error}
 """
 
 
-def format_configuration_error(missing_config: str, description: Optional[str] = None) -> str:
+def format_configuration_error(missing_config: str, description: str | None = None) -> str:
     """Format configuration errors."""
     msg = f"""
 ⚙️ **Configuration Error**
@@ -166,14 +160,14 @@ def format_configuration_error(missing_config: str, description: Optional[str] =
 Missing required configuration: {missing_config}
 
 """
-    
+
     if description:
         msg += f"**Details:**\n{description}\n\n"
-    
+
     msg += f"""**Next steps:**
 1. Set the required environment variable: {missing_config}
 2. Restart the agent with proper configuration
 3. Check the deployment documentation for required variables
 """
-    
+
     return msg

@@ -6,7 +6,6 @@ Handles Gemini CLI execution with streaming and standardized output.
 
 import asyncio
 import os
-from typing import Optional
 
 from agent.providers.base import BaseProvider
 from agent.utils.errors import ProviderError
@@ -14,17 +13,17 @@ from agent.utils.errors import ProviderError
 
 class GeminiCLIProvider(BaseProvider):
     """Gemini CLI provider for direct Gemini access."""
-    
+
     def __init__(self, config, output_writer):
         """Initialize Gemini CLI provider."""
         super().__init__(config, output_writer)
         self.timeout_seconds = 30.0
-    
+
     def get_provider_name(self) -> str:
         """Get provider name."""
         return "gemini-cli"
-    
-    async def generate_response(self, prompt: str, context: Optional[str] = None) -> str:
+
+    async def generate_response(self, prompt: str, context: str | None = None) -> str:
         """Generate response using Gemini CLI.
         
         Args:
@@ -34,8 +33,8 @@ class GeminiCLIProvider(BaseProvider):
         Returns:
             Generated response text
         """
-        await self.write_job_data(f"💎 Starting Gemini CLI generation")
-        
+        await self.write_job_data("💎 Starting Gemini CLI generation")
+
         try:
             # Change to repository directory for context
             original_dir = os.getcwd()
@@ -49,7 +48,7 @@ class GeminiCLIProvider(BaseProvider):
                 "prompt",
                 prompt
             ]
-            
+
             await self.write_job_data(f"🔧 Executing: {' '.join(args)}")
 
             result = await asyncio.create_subprocess_exec(
@@ -90,11 +89,10 @@ class GeminiCLIProvider(BaseProvider):
 
                 await self.write_job_data("✅ Gemini CLI completed successfully")
                 return response
-            else:
-                error_msg = stderr.decode() if stderr else "Unknown error"
-                full_error = f"❌ Gemini CLI failed (exit code: {result.returncode}): {error_msg}"
-                await self.write_error(full_error)
-                raise ProviderError(f"Gemini CLI failed with exit code {result.returncode}: {error_msg}")
+            error_msg = stderr.decode() if stderr else "Unknown error"
+            full_error = f"❌ Gemini CLI failed (exit code: {result.returncode}): {error_msg}"
+            await self.write_error(full_error)
+            raise ProviderError(f"Gemini CLI failed with exit code {result.returncode}: {error_msg}")
 
         except Exception as e:
             error_msg = f"❌ Gemini CLI execution failed: {e}"

@@ -11,19 +11,8 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 
 # Import models to ensure they're registered with SQLModel
-from app.models.model_definition import ModelDefinitionDB, ModelSyncLog  # noqa: F401
-from app.models.provider import (  # noqa: F401
-    ModelDefinition,
-    ModelVariant,
-    ProviderCredential,
-)
-from app.models.provider_key import (  # noqa: F401
-    ProviderAPIKeyAuditLog,
-    ProviderAPIKeyDB,
-)
 from app.models.run import AgentOutput, Run  # noqa: F401
-from app.models.session import Preference, Session, Turn  # noqa: F401
-from app.models.user import APIKey, User  # noqa: F401
+from app.models.user import User  # noqa: F401
 
 settings = get_settings()
 logger = get_logger(__name__)

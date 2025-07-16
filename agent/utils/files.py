@@ -6,7 +6,6 @@ Common file operations and utilities used across the agent.
 
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 
 def get_cli_version(command: str) -> str:
@@ -53,7 +52,7 @@ def ensure_directory_exists(path: Path) -> bool:
         return False
 
 
-def safe_file_read(file_path: Path, max_size: int = 50000) -> Optional[str]:
+def safe_file_read(file_path: Path, max_size: int = 50000) -> str | None:
     """Safely read file content with size limit.
     
     Args:
@@ -66,8 +65,8 @@ def safe_file_read(file_path: Path, max_size: int = 50000) -> Optional[str]:
     try:
         if not file_path.exists() or file_path.stat().st_size > max_size:
             return None
-            
-        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+
+        with open(file_path, encoding="utf-8", errors="ignore") as f:
             return f.read()
     except Exception:
         return None
@@ -83,8 +82,8 @@ def is_text_file(file_path: Path) -> bool:
         True if file appears to be text
     """
     try:
-        with open(file_path, 'rb') as f:
+        with open(file_path, "rb") as f:
             chunk = f.read(1024)
-            return b'\0' not in chunk
+            return b"\0" not in chunk
     except Exception:
         return False

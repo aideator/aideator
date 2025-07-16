@@ -8,12 +8,11 @@ from sqlmodel import select
 
 from app.core.config import get_settings
 from app.core.database import get_session
-from app.core.dependencies import CurrentUserAPIKey
-from app.core.deps import get_orchestrator
+from app.core.dependencies import CurrentUserAPIKey, get_orchestrator
 from app.core.logging import get_logger
 from app.models.run import AgentOutput, Run, RunStatus
+
 # Removed session imports - no longer using sessions
-from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.runs import (
     CreateRunRequest,
@@ -21,9 +20,7 @@ from app.schemas.runs import (
     RunDetails,
     RunListItem,
 )
-from app.schemas.tasks import TaskListResponse, TaskListItem
 from app.services.agent_orchestrator import AgentOrchestrator
-from app.services.model_catalog import model_catalog
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -51,7 +48,7 @@ async def create_run(
     """
     # 1.  Generate legacy string id (used in job names & Redis streams)
     run_id = f"run-{uuid.uuid4().hex}"
-    
+
     # Removed session/turn ID generation - runs are standalone now
 
     # 2.  Insert Run row – we *do not* provide task_id (auto-increment)
@@ -59,9 +56,9 @@ async def create_run(
         run_id=run_id,
         github_url=str(request.github_url),
         prompt=request.prompt,
-        variations=len(request.model_variants),
+        variations=len(request.model_names),
         agent_config={
-            "model_variants": [v.model_dump() for v in request.model_variants],
+            "model_names": request.model_names,
             "use_claude_code": request.use_claude_code,
             "agent_mode": request.agent_mode,
         },
@@ -79,7 +76,7 @@ async def create_run(
         run_id=run.run_id,
         repo_url=str(request.github_url),
         prompt=request.prompt,
-        variations=len(request.model_variants),
+        variations=len(request.model_names),
         agent_config=None,  # already stored in DB
         agent_mode=request.agent_mode,
         db_session=db,
@@ -94,7 +91,7 @@ async def create_run(
         stream_url=stream_url,
         polling_url=f"{settings.api_v1_prefix}/runs/{run.run_id}/outputs",
         status="accepted",
-        estimated_duration_seconds=len(request.model_variants) * 40,
+        estimated_duration_seconds=len(request.model_names) * 40,
         # Removed session/turn parameters - runs are standalone
     )
 

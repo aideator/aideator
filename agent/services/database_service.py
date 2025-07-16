@@ -5,53 +5,52 @@ This service provides database connectivity for agents to write outputs
 to the same PostgreSQL database that the frontend reads from.
 """
 
-import os
 import logging
-from datetime import datetime
-from typing import Any, Optional
-
-import asyncpg
-from sqlalchemy import create_engine, text
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
-from sqlmodel import Session, select
+import os
 
 # Import the shared models from the main app
 import sys
-sys.path.append('/app')
-from app.models.run import Run, AgentOutput, RunStatus
+from datetime import datetime
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+from sqlmodel import select
+
+sys.path.append("/app")
+from app.models.run import AgentOutput, Run, RunStatus
 
 logger = logging.getLogger(__name__)
 
 
 class DatabaseService:
     """Database service for agent containers."""
-    
+
     def __init__(self):
         """Initialize database service with connection from environment."""
         self.database_url = os.getenv("DATABASE_URL")
         if not self.database_url:
             raise ValueError("DATABASE_URL environment variable is required")
-        
+
         # Convert postgres:// to postgresql+asyncpg:// for async operations
         if self.database_url.startswith("postgres://"):
             self.database_url = self.database_url.replace("postgres://", "postgresql+asyncpg://", 1)
         elif self.database_url.startswith("postgresql://"):
             self.database_url = self.database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-            
+
         self.engine = create_async_engine(
             self.database_url,
             echo=False,  # Set to True for SQL debugging
             pool_size=5,
             max_overflow=10,
         )
-        
+
         self.async_session_factory = sessionmaker(
             self.engine, class_=AsyncSession, expire_on_commit=False
         )
-        
+
         logger.info("DatabaseService initialized")
-    
+
     async def health_check(self) -> bool:
         """Check if database connection is healthy."""
         try:
@@ -61,8 +60,8 @@ class DatabaseService:
         except Exception as e:
             logger.error(f"Database health check failed: {e}")
             return False
-    
-    async def get_run_by_run_id(self, run_id: str) -> Optional[Run]:
+
+    async def get_run_by_run_id(self, run_id: str) -> Run | None:
         """Get run by run_id (Kubernetes job identifier)."""
         try:
             async with self.async_session_factory() as session:
@@ -72,8 +71,8 @@ class DatabaseService:
         except Exception as e:
             logger.error(f"Failed to get run by run_id {run_id}: {e}")
             return None
-    
-    async def get_run_by_task_id(self, task_id: int) -> Optional[Run]:
+
+    async def get_run_by_task_id(self, task_id: int) -> Run | None:
         """Get run by task_id (primary key)."""
         try:
             async with self.async_session_factory() as session:
@@ -83,14 +82,14 @@ class DatabaseService:
         except Exception as e:
             logger.error(f"Failed to get run by task_id {task_id}: {e}")
             return None
-    
+
     async def write_agent_output(
         self,
         task_id: int,
         variation_id: int,
         content: str,
         output_type: str = "stdout",
-        timestamp: Optional[datetime] = None
+        timestamp: datetime | None = None
     ) -> bool:
         """
         Write agent output to the database.
@@ -114,13 +113,13 @@ class DatabaseService:
                     output_type=output_type,
                     timestamp=timestamp or datetime.utcnow()
                 )
-                
+
                 session.add(output)
                 await session.commit()
-                
+
                 logger.debug(f"Wrote {output_type} output for task {task_id}, variation {variation_id}")
                 return True
-                
+
         except Exception as e:
             logger.error(f"Failed to write agent output: {e}")
             try:
@@ -128,12 +127,12 @@ class DatabaseService:
             except:
                 pass
             return False
-    
+
     async def write_status_update(
         self,
         task_id: int,
         status: RunStatus,
-        error_message: Optional[str] = None
+        error_message: str | None = None
     ) -> bool:
         """
         Update run status in the database.
@@ -151,25 +150,25 @@ class DatabaseService:
                 query = select(Run).where(Run.task_id == task_id)
                 result = await session.execute(query)
                 run = result.scalar_one_or_none()
-                
+
                 if not run:
                     logger.error(f"Run with task_id {task_id} not found")
                     return False
-                
+
                 run.status = status
                 if error_message:
                     run.error_message = error_message
-                
+
                 if status == RunStatus.RUNNING and not run.started_at:
                     run.started_at = datetime.utcnow()
                 elif status in [RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED]:
                     run.completed_at = datetime.utcnow()
-                
+
                 await session.commit()
-                
+
                 logger.info(f"Updated run {task_id} status to {status}")
                 return True
-                
+
         except Exception as e:
             logger.error(f"Failed to update run status: {e}")
             try:
@@ -177,7 +176,7 @@ class DatabaseService:
             except:
                 pass
             return False
-    
+
     async def write_error(
         self,
         task_id: int,
@@ -203,7 +202,7 @@ class DatabaseService:
             content=error_message,
             output_type=error_type
         )
-    
+
     async def write_log(
         self,
         task_id: int,
@@ -228,20 +227,20 @@ class DatabaseService:
             "message": log_message,
             "timestamp": datetime.utcnow().isoformat()
         }
-        
+
         return await self.write_agent_output(
             task_id=task_id,
             variation_id=variation_id,
             content=str(log_data),
             output_type="logging"
         )
-    
+
     async def write_assistant_response(
         self,
         task_id: int,
         variation_id: int,
         response: str,
-        timestamp: Optional[datetime] = None
+        timestamp: datetime | None = None
     ) -> bool:
         """
         Write clean assistant response to database.
@@ -262,13 +261,13 @@ class DatabaseService:
             output_type="assistant_response",
             timestamp=timestamp
         )
-    
+
     async def write_system_status(
         self,
         task_id: int,
         variation_id: int,
         status_message: str,
-        timestamp: Optional[datetime] = None
+        timestamp: datetime | None = None
     ) -> bool:
         """
         Write system status update to database.
@@ -289,13 +288,13 @@ class DatabaseService:
             output_type="system_status",
             timestamp=timestamp
         )
-    
+
     async def write_debug_info(
         self,
         task_id: int,
         variation_id: int,
         debug_message: str,
-        timestamp: Optional[datetime] = None
+        timestamp: datetime | None = None
     ) -> bool:
         """
         Write debug information to database.
@@ -316,7 +315,7 @@ class DatabaseService:
             output_type="debug_info",
             timestamp=timestamp
         )
-    
+
     async def close(self):
         """Close database connections."""
         try:
@@ -324,11 +323,11 @@ class DatabaseService:
             logger.info("Database connections closed")
         except Exception as e:
             logger.error(f"Error closing database connections: {e}")
-    
+
     async def __aenter__(self):
         """Async context manager entry."""
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
         await self.close()

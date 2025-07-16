@@ -11,7 +11,8 @@ Enhanced to support frontend mock data structure replacement.
 
 import json
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,14 +21,14 @@ from sqlmodel import select
 from app.core.database import get_session
 from app.core.dependencies import CurrentUserAPIKey
 from app.core.logging import get_logger
-from app.models.run import AgentOutput, Run, RunStatus
-from app.schemas.tasks import TaskListResponse, TaskListItem
+from app.models.run import AgentOutput, Run
+from app.schemas.tasks import TaskListItem, TaskListResponse
 
 logger = get_logger(__name__)
 router = APIRouter()
 
 
-def parse_agent_output_content(content: str) -> Dict[str, Any]:
+def parse_agent_output_content(content: str) -> dict[str, Any]:
     """Safely parse JSON content from agent outputs."""
     try:
         return json.loads(content)
@@ -35,7 +36,7 @@ def parse_agent_output_content(content: str) -> Dict[str, Any]:
         return {}
 
 
-async def get_task_metrics(session: AsyncSession, task_id: int) -> Dict[str, int]:
+async def get_task_metrics(session: AsyncSession, task_id: int) -> dict[str, int]:
     """Get aggregated metrics across all variations for a task."""
     result = await session.execute(
         select(AgentOutput).where(
@@ -44,15 +45,15 @@ async def get_task_metrics(session: AsyncSession, task_id: int) -> Dict[str, int
         )
     )
     metrics_outputs = result.scalars().all()
-    
+
     total_additions = 0
     total_deletions = 0
-    
+
     for output in metrics_outputs:
         data = parse_agent_output_content(output.content)
         total_additions += data.get("additions", 0)
         total_deletions += data.get("deletions", 0)
-    
+
     return {
         "additions": total_additions,
         "deletions": total_deletions
@@ -67,7 +68,7 @@ async def list_tasks(
     db: AsyncSession = Depends(get_session),
 ) -> TaskListResponse:
     """Get list of tasks for the main page (reads from runs table)."""
-    
+
     # Query runs for the current user, ordered by creation date (newest first)
     runs_query = (
         select(Run)
@@ -76,15 +77,15 @@ async def list_tasks(
         .offset(offset)
         .limit(limit)
     )
-    
+
     result = await db.execute(runs_query)
     runs = result.scalars().all()
-    
+
     # Get total count for pagination
     count_query = select(func.count(Run.task_id)).where(Run.user_id == current_user.id)
     count_result = await db.execute(count_query)
     total = count_result.scalar() or 0
-    
+
     # Convert runs to task list items
     tasks = []
     for run in runs:
@@ -92,15 +93,15 @@ async def list_tasks(
         title = run.prompt or "Untitled Task"
         if len(title) > 50:
             title = title[:47] + "..."
-        
+
         # Map task_status to frontend status format
         status_mapping = {
             "open": "Open",
-            "completed": "Completed", 
+            "completed": "Completed",
             "failed": "Failed"
         }
         frontend_status = status_mapping.get(run.task_status, "Open")
-        
+
         # Generate details string with timestamp and repository info
         details = f"{run.created_at.strftime('%I:%M %p')} · "
         if run.github_url:
@@ -109,10 +110,10 @@ async def list_tasks(
             details += f"aideator/{repo_name}"
         else:
             details += "Chat Mode"
-        
+
         # Get number of variations from the run
         versions = run.variations if run.variations else 1
-        
+
         # Get aggregated metrics for completed tasks
         additions = None
         deletions = None
@@ -120,7 +121,7 @@ async def list_tasks(
             metrics = await get_task_metrics(db, run.task_id)
             additions = metrics["additions"]
             deletions = metrics["deletions"]
-        
+
         task_item = TaskListItem(
             id=str(run.task_id),  # Convert to string for frontend compatibility
             title=title,
@@ -131,7 +132,7 @@ async def list_tasks(
             deletions=deletions
         )
         tasks.append(task_item)
-    
+
     return TaskListResponse(
         tasks=tasks,
         total=total,
@@ -166,7 +167,7 @@ async def get_task_details(
         .order_by(AgentOutput.variation_id, AgentOutput.timestamp)
     )
     outputs = outputs_result.scalars().all()
-    
+
     # Group outputs by variation and type
     variations_data = {}
     for output in outputs:
@@ -177,9 +178,9 @@ async def get_task_details(
                 "files": [],
                 "logs": []
             }
-        
+
         data = parse_agent_output_content(output.content)
-        
+
         if output.output_type == "job_summary":
             variations_data[variation_id]["summary"] = data.get("summary", "")
         elif output.output_type == "diffs":
@@ -190,7 +191,7 @@ async def get_task_details(
                 "message": data.get("message", ""),
                 "timestamp": output.timestamp.isoformat()
             })
-    
+
     # Format for frontend taskDetails structure
     versions = []
     for variation_id in sorted(variations_data.keys()):
@@ -200,22 +201,22 @@ async def get_task_details(
             "summary": version_data["summary"],
             "files": version_data["files"]
         })
-    
+
     # Generate details string
     details = f"{run.created_at.strftime('%I:%M %p')} · "
     if run.github_url:
-        details += run.github_url.replace('https://github.com/', '')
+        details += run.github_url.replace("https://github.com/", "")
     else:
         details += "Chat Mode"
-    
+
     # Map status
     status_mapping = {
         "open": "Open",
-        "completed": "Completed", 
+        "completed": "Completed",
         "failed": "Failed"
     }
     frontend_status = status_mapping.get(run.task_status, "Open")
-    
+
     return {
         "id": run.task_id,
         "title": run.prompt,

@@ -14,8 +14,9 @@ from datetime import datetime, timedelta
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlmodel import select
+
 from app.core.database import get_session
-from app.models.run import Run, RunStatus, AgentOutput
+from app.models.run import AgentOutput, Run, RunStatus
 from app.models.user import User
 
 
@@ -25,35 +26,35 @@ async def get_or_create_test_user() -> str:
         # Check if test user exists (same email as development middleware)
         result = await db.execute(select(User).where(User.email == "test@aideator.local"))
         existing_user = result.scalar_one_or_none()
-        
+
         if existing_user:
             print(f"Using existing dev user: {existing_user.email} (ID: {existing_user.id})")
             return existing_user.id
-        else:
-            # This should not happen if development middleware is working
-            print("WARNING: Development user not found, creating one...")
-            import secrets
-            from app.core.auth import get_password_hash
-            user = User(
-                id=f"user_test_{secrets.token_urlsafe(12)}",
-                email="test@aideator.local",
-                hashed_password=get_password_hash("testpass123"),
-                full_name="Test User",
-                company="AIdeator Development",
-                is_active=True,
-                is_superuser=True,
-                created_at=datetime.utcnow()
-            )
-            db.add(user)
-            await db.commit()
-            print(f"Created test user: {user.email} (ID: {user.id})")
-            return user.id
+        # This should not happen if development middleware is working
+        print("WARNING: Development user not found, creating one...")
+        import secrets
+
+        from app.core.auth import get_password_hash
+        user = User(
+            id=f"user_test_{secrets.token_urlsafe(12)}",
+            email="test@aideator.local",
+            hashed_password=get_password_hash("testpass123"),
+            full_name="Test User",
+            company="AIdeator Development",
+            is_active=True,
+            is_superuser=True,
+            created_at=datetime.utcnow()
+        )
+        db.add(user)
+        await db.commit()
+        print(f"Created test user: {user.email} (ID: {user.id})")
+        return user.id
 
 
 async def insert_agent_output(
-    task_id: int, 
-    variation_id: int, 
-    output_type: str, 
+    task_id: int,
+    variation_id: int,
+    output_type: str,
     content_data: dict
 ) -> None:
     """Insert a structured agent output entry."""
@@ -74,14 +75,14 @@ async def create_task_1_data():
     """Create data for task 1: Make hello world label ominous"""
     run_id = "1"
     user_id = await get_or_create_test_user()
-    
+
     # Create run entry and get task_id
     task_id = None
     async for db in get_session():
         # Check if run already exists
         result = await db.execute(select(Run).where(Run.run_id == run_id))
         existing_run = result.scalar_one_or_none()
-        
+
         if not existing_run:
             run = Run(
                 run_id=run_id,
@@ -158,21 +159,21 @@ async def create_task_1_data():
 
     for variation in variations_data:
         variation_id = variation["id"]
-        
+
         # Job summary
         await insert_agent_output(task_id, variation_id, "job_summary", {
             "summary": variation["summary"],
             "success": True,
             "variation_id": variation_id
         })
-        
+
         # Diffs
         await insert_agent_output(task_id, variation_id, "diffs", {
             "file_changes": variation["files"],
             "variation_id": variation_id
         })
-        
-        # Metrics  
+
+        # Metrics
         total_additions = sum(f["additions"] for f in variation["files"])
         total_deletions = sum(f["deletions"] for f in variation["files"])
         await insert_agent_output(task_id, variation_id, "metrics", {
@@ -181,35 +182,35 @@ async def create_task_1_data():
             "files_changed": len(variation["files"]),
             "variation_id": variation_id
         })
-        
+
         # Sample logs
         await insert_agent_output(task_id, variation_id, "logging", {
             "level": "INFO",
             "message": f"[Variation {variation_id}] Analyzing task: 'make hello world label ominous'",
             "variation_id": variation_id
         })
-        
+
         await insert_agent_output(task_id, variation_id, "logging", {
-            "level": "INFO", 
+            "level": "INFO",
             "message": f"[Variation {variation_id}] Changes applied successfully to README.md",
             "variation_id": variation_id
         })
 
-    print(f"Created outputs for task 1 with 3 variations")
+    print("Created outputs for task 1 with 3 variations")
 
 
 async def create_task_2_data():
     """Create data for task 2: Make hello world message cheerier"""
     run_id = "2"
     user_id = await get_or_create_test_user()
-    
+
     # Create run entry and get task_id
     task_id = None
     async for db in get_session():
         # Check if run already exists
         result = await db.execute(select(Run).where(Run.run_id == run_id))
         existing_run = result.scalar_one_or_none()
-        
+
         if not existing_run:
             run = Run(
                 run_id=run_id,
@@ -293,21 +294,21 @@ async def create_task_2_data():
 
     for variation in variations_data:
         variation_id = variation["id"]
-        
+
         # Job summary
         await insert_agent_output(task_id, variation_id, "job_summary", {
             "summary": variation["summary"],
             "success": True,
             "variation_id": variation_id
         })
-        
+
         # Diffs
         await insert_agent_output(task_id, variation_id, "diffs", {
             "file_changes": variation["files"],
             "variation_id": variation_id
         })
-        
-        # Metrics  
+
+        # Metrics
         total_additions = sum(f["additions"] for f in variation["files"])
         total_deletions = sum(f["deletions"] for f in variation["files"])
         await insert_agent_output(task_id, variation_id, "metrics", {
@@ -316,31 +317,31 @@ async def create_task_2_data():
             "files_changed": len(variation["files"]),
             "variation_id": variation_id
         })
-        
+
         # Sample logs
         await insert_agent_output(task_id, variation_id, "logging", {
             "level": "INFO",
             "message": f"[Variation {variation_id}] Analyzing task: 'make hello world message cheerier'",
             "variation_id": variation_id
         })
-        
+
         await insert_agent_output(task_id, variation_id, "logging", {
             "level": "INFO",
             "message": f"[Variation {variation_id}] Applied cheerful changes to README.md",
             "variation_id": variation_id
         })
 
-    print(f"Created outputs for task 2 with 3 variations")
+    print("Created outputs for task 2 with 3 variations")
 
 
 async def create_other_tasks_data():
     """Create data for other tasks from the original mock data"""
     user_id = await get_or_create_test_user()
-    
+
     other_tasks = [
         {
             "id": "3",
-            "title": "Update hello world message", 
+            "title": "Update hello world message",
             "github_url": "https://github.com/aideator/helloworld",
             "status": RunStatus.PENDING,
             "task_status": "open",
@@ -350,7 +351,7 @@ async def create_other_tasks_data():
         {
             "id": "4",
             "title": "Update hello world message",
-            "github_url": "https://github.com/aideator/helloworld", 
+            "github_url": "https://github.com/aideator/helloworld",
             "status": RunStatus.FAILED,
             "task_status": "failed",
             "variations": 1,
@@ -361,18 +362,18 @@ async def create_other_tasks_data():
             "title": "Complete v2 UI functionality",
             "github_url": "https://github.com/heyalchang/dev-runner",
             "status": RunStatus.COMPLETED,
-            "task_status": "completed", 
+            "task_status": "completed",
             "variations": 3,
             "created_at": datetime.utcnow() - timedelta(days=5)
         }
     ]
-    
+
     async for db in get_session():
         for task_data in other_tasks:
             # Check if run already exists
             result = await db.execute(select(Run).where(Run.run_id == task_data["id"]))
             existing_run = result.scalar_one_or_none()
-            
+
             if not existing_run:
                 run = Run(
                     run_id=task_data["id"],
@@ -395,20 +396,20 @@ async def create_other_tasks_data():
 async def main():
     """Main function to create all mock task data"""
     print("🗄️ Creating mock task data in database...")
-    
+
     try:
         await create_task_1_data()
-        await create_task_2_data() 
+        await create_task_2_data()
         await create_other_tasks_data()
-        
+
         print("✅ Successfully created all mock task data!")
         print("\n📋 Created tasks:")
         print("  - task-1: Make hello world label ominous (3 variations)")
-        print("  - task-2: Make hello world message cheerier (3 variations)")  
+        print("  - task-2: Make hello world message cheerier (3 variations)")
         print("  - task-3: Update hello world message (open)")
         print("  - task-4: Update hello world message (failed)")
         print("  - task-5: Complete v2 UI functionality (completed)")
-        
+
     except Exception as e:
         print(f"❌ Error creating mock data: {e}")
         raise

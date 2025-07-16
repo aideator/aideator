@@ -4,33 +4,33 @@ LiteLLM provider implementation.
 Handles LiteLLM API calls with streaming and standardized output.
 """
 
-from typing import Optional
+
 from litellm import acompletion
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from agent.providers.base import BaseProvider
-from agent.utils.errors import format_api_error, ProviderError
+from agent.utils.errors import ProviderError, format_api_error
 
 
 class LiteLLMProvider(BaseProvider):
     """LiteLLM provider for unified LLM access."""
-    
+
     def __init__(self, config, output_writer):
         """Initialize LiteLLM provider."""
         super().__init__(config, output_writer)
         self.max_retry_attempts = 3
         self.retry_min_wait = 4
         self.retry_max_wait = 10
-    
+
     def get_provider_name(self) -> str:
         """Get provider name."""
         return "litellm"
-    
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=10),
     )
-    async def generate_response(self, prompt: str, context: Optional[str] = None) -> str:
+    async def generate_response(self, prompt: str, context: str | None = None) -> str:
         """Generate response using LiteLLM with streaming.
         
         Args:
@@ -41,7 +41,7 @@ class LiteLLMProvider(BaseProvider):
             Generated response text
         """
         await self.write_job_data(f"🤖 Starting LiteLLM generation with model: {self.config.model}")
-        
+
         try:
             # Prepare the full prompt based on context
             if context is not None:
@@ -138,7 +138,7 @@ Be thorough but concise in your response.
             error_msg = f"❌ LiteLLM generation failed: {e}"
             await self.write_error(error_msg)
             raise ProviderError(f"Failed to generate LiteLLM response: {e}") from e
-    
+
     def _get_model_provider(self, model_name: str) -> str:
         """Get the provider for a given model name."""
         model_lower = model_name.lower()

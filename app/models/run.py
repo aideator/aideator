@@ -3,7 +3,6 @@ from enum import Enum
 from typing import Any
 
 from sqlalchemy import JSON, Column, Integer, String
-from sqlalchemy import Enum as SQLEnum
 from sqlmodel import Field, SQLModel
 
 
@@ -72,7 +71,7 @@ class Run(SQLModel, table=True):
     # Back-compat helper so old code that references run.id keeps working
     # ------------------------------------------------------------------
     @property
-    def id(self) -> str:  # noqa: D401,E741  (legacy field accessor)
+    def id(self) -> str:
         """Alias for run_id kept for backward compatibility."""
         return self.run_id
 

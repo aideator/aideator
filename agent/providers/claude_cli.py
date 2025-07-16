@@ -5,11 +5,10 @@ Handles Claude CLI execution with streaming and standardized output.
 """
 
 import asyncio
+import builtins
 import contextlib
 import json
 import os
-import builtins
-from typing import Optional
 
 from agent.providers.base import BaseProvider
 from agent.utils.errors import ProviderError
@@ -17,17 +16,17 @@ from agent.utils.errors import ProviderError
 
 class ClaudeCLIProvider(BaseProvider):
     """Claude CLI provider for direct Claude access."""
-    
+
     def __init__(self, config, output_writer):
         """Initialize Claude CLI provider."""
         super().__init__(config, output_writer)
         self.chunk_read_size = 1024
-    
+
     def get_provider_name(self) -> str:
         """Get provider name."""
         return "claude-cli"
-    
-    async def generate_response(self, prompt: str, context: Optional[str] = None) -> str:
+
+    async def generate_response(self, prompt: str, context: str | None = None) -> str:
         """Generate response using Claude CLI with streaming.
         
         Args:
@@ -38,12 +37,12 @@ class ClaudeCLIProvider(BaseProvider):
             Generated response text
         """
         await self.output_writer.write_system_status("Starting Claude CLI generation")
-        
+
         # Log API key for debugging (first 10 chars only)
         api_key = os.getenv("ANTHROPIC_API_KEY", "NOT_SET")
         masked_key = api_key[:10] + "..." if len(api_key) > 10 else api_key
         await self.output_writer.write_debug_info(f"Anthropic API key: {masked_key}")
-        
+
         try:
             # Change to repository directory for context
             original_dir = os.getcwd()
@@ -146,7 +145,7 @@ class ClaudeCLIProvider(BaseProvider):
                 if process.returncode != 0:
                     stderr_output = await process.stderr.read()
                     error_msg = stderr_output.decode() if stderr_output else "Unknown error"
-                    
+
                     error_message = f"❌ Claude CLI failed (exit code: {process.returncode}): {error_msg}"
                     await self.write_error(error_message)
 
@@ -154,7 +153,7 @@ class ClaudeCLIProvider(BaseProvider):
                     if collected_output:
                         await self.output_writer.write_system_status(f"Returning partial output despite error. Collected {len(collected_output)} chunks")
                         return "".join(collected_output)
-                    
+
                     raise ProviderError(f"Claude CLI failed with exit code {process.returncode}: {error_msg}")
 
                 # Success case

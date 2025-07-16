@@ -7,7 +7,6 @@ Handles file discovery, content analysis, and summary generation.
 import glob
 import os
 from pathlib import Path
-from typing import Dict, List
 
 import aiofiles
 
@@ -16,7 +15,7 @@ from agent.utils.errors import RepositoryError
 
 class CodebaseAnalyzer:
     """Analyzes codebase structure and content."""
-    
+
     def __init__(self, config, output_writer):
         """Initialize codebase analyzer.
         
@@ -26,12 +25,12 @@ class CodebaseAnalyzer:
         """
         self.config = config
         self.output_writer = output_writer
-        
+
         # Analysis constants
         self.max_key_file_size = 50000
         self.max_key_files_to_read = 10
         self.max_file_preview_chars = 2000
-    
+
     async def analyze_codebase(self) -> str:
         """Analyze the codebase structure and content.
         
@@ -99,15 +98,15 @@ class CodebaseAnalyzer:
             summary = await self._generate_summary(analysis)
 
             await self.output_writer.write_job_data("✅ Codebase analysis summary generated")
-            
+
             return summary
 
         except Exception as e:
             error_msg = f"❌ Codebase analysis failed: {e}"
             await self.output_writer.write_error(error_msg)
             raise RepositoryError(f"Failed to analyze codebase: {e}") from e
-    
-    async def _generate_summary(self, analysis: Dict) -> str:
+
+    async def _generate_summary(self, analysis: dict) -> str:
         """Generate formatted codebase summary.
         
         Args:
@@ -130,7 +129,7 @@ class CodebaseAnalyzer:
         for key_file in analysis["key_files"][:self.max_key_files_to_read]:
             file_path = self.config.repo_dir / key_file
             if (
-                file_path.exists() 
+                file_path.exists()
                 and file_path.stat().st_size < self.max_key_file_size
             ):
                 try:
@@ -144,15 +143,15 @@ class CodebaseAnalyzer:
                             "..." if len(content) > self.max_file_preview_chars else "",
                             "",
                         ])
-                        
+
                         await self.output_writer.write_job_data(f"📄 Read key file: {key_file}")
-                        
+
                 except Exception as e:
                     await self.output_writer.write_job_data(f"⚠️ Failed to read {key_file}: {e}")
 
         return "\n".join(summary_parts)
-    
-    def _identify_key_files(self) -> List[str]:
+
+    def _identify_key_files(self) -> list[str]:
         """Identify important files in the repository.
         
         Returns:
@@ -194,7 +193,7 @@ class CodebaseAnalyzer:
                     key_files.append(pattern)
 
         return key_files
-    
+
     def _get_directory_size(self, path: Path) -> float:
         """Get directory size in MB.
         

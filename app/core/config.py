@@ -24,26 +24,26 @@ class Settings(BaseSettings):
     # =============================================================================
     # FEATURE FLAGS - Control what's enabled
     # =============================================================================
-    
+
     # Authentication Features
     require_user_registration: bool = True  # Keep user system (needed for future features)
     require_api_keys_for_agents: bool = True  # Set false for simple development
     require_per_user_keys: bool = True  # Set false to use global keys
     enable_kubernetes_secrets: bool = True  # Set false for local development
-    
+
     # Security Features
     # Removed rate limiting - not needed for core functionality
     enable_cors_strict: bool = True  # Allow all origins in dev
     enable_jwt_expiration: bool = True  # Long-lived tokens in dev
-    
+
     # Development Shortcuts
     simple_dev_mode: bool = False  # Skip complex setup
     auto_create_test_user: bool = False  # Auto-create test user on startup
-    
+
     # Redis Features (off by default)
     enable_redis: bool = False  # Enable Redis connection and streaming features
     require_redis: bool = False  # Make Redis mandatory (fail if can't connect)
-    
+
     # Security
     secret_key: str = Field(
         default="dev-secret-key-32-chars-minimum-length-for-development"
@@ -84,13 +84,7 @@ class Settings(BaseSettings):
     # Repository Configuration
     allowed_git_hosts: list[str] = ["github.com", "gitlab.com"]
 
-    # Redis Configuration (for LiteLLM Gateway caching only)
-    redis_url: str | None = None  # Optional for LiteLLM Gateway caching
-    redis_password: str | None = None
-    redis_db: int = 0
-    redis_decode_responses: bool = True
-    redis_ttl_seconds: int = 3600  # 1 hour TTL for messages
-    redis_max_connections: int = 100
+    # Removed Redis configuration - using PostgreSQL polling instead
 
     # SSE Configuration
     sse_ping_interval: int = 30
@@ -104,9 +98,7 @@ class Settings(BaseSettings):
 
     # Removed rate limiting configuration - not needed for core functionality
 
-    # LiteLLM Proxy Configuration
-    LITELLM_PROXY_URL: str = "http://localhost:4000"
-    LITELLM_MASTER_KEY: str | None = None
+    # Removed LiteLLM proxy configuration - not needed for simplified architecture
 
     model_config = SettingsConfigDict(
         env_file=[".env.local", ".env"],  # .env.local takes precedence
@@ -153,7 +145,7 @@ class Settings(BaseSettings):
     def validate_openai_key(cls, v: str | None, info) -> str | None:
         """Validate OpenAI API key format."""
         # Skip validation in simple dev mode or if placeholder
-        if hasattr(info.data, 'simple_dev_mode') and info.data.get('simple_dev_mode'):
+        if hasattr(info.data, "simple_dev_mode") and info.data.get("simple_dev_mode"):
             return v
         if v is not None and v == "placeholder-set-via-dotenv":
             return v
@@ -166,7 +158,7 @@ class Settings(BaseSettings):
     def validate_anthropic_key(cls, v: str | None, info) -> str | None:
         """Validate Anthropic API key format."""
         # Skip validation in simple dev mode or if placeholder
-        if hasattr(info.data, 'simple_dev_mode') and info.data.get('simple_dev_mode'):
+        if hasattr(info.data, "simple_dev_mode") and info.data.get("simple_dev_mode"):
             return v
         if v is not None and v == "placeholder-set-via-dotenv":
             return v
@@ -179,7 +171,7 @@ class Settings(BaseSettings):
     def validate_gemini_key(cls, v: str | None, info) -> str | None:
         """Validate Gemini API key format."""
         # Skip validation in simple dev mode or if placeholder
-        if hasattr(info.data, 'simple_dev_mode') and info.data.get('simple_dev_mode'):
+        if hasattr(info.data, "simple_dev_mode") and info.data.get("simple_dev_mode"):
             return v
         if v is not None and v == "placeholder-set-via-dotenv":
             return v
@@ -208,18 +200,18 @@ class Settings(BaseSettings):
             self.enable_cors_strict = False
             self.enable_jwt_expiration = False
             self.access_token_expire_minutes = 2880  # 48 hours
-            
+
             # Auto-generate keys if empty in development
             if not self.secret_key or self.secret_key == "dev-secret-key-32-chars-minimum-length-for-development":
                 import secrets
                 self.secret_key = f"dev-{secrets.token_urlsafe(32)}"
-                
+
             if not self.encryption_key or self.encryption_key == "dev-encryption-key-32-chars-minimum-for-aes":
                 import secrets
                 self.encryption_key = f"dev-{secrets.token_urlsafe(32)}"
-            
+
             return self
-        
+
         if self.debug:
             # In debug mode, allow weaker settings
             return self
