@@ -18,7 +18,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlmodel import select
 
 sys.path.append("/app")
-from app.models.run import AgentOutput, Run, RunStatus
+from app.models.run import Run, RunStatus
+from app.models.task import TaskOutput
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +107,7 @@ class DatabaseService:
         """
         try:
             async with self.async_session_factory() as session:
-                output = AgentOutput(
+                output = TaskOutput(
                     task_id=task_id,
                     variation_id=variation_id,
                     content=content,

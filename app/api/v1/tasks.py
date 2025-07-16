@@ -21,7 +21,6 @@ from sqlmodel import select
 from app.core.database import get_session
 from app.core.dependencies import CurrentUserAPIKey
 from app.core.logging import get_logger
-from app.models.run import AgentOutput, Run
 from app.models.task import Task, TaskOutput, TaskStatus
 from app.schemas.tasks import TaskListItem, TaskListResponse, TaskCreate, TaskResponse, TaskOutputResponse
 
@@ -39,34 +38,18 @@ def parse_agent_output_content(content: str) -> dict[str, Any]:
 
 async def get_task_metrics(session: AsyncSession, task_id: int) -> dict[str, int]:
     """Get aggregated metrics across all variations for a task."""
-    # Check both legacy AgentOutput and new TaskOutput tables
-    legacy_result = await session.execute(
-        select(AgentOutput).where(
-            AgentOutput.task_id == task_id,
-            AgentOutput.output_type == "metrics"
-        )
-    )
-    legacy_outputs = legacy_result.scalars().all()
-    
-    new_result = await session.execute(
+    result = await session.execute(
         select(TaskOutput).where(
             TaskOutput.task_id == task_id,
             TaskOutput.output_type == "metrics"
         )
     )
-    new_outputs = new_result.scalars().all()
+    outputs = result.scalars().all()
 
     total_additions = 0
     total_deletions = 0
 
-    # Process legacy outputs
-    for output in legacy_outputs:
-        data = parse_agent_output_content(output.content)
-        total_additions += data.get("additions", 0)
-        total_deletions += data.get("deletions", 0)
-    
-    # Process new outputs
-    for output in new_outputs:
+    for output in outputs:
         data = parse_agent_output_content(output.content)
         total_additions += data.get("additions", 0)
         total_deletions += data.get("deletions", 0)
@@ -169,21 +152,39 @@ async def get_task_details(
     Get detailed information about a specific task.
     Returns data in frontend-expected format with taskDetails structure.
     """
-    # Get the run
-    query = select(Run).where(Run.task_id == task_id).where(Run.user_id == current_user.id)
-    result = await db.execute(query)
-    run = result.scalar_one_or_none()
-
-    if run is None:
+    # Get the task
+    task_query = select(Task).where(Task.id == task_id).where(Task.user_id == current_user.id)
+    task_result = await db.execute(task_query)
+    task = task_result.scalar_one_or_none()
+    
+    if task is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Task not found",
         )
+    
+    # Use unified Task data
+    task_data = {
+        'task_id': task.id,
+        'github_url': task.github_url,
+        'prompt': task.prompt,
+        'variations': task.variations,
+        'status': str(task.status),
+        'task_status': str(task.status),
+        'created_at': task.created_at,
+        'updated_at': task.updated_at,
+        'started_at': task.started_at,
+        'completed_at': task.completed_at,
+        'results': task.results,
+        'error_message': task.error_message,
+        'total_tokens_used': task.total_tokens_used,
+        'total_cost_usd': task.total_cost_usd
+    }
 
     # Get all outputs for this task
     outputs_result = await db.execute(
-        select(AgentOutput).where(AgentOutput.task_id == task_id)
-        .order_by(AgentOutput.variation_id, AgentOutput.timestamp)
+        select(TaskOutput).where(TaskOutput.task_id == task_id)
+        .order_by(TaskOutput.variation_id, TaskOutput.timestamp)
     )
     outputs = outputs_result.scalars().all()
 
@@ -222,26 +223,28 @@ async def get_task_details(
         })
 
     # Generate details string
-    details = f"{run.created_at.strftime('%I:%M %p')} · "
-    if run.github_url:
-        details += run.github_url.replace("https://github.com/", "")
+    details = f"{task_data['created_at'].strftime('%I:%M %p')} · "
+    if task_data['github_url']:
+        details += task_data['github_url'].replace("https://github.com/", "")
     else:
         details += "Chat Mode"
 
     # Map status
     status_mapping = {
-        "open": "Open",
+        "pending": "Open",
+        "running": "Open",
         "completed": "Completed",
-        "failed": "Failed"
+        "failed": "Failed",
+        "cancelled": "Failed"
     }
-    frontend_status = status_mapping.get(run.task_status, "Open")
+    frontend_status = status_mapping.get(task_data['task_status'], "Open")
 
     return {
-        "id": run.task_id,
-        "title": run.prompt,
+        "id": task_data['task_id'],
+        "title": task_data['prompt'],
         "details": details,
         "status": frontend_status,
-        "versions": run.variations,
+        "versions": task_data['variations'],
         "taskDetails": {
             "versions": versions
         }
@@ -267,33 +270,33 @@ async def get_task_outputs(
     Frontend should poll this every 0.5 seconds with the last received timestamp.
     """
     # Verify task exists and user has access
-    query = select(Run).where(Run.task_id == task_id)
+    task_query = select(Task).where(Task.id == task_id)
     if current_user:
-        query = query.where(Run.user_id == current_user.id)
+        task_query = task_query.where(Task.user_id == current_user.id)
 
-    result = await db.execute(query)
-    run = result.scalar_one_or_none()
-
-    if not run:
+    task_result = await db.execute(task_query)
+    task = task_result.scalar_one_or_none()
+    
+    if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Task not found",
         )
 
-    # Build query for outputs
-    outputs_query = select(AgentOutput).where(AgentOutput.task_id == task_id)
-
+    # Query TaskOutput table
+    outputs_query = select(TaskOutput).where(TaskOutput.task_id == task_id)
+    
     # Apply filters
     if since:
-        outputs_query = outputs_query.where(AgentOutput.timestamp > since)
+        outputs_query = outputs_query.where(TaskOutput.timestamp > since)
     if variation_id is not None:
-        outputs_query = outputs_query.where(AgentOutput.variation_id == variation_id)
+        outputs_query = outputs_query.where(TaskOutput.variation_id == variation_id)
     if output_type:
-        outputs_query = outputs_query.where(AgentOutput.output_type == output_type)
-
+        outputs_query = outputs_query.where(TaskOutput.output_type == output_type)
+    
     # Order by timestamp and limit
-    outputs_query = outputs_query.order_by(AgentOutput.timestamp).limit(limit)
-
+    outputs_query = outputs_query.order_by(TaskOutput.timestamp).limit(limit)
+    
     # Execute query
     result = await db.execute(outputs_query)
     outputs = result.scalars().all()
@@ -373,3 +376,64 @@ async def get_variation_outputs(
     current_user: CurrentUserAPIKey,
     since: datetime | None = Query(
         None, description="ISO timestamp to get outputs after"
+    ),
+    limit: int = Query(100, le=1000, description="Maximum number of outputs to return"),
+    db: AsyncSession = Depends(get_session),
+) -> list[dict]:
+    """
+    Get agent outputs for a specific variation within a task.
+    
+    This endpoint allows filtering outputs by variation ID.
+    """
+    # Verify task exists and user has access
+    task_query = select(Task).where(Task.id == task_id)
+    if current_user:
+        task_query = task_query.where(Task.user_id == current_user.id)
+
+    task_result = await db.execute(task_query)
+    task = task_result.scalar_one_or_none()
+    
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found",
+        )
+    
+    # Validate variation_id is within range
+    if variation_id < 0 or variation_id >= task.variations:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid variation ID. Must be between 0 and {task.variations - 1}",
+        )
+
+    # Query TaskOutput table
+    outputs_query = select(TaskOutput).where(
+        TaskOutput.task_id == task_id,
+        TaskOutput.variation_id == variation_id
+    )
+    
+    # Apply filters
+    if since:
+        outputs_query = outputs_query.where(TaskOutput.timestamp > since)
+    if output_type:
+        outputs_query = outputs_query.where(TaskOutput.output_type == output_type)
+    
+    # Order by timestamp and limit
+    outputs_query = outputs_query.order_by(TaskOutput.timestamp).limit(limit)
+    
+    # Execute query
+    result = await db.execute(outputs_query)
+    outputs = result.scalars().all()
+
+    # Convert to response format
+    return [
+        {
+            "id": output.id,
+            "task_id": output.task_id,
+            "variation_id": output.variation_id,
+            "content": output.content,
+            "timestamp": output.timestamp.isoformat(),
+            "output_type": output.output_type,
+        }
+        for output in outputs
+    ]
