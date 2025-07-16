@@ -119,10 +119,10 @@ async def main():
                     )
                     print(f"✅ Wrote startup message to database for task_id={task_id}")
                 else:
-                    # Fallback to legacy run lookup
-                    run = await db_service.get_run_by_run_id(run_id)
-                    if run:
-                        task_id = run.task_id
+                    # Fallback to legacy run lookup using internal_run_id
+                    task = await db_service.get_task_by_internal_run_id(run_id)
+                    if task:
+                        task_id = task.id
                         await db_service.write_log(
                             task_id=task_id,
                             variation_id=variation_id,
@@ -131,7 +131,7 @@ async def main():
                         )
                         print(f"✅ Wrote startup message to database for task_id={task_id}")
                     else:
-                        print(f"⚠️ Could not find run with run_id={run_id}")
+                        print(f"⚠️ Could not find task with internal_run_id={run_id}")
 
             else:
                 print("❌ Database health check failed")
@@ -170,11 +170,11 @@ async def main():
                     task_id = int(task_id_env)
                     await db_service.write_error(task_id, 0, error_msg)
                 else:
-                    # Fallback to legacy run lookup
+                    # Fallback to legacy run lookup using internal_run_id
                     run_id = os.getenv("RUN_ID", "unknown")
-                    run = await db_service.get_run_by_run_id(run_id)
-                    if run:
-                        await db_service.write_error(run.task_id, 0, error_msg)
+                    task = await db_service.get_task_by_internal_run_id(run_id)
+                    if task:
+                        await db_service.write_error(task.id, 0, error_msg)
                 await db_service.close()
         except:
             pass  # Best effort

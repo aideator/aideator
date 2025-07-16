@@ -18,8 +18,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlmodel import select
 
 sys.path.append("/app")
-from app.models.run import Run, RunStatus
-from app.models.task import TaskOutput
+from app.models.run import AgentOutput, Run, RunStatus
+from app.models.task import Task, TaskOutput, TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,31 @@ class DatabaseService:
             logger.error(f"Failed to get run by task_id {task_id}: {e}")
             return None
 
-    async def write_agent_output(
+    async def get_task_by_id(self, task_id: int) -> Task | None:
+        """Get a task by its primary key ID."""
+        try:
+            async with self.async_session_factory() as session:
+                query = select(Task).where(Task.id == task_id)
+                result = await session.execute(query)
+                return result.scalar_one_or_none()
+        except Exception as e:
+            logger.error(f"Failed to get task by ID {task_id}: {e}")
+            return None
+
+    async def get_task_by_internal_run_id(self, internal_run_id: str) -> Task | None:
+        """Get a task by its internal_run_id (Kubernetes job identifier)."""
+        try:
+            async with self.async_session_factory() as session:
+                query = select(Task).where(Task.internal_run_id == internal_run_id)
+                result = await session.execute(query)
+                return result.scalar_one_or_none()
+        except Exception as e:
+            logger.error(
+                f"Failed to get task by internal_run_id {internal_run_id}: {e}"
+            )
+            return None
+
+    async def write_task_output(
         self,
         task_id: int,
         variation_id: int,
@@ -93,17 +117,7 @@ class DatabaseService:
         timestamp: datetime | None = None
     ) -> bool:
         """
-        Write agent output to the database.
-        
-        Args:
-            task_id: The task ID (primary key of runs table)
-            variation_id: The variation/agent number (0, 1, 2, etc.)
-            content: The output content
-            output_type: Type of output (stdout, stderr, status, summary, diffs, logging, addinfo)
-            timestamp: Optional timestamp (defaults to current time)
-            
-        Returns:
-            True if successful, False otherwise
+        Canonical writer for the unified task_outputs table.
         """
         try:
             async with self.async_session_factory() as session:
@@ -114,20 +128,37 @@ class DatabaseService:
                     output_type=output_type,
                     timestamp=timestamp or datetime.utcnow()
                 )
-
                 session.add(output)
                 await session.commit()
-
-                logger.debug(f"Wrote {output_type} output for task {task_id}, variation {variation_id}")
+                logger.debug(
+                    f"Wrote {output_type} output for task {task_id}, variation {variation_id}"
+                )
                 return True
-
         except Exception as e:
-            logger.error(f"Failed to write agent output: {e}")
+            logger.error(f"Failed to write task output: {e}")
             try:
                 await session.rollback()
-            except:
+            except Exception:
                 pass
             return False
+
+    async def write_agent_output(
+        self,
+        task_id: int,
+        variation_id: int,
+        content: str,
+        output_type: str = "stdout",
+        timestamp: datetime | None = None
+    ) -> bool:
+        # ⚠️  Deprecated – kept for backward compatibility until all call-sites migrate.
+        # Internally delegates to write_task_output().
+        return await self.write_task_output(
+            task_id=task_id,
+            variation_id=variation_id,
+            content=content,
+            output_type=output_type,
+            timestamp=timestamp,
+        )
 
     async def write_status_update(
         self,

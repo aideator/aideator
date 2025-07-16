@@ -1,0 +1,411 @@
+Tilt started on http://localhost:10350/
+v0.35.0, built 
+
+Initial Build
+Loading Tiltfile at: /Users/alchang/dev/aideator/Tiltfile
+
+✨ AIdeator Development Environment ✨
+
+🎯 Student-Friendly Setup - No Helm Complexity!
+
+🌐 Services:
+  Frontend:  http://localhost:3000
+  API:       http://localhost:8000
+  API Docs:  http://localhost:8000/docs
+  Database:  localhost:5432
+
+💾 Persistence:
+  Database data: /tmp/aideator-postgres-data (survives tilt down)
+  Auto-migration: Runs on startup
+  Test data: Added automatically on first run
+
+🔧 Commands:
+  Manual migration: tilt trigger database-migrate
+  Manual test data: tilt trigger add-test-data
+  
+🧘 Wise the Force be with you - Simple development, this is!
+
+Successfully loaded Tiltfile (753.121417ms)
+  k3d-cluster │ 
+  k3d-cluster │ Initial Build
+  k3d-cluster │ Running cmd: sh -c "if ! k3d cluster list | grep -q aideator; then\n        echo \"🚀 Creating k3d registry...\"\n        k3d registry create registry.localhost --port 5001 || echo \"Registry may already exist\"\n        echo \"🚀 Creating k3d cluster 'aideator' (Docker Desktop mode)...\"\n        k3d cluster create aideator             --api-port 6550             --port \"8000:8000@loadbalancer\"             --port \"5432:5432@loadbalancer\"             --k3s-arg \"--disable=traefik@server:0\"             --registry-use k3d-registry.localhost:5001             --wait             --timeout 120s             --agents 1\n        echo \"🔧 Fixing kubectl context to use localhost...\"\n        kubectl config set-cluster k3d-aideator --server=https://localhost:6550\n        echo \"✅ k3d cluster 'aideator' created successfully!\"\n    else\n        echo \"✅ k3d cluster 'aideator' already exists\"\n    fi"
+Auto-detected local registry from environment: &RegistryHosting{Host:localhost:5001,HostFromClusterNetwork:k3d-registry.localhost:5000,HostFromContainerRuntime:k3d-registry.localhost:5000,Help:https://k3d.io/stable/usage/registries/#using-a-local-registry,SingleName:,}
+Default registry specified, but will be ignored in favor of auto-detected registry.
+  k3d-cluster │ ✅ k3d cluster 'aideator' already exists
+cluster-ready │ 
+cluster-ready │ Initial Build
+cluster-ready │ Running cmd: kubectl cluster-info
+cluster-ready │ Kubernetes control plane is running at https://localhost:6550
+cluster-ready │ CoreDNS is running at https://localhost:6550/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+cluster-ready │ Metrics-server is running at https://localhost:6550/api/v1/namespaces/kube-system/services/https:metrics-server:/proxy
+cluster-ready │ 
+cluster-ready │ To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
+setup-persis… │ 
+setup-persis… │ Initial Build
+setup-persis… │ Running cmd: mkdir -p /tmp/aideator-postgres-data && echo "✅ Persistent database directory created at /tmp/aideator-postgres-data"
+setup-persis… │ ✅ Persistent database directory created at /tmp/aideator-postgres-data
+     frontend │ 
+     frontend │ Initial Build
+uncategorized │ 
+uncategorized │ Initial Build
+uncategorized │ STEP 1/1 — Deploying
+uncategorized │      Applying YAML to cluster
+     frontend │ Running cmd: cd frontend && npm run dev
+uncategorized │      Objects applied to cluster:
+uncategorized │        → aideator:namespace
+uncategorized │        → aideator:serviceaccount
+uncategorized │        → aideator:role
+uncategorized │        → aideator:rolebinding
+uncategorized │        → aideator-data:persistentvolumeclaim
+uncategorized │        → agent-job-template:configmap
+uncategorized │ 
+uncategorized │      Step 1 - 0.18s (Deploying)
+uncategorized │      DONE IN: 0.18s 
+uncategorized │ 
+aideator-dat… │ 
+aideator-dat… │ Initial Build
+aideator-dat… │ STEP 1/1 — Deploying
+ aideator-api │ 
+ aideator-api │ Initial Build
+ aideator-api │ STEP 1/3 — Building Dockerfile: [aideator-api]
+ aideator-api │ Building Dockerfile for platform linux/arm64:
+ aideator-api │   # Multi-stage Dockerfile for AIdeator using Wolfi base images
+ aideator-api │   # Following patterns from manifold build-config
+ aideator-api │   
+ aideator-api │   # Build stage for Python dependencies using Wolfi
+ aideator-api │   FROM cgr.dev/chainguard/wolfi-base:latest AS python-builder
+ aideator-api │   
+ aideator-api │   USER root
+ aideator-api │   
+ aideator-api │   # Install Python build dependencies
+ aideator-api │   RUN apk --no-cache --update upgrade && apk --no-cache add \
+ aideator-api │       python-3.12 \
+ aideator-api │       py3.12-pip \
+ aideator-api │       python-3.12-dev \
+ aideator-api │       build-base \
+ aideator-api │       git \
+ aideator-api │       curl \
+ aideator-api │       nodejs \
+ aideator-api │       npm \
+ aideator-api │       ca-certificates \
+ aideator-api │       openssl \
+ aideator-api │       bash
+ aideator-api │   
+ aideator-api │   # Install uv for faster Python package management
+ aideator-api │   RUN pip install -Iv "uv==0.7.10"
+ aideator-api │   
+ aideator-api │   # Set Python environment variables
+ aideator-api │   ENV UV_LINK_MODE=copy
+ aideator-api │   ENV UV_COMPILE_BYTECODE=1
+ aideator-api │   ENV UV_PYTHON_DOWNLOADS=never
+ aideator-api │   ENV UV_PYTHON=python3.12
+ aideator-api │   ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+ aideator-api │   
+ aideator-api │   # Create virtual environment
+ aideator-api │   RUN python3.12 -m venv /opt/venv
+ aideator-api │   ENV PATH="/opt/venv/bin:$PATH"
+ aideator-api │   
+ aideator-api │   # Copy Python requirements
+ aideator-api │   COPY requirements.txt pyproject.toml ./
+ aideator-api │   RUN pip install --no-cache-dir -r requirements.txt
+ aideator-api │   RUN touch /tmp/myfile 
+ aideator-api │   
+ aideator-api │   # Install Claude Code and AI CLI tools globally
+ aideator-api │   RUN npm install -g @anthropic-ai/claude-code
+ aideator-api │   
+ aideator-api │   # Download kubectl
+ aideator-api │   FROM cgr.dev/chainguard/wolfi-base:latest AS kubectl-builder
+ aideator-api │   RUN apk add --no-cache curl && \
+ aideator-api │       curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
+ aideator-api │       chmod +x kubectl
+ aideator-api │   
+ aideator-api │   # Final API stage using Wolfi base
+ aideator-api │   FROM cgr.dev/chainguard/wolfi-base:latest AS api
+ aideator-api │   
+ aideator-api │   USER root
+ aideator-api │   
+ aideator-api │   # Install runtime dependencies
+ aideator-api │   RUN apk --no-cache --update upgrade && apk --no-cache add \
+ aideator-api │       python-3.12 \
+ aideator-api │       py3.12-pip \
+ aideator-api │       bash \
+ aideator-api │       git \
+ aideator-api │       ca-certificates \
+ aideator-api │       openssl
+ aideator-api │   
+ aideator-api │   # Create nonroot user and directories (if it doesn't exist)
+ aideator-api │   RUN adduser -D -u 1000 nonroot || true
+ aideator-api │   WORKDIR /app
+ aideator-api │   RUN chown nonroot:nonroot /app
+ aideator-api │   
+ aideator-api │   # Copy Python virtual environment
+ aideator-api │   COPY --from=python-builder /opt/venv /opt/venv
+ aideator-api │   ENV PATH="/opt/venv/bin:$PATH"
+ aideator-api │   ENV PYTHONPATH="/app:$PYTHONPATH"
+ aideator-api │   
+ aideator-api │   # Install uv in the final container for student-friendly development
+ aideator-api │   RUN /opt/venv/bin/pip install -Iv "uv==0.7.10"
+ aideator-api │   
+ aideator-api │   # Copy kubectl
+ aideator-api │   COPY --from=kubectl-builder /kubectl /usr/local/bin/kubectl
+ aideator-api │   
+ aideator-api │   # Copy Node.js tools
+ aideator-api │   COPY --from=python-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+ aideator-api │   COPY --from=python-builder /usr/local/bin/claude /usr/local/bin/claude
+ aideator-api │   
+ aideator-api │   # Copy application code
+ aideator-api │   COPY --chown=nonroot:nonroot app/ ./app/
+ aideator-api │   COPY --chown=nonroot:nonroot k8s/ ./k8s/
+ aideator-api │   COPY --chown=nonroot:nonroot alembic/ ./alembic/
+ aideator-api │   COPY --chown=nonroot:nonroot alembic.ini ./
+ aideator-api │   COPY --chown=nonroot:nonroot scripts/ ./scripts/
+ aideator-api │   
+ aideator-api │   # Switch to nonroot user
+ aideator-api │   USER nonroot
+ aideator-api │   
+ aideator-api │   # Expose port
+ aideator-api │   EXPOSE 8000
+ aideator-api │   
+ aideator-api │   # Run FastAPI
+ aideator-api │   CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ aideator-api │   
+ aideator-api │   # API-only Dockerfile - agent uses separate agent/Dockerfile
+ aideator-api │ 
+ aideator-api │ 
+ aideator-api │      Building image
+aideator-dat… │      Applying YAML to cluster
+aideator-dat… │      Objects applied to cluster:
+aideator-dat… │        → aideator-database:service
+aideator-dat… │        → aideator-database:deployment
+aideator-dat… │ 
+aideator-dat… │      Step 1 - 0.14s (Deploying)
+aideator-dat… │      DONE IN: 0.14s 
+aideator-dat… │ 
+     frontend │ 
+     frontend │ > my-v0-project@0.1.0 dev
+     frontend │ > next dev
+     frontend │ 
+aideator-dat… │ 
+aideator-dat… │ Tracking new pod rollout (aideator-database-6cb4855dbb-tzc9w):
+aideator-dat… │      ┊ Scheduled       - <1s
+aideator-dat… │      ┊ Initialized     - <1s
+aideator-dat… │      ┃ Not Ready       - (ContainersNotReady): containers with unready status: [postgres]
+aideator-dat… │ [event: pod aideator/aideator-database-6cb4855dbb-tzc9w] Pulling image "postgres:15-alpine"
+ aideator-api │      [kubectl-builder 1/2] FROM cgr.dev/chainguard/wolfi-base:latest@sha256:72de158dcb2951c4815e016c1a7804af4e1af98d1d1922c1565a85b5987fbe43
+ aideator-api │      [background] read source files
+ aideator-api │      [background] read source files 1.69MB [done: 105ms]
+     frontend │    ▲ Next.js 15.2.4
+     frontend │    - Local:        http://localhost:3000
+     frontend │    - Network:      http://192.168.1.204:3000
+     frontend │    - Environments: .env.local
+     frontend │ 
+     frontend │  ✓ Starting...
+ aideator-api │      [api  9/15] COPY --from=python-builder /usr/local/lib/node_modules /usr/local/lib/node_modules [cached]
+ aideator-api │      [api  2/15] RUN apk --no-cache --update upgrade && apk --no-cache add     python-3.12     py3.12-pip     bash     git     ca-certificates     openssl [cached]
+ aideator-api │      [api  5/15] RUN chown nonroot:nonroot /app [cached]
+ aideator-api │      [api  6/15] COPY --from=python-builder /opt/venv /opt/venv [cached]
+ aideator-api │      [api 11/15] COPY --chown=nonroot:nonroot app/ ./app/ [cached]
+ aideator-api │      [python-builder 3/8] RUN pip install -Iv "uv==0.7.10" [cached]
+ aideator-api │      [python-builder 6/8] RUN pip install --no-cache-dir -r requirements.txt [cached]
+ aideator-api │      [api  3/15] RUN adduser -D -u 1000 nonroot || true [cached]
+ aideator-api │      [python-builder 2/8] RUN apk --no-cache --update upgrade && apk --no-cache add     python-3.12     py3.12-pip     python-3.12-dev     build-base     git     curl     nodejs     npm     ca-certificates     openssl     bash [cached]
+ aideator-api │      [kubectl-builder 2/2] RUN apk add --no-cache curl &&     curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" &&     chmod +x kubectl [cached]
+ aideator-api │      [python-builder 7/8] RUN touch /tmp/myfile [cached]
+ aideator-api │      [api 10/15] COPY --from=python-builder /usr/local/bin/claude /usr/local/bin/claude [cached]
+ aideator-api │      [api 15/15] COPY --chown=nonroot:nonroot scripts/ ./scripts/ [cached]
+ aideator-api │      [python-builder 4/8] RUN python3.12 -m venv /opt/venv [cached]
+ aideator-api │      [python-builder 5/8] COPY requirements.txt pyproject.toml ./ [cached]
+ aideator-api │      [api  7/15] RUN /opt/venv/bin/pip install -Iv "uv==0.7.10" [cached]
+ aideator-api │      [api  8/15] COPY --from=kubectl-builder /kubectl /usr/local/bin/kubectl [cached]
+ aideator-api │      [api  4/15] WORKDIR /app [cached]
+ aideator-api │      [api 14/15] COPY --chown=nonroot:nonroot alembic.ini ./ [cached]
+ aideator-api │      [api 13/15] COPY --chown=nonroot:nonroot alembic/ ./alembic/ [cached]
+ aideator-api │      [api 12/15] COPY --chown=nonroot:nonroot k8s/ ./k8s/ [cached]
+ aideator-api │      [python-builder 8/8] RUN npm install -g @anthropic-ai/claude-code [cached]
+ aideator-api │      exporting to image
+ aideator-api │      exporting to image [done: 25ms]
+ aideator-api │ 
+ aideator-api │ STEP 2/3 — Pushing localhost:5001/aideator-api:tilt-1b22594c9a11fd29
+ aideator-api │      Pushing with Docker client
+ aideator-api │      Authenticating to image repo: localhost:5001
+ aideator-api │      Sending image data
+     frontend │  ✓ Ready in 1617ms
+ aideator-api │      b9ce4ae8ea8b: Pushing [===========>                                       ]     512B/2.198kB
+ aideator-api │      7543ff3b0bf1: Pushing [>                                                  ]  7.168kB/687.9kB
+ aideator-api │      9a74ea201ebf: Pushing [==>                                                ]     512B/10.5kB
+ aideator-api │      7db3e0cbb3bd: Pushing [>                                                  ]  12.82kB/786.1kB
+ aideator-api │      bfee62b91f01: Pushing [>                                                  ]   2.56kB/171.9kB
+ aideator-api │      b9ce4ae8ea8b: Pushed 
+ aideator-api │      9a74ea201ebf: Pushed 
+ aideator-api │      bfee62b91f01: Pushed 
+ aideator-api │      7543ff3b0bf1: Pushed 
+ aideator-api │      7db3e0cbb3bd: Pushed 
+ aideator-api │      83a1337c8329: Pushing [>                                                  ]  100.4kB/7.699MB
+ aideator-api │      8f8a78a81a27: Pushing [>                                                  ]    532kB/185.8MB
+ aideator-api │      db54a643f733: Pushing [>                                                  ]  526.8kB/55.14MB
+ aideator-api │      e2ca1554844e: Pushing [>                                                  ]  526.3kB/60.13MB
+ aideator-api │      503a0fcd3828: Pushing [>                                                  ]  553.5kB/775.8MB
+ aideator-api │      83a1337c8329: Pushed 
+ aideator-api │      7d6fedd4bea7: Pushing  2.048kB
+ aideator-api │      7d6fedd4bea7: Pushed 
+ aideator-api │      db54a643f733: Pushed 
+aideator-dat… │ [event: pod aideator/aideator-database-6cb4855dbb-tzc9w] Successfully pulled image "postgres:15-alpine" in 6.956743712s
+ aideator-api │      e2ca1554844e: Pushed 
+ aideator-api │      deb05587af80: Pushing  1.536kB
+ aideator-api │      5b2e954239d1: Pushing  1.536kB
+ aideator-api │      3656509b535d: Pushing [>                                                  ]  527.3kB/108.4MB
+ aideator-api │      deb05587af80: Pushed 
+aideator-dat… │      ┊ Scheduled       - <1s
+aideator-dat… │      ┊ Initialized     - <1s
+aideator-dat… │      ┊ Ready           - 9s
+aideator-dat… │ The files belonging to this database system will be owned by user "postgres".
+aideator-dat… │ This user must also own the server process.
+aideator-dat… │ 
+aideator-dat… │ The database cluster will be initialized with locale "en_US.utf8".
+aideator-dat… │ The default database encoding has accordingly been set to "UTF8".
+aideator-dat… │ The default text search configuration will be set to "english".
+aideator-dat… │ 
+aideator-dat… │ Data page checksums are disabled.
+aideator-dat… │ 
+aideator-dat… │ fixing permissions on existing directory /var/lib/postgresql/data ... ok
+aideator-dat… │ creating subdirectories ... ok
+aideator-dat… │ selecting dynamic shared memory implementation ... posix
+aideator-dat… │ selecting default max_connections ... 100
+aideator-dat… │ selecting default shared_buffers ... 128MB
+aideator-dat… │ selecting default time zone ... UTC
+aideator-dat… │ creating configuration files ... ok
+aideator-dat… │ running bootstrap script ... ok
+aideator-dat… │ sh: locale: not found
+aideator-dat… │ 2025-07-16 05:31:50.617 UTC [36] WARNING:  no usable system locales were found
+aideator-dat… │ performing post-bootstrap initialization ... ok
+ aideator-api │      5b2e954239d1: Pushed 
+ aideator-api │      59ba392a57d6: Pushing [=>                                                 ]     512B/22.26kB
+ aideator-api │      be0fc0c14ee3: Pushing [===>                                               ]     512B/6.489kB
+aideator-dat… │ syncing data to disk ... ok
+aideator-dat… │ 
+aideator-dat… │ 
+aideator-dat… │ Success. You can now start the database server using:
+aideator-dat… │ 
+aideator-dat… │     pg_ctl -D /var/lib/postgresql/data -l logfile start
+aideator-dat… │ 
+aideator-dat… │ initdb: warning: enabling "trust" authentication for local connections
+aideator-dat… │ initdb: hint: You can change this by editing pg_hba.conf or using the option -A, or --auth-local and --auth-host, the next time you run initdb.
+aideator-dat… │ waiting for server to start....2025-07-16 05:31:52.285 UTC [42] LOG:  starting PostgreSQL 15.13 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 14.2.0) 14.2.0, 64-bit
+aideator-dat… │ 2025-07-16 05:31:52.286 UTC [42] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+aideator-dat… │ 2025-07-16 05:31:52.290 UTC [45] LOG:  database system was shut down at 2025-07-16 05:31:50 UTC
+aideator-dat… │ 2025-07-16 05:31:52.293 UTC [42] LOG:  database system is ready to accept connections
+aideator-dat… │  done
+aideator-dat… │ server started
+aideator-dat… │ CREATE DATABASE
+aideator-dat… │ 
+aideator-dat… │ 
+aideator-dat… │ /usr/local/bin/docker-entrypoint.sh: ignoring /docker-entrypoint-initdb.d/*
+aideator-dat… │ 
+aideator-dat… │ waiting for server to shut down....2025-07-16 05:31:52.407 UTC [42] LOG:  received fast shutdown request
+aideator-dat… │ 2025-07-16 05:31:52.409 UTC [42] LOG:  aborting any active transactions
+aideator-dat… │ 2025-07-16 05:31:52.410 UTC [42] LOG:  background worker "logical replication launcher" (PID 48) exited with exit code 1
+aideator-dat… │ 2025-07-16 05:31:52.412 UTC [43] LOG:  shutting down
+aideator-dat… │ 2025-07-16 05:31:52.412 UTC [43] LOG:  checkpoint starting: shutdown immediate
+aideator-dat… │ 2025-07-16 05:31:52.768 UTC [43] LOG:  checkpoint complete: wrote 921 buffers (5.6%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.007 s, sync=0.342 s, total=0.357 s; sync files=301, longest=0.007 s, average=0.002 s; distance=4238 kB, estimate=4238 kB
+aideator-dat… │ 2025-07-16 05:31:52.771 UTC [42] LOG:  database system is shut down
+ aideator-api │      8f8a78a81a27: Pushing [===========================================>       ]  163.4MB/185.8MB
+ aideator-api │      59ba392a57d6: Pushed 
+aideator-dat… │  done
+aideator-dat… │ server stopped
+aideator-dat… │ 
+aideator-dat… │ PostgreSQL init process complete; ready for start up.
+aideator-dat… │ 
+aideator-dat… │ 2025-07-16 05:31:52.824 UTC [1] LOG:  starting PostgreSQL 15.13 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 14.2.0) 14.2.0, 64-bit
+aideator-dat… │ 2025-07-16 05:31:52.824 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+aideator-dat… │ 2025-07-16 05:31:52.824 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+aideator-dat… │ 2025-07-16 05:31:52.828 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+aideator-dat… │ 2025-07-16 05:31:52.831 UTC [58] LOG:  database system was shut down at 2025-07-16 05:31:52 UTC
+aideator-dat… │ 2025-07-16 05:31:52.834 UTC [1] LOG:  database system is ready to accept connections
+ aideator-api │      503a0fcd3828: Pushing [=========>                                         ]    150MB/775.8MB
+ aideator-api │      be0fc0c14ee3: Pushed 
+ aideator-api │      97be68c9e218: Pushing [=>                                                 ]     512B/21.23kB
+ aideator-api │      940df04d4534: Pushing [>                                                  ]  1.536kB/146kB
+ aideator-api │      8f8a78a81a27: Pushed 
+ aideator-api │      97be68c9e218: Pushed 
+ aideator-api │      22b582556e37: Pushing [>                                                  ]  2.048kB/156.7kB
+ aideator-api │      940df04d4534: Pushed 
+ aideator-api │      a40253974f67: Pushing [>                                                  ]   2.56kB/214.3kB
+ aideator-api │      ef015ba8346c: Pushing [>                                                  ]   2.56kB/224.8kB
+ aideator-api │      3656509b535d: Pushed 
+ aideator-api │      22b582556e37: Pushed 
+ aideator-api │      a40253974f67: Pushed 
+ aideator-api │      3fd511372fee: Pushing [===>                                               ]   34.3kB/457.4kB
+ aideator-api │      a513f911fbb2: Pushing [>                                                  ]   7.68kB/729.7kB
+ aideator-api │      ef015ba8346c: Pushed 
+ aideator-api │      f02a77568fae: Pushing [>                                                  ]  76.29kB/5.97MB
+ aideator-api │      1eccc9297dd7: Pushing [>                                                  ]   76.8kB/6.333MB
+ aideator-api │      3fd511372fee: Pushed 
+ aideator-api │      a513f911fbb2: Pushed 
+ aideator-api │      f02a77568fae: Pushed 
+ aideator-api │      1eccc9297dd7: Pushed 
+ aideator-api │      503a0fcd3828: Pushing [===================================>               ]    548MB/775.8MB
+ aideator-api │      503a0fcd3828: Pushed 
+ aideator-api │ 
+ aideator-api │ STEP 3/3 — Deploying
+ aideator-api │      Applying YAML to cluster
+ aideator-api │      Objects applied to cluster:
+ aideator-api │        → aideator-api:service
+ aideator-api │        → aideator-api:deployment
+ aideator-api │ 
+ aideator-api │      Step 1 - 1.45s (Building Dockerfile: [aideator-api])
+ aideator-api │      Step 2 - 29.65s (Pushing localhost:5001/aideator-api:tilt-1b22594c9a11fd29)
+ aideator-api │      Step 3 - 0.03s (Deploying)
+ aideator-api │      DONE IN: 31.13s 
+ aideator-api │ 
+database-mig… │ 
+database-mig… │ Initial Build
+database-mig… │ Running cmd: DATABASE_URL="postgresql+asyncpg://aideator:aideator123@localhost:5432/aideator" uv run alembic upgrade head
+ aideator-api │ 
+ aideator-api │ Tracking new pod rollout (aideator-api-554bdd4c54-47c22):
+ aideator-api │      ┊ Scheduled       - (…) Pending
+ aideator-api │      ┊ Initialized     - (…) Pending
+ aideator-api │      ┊ Ready           - (…) Pending
+ aideator-api │ [event: pod aideator/aideator-api-554bdd4c54-47c22] Pulling image "k3d-registry.localhost:5000/aideator-api:tilt-1b22594c9a11fd29"
+database-mig… │ INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+database-mig… │ INFO  [alembic.runtime.migration] Will assume transactional DDL.
+database-mig… │ INFO  [alembic.runtime.migration] Running upgrade  -> 001, Current schema from SQLModel definitions
+add-test-data │ 
+add-test-data │ Initial Build
+add-test-data │ Running cmd: DATABASE_URL="postgresql+asyncpg://aideator:aideator123@localhost:5432/aideator" uv run python scripts/add_mock_task_data.py
+add-test-data │ 🗄️ Creating mock task data in database...
+add-test-data │ WARNING: Development user not found, creating one...
+add-test-data │ (trapped) error reading bcrypt version
+add-test-data │ Traceback (most recent call last):
+add-test-data │   File "/Users/alchang/dev/aideator/.venv/lib/python3.11/site-packages/passlib/handlers/bcrypt.py", line 620, in _load_backend_mixin
+add-test-data │     version = _bcrypt.__about__.__version__
+add-test-data │               ^^^^^^^^^^^^^^^^^
+add-test-data │ AttributeError: module 'bcrypt' has no attribute '__about__'
+add-test-data │ Created test user: test@aideator.local (ID: user_test_mVxl8kqzVGLLmy1O)
+add-test-data │ Created run: 1 with task_id: 1
+add-test-data │ Created outputs for task 1 with 3 variations
+add-test-data │ Using existing dev user: test@aideator.local (ID: user_test_mVxl8kqzVGLLmy1O)
+add-test-data │ Created run: 2 with task_id: 2
+add-test-data │ Created outputs for task 2 with 3 variations
+add-test-data │ Using existing dev user: test@aideator.local (ID: user_test_mVxl8kqzVGLLmy1O)
+add-test-data │ Created run: 3
+add-test-data │ Created run: 4
+add-test-data │ Created run: 5
+add-test-data │ ✅ Successfully created all mock task data!
+add-test-data │ 
+add-test-data │ 📋 Created tasks:
+add-test-data │   - task-1: Make hello world label ominous (3 variations)
+add-test-data │   - task-2: Make hello world message cheerier (3 variations)
+add-test-data │   - task-3: Update hello world message (open)
+add-test-data │   - task-4: Update hello world message (failed)
+add-test-data │   - task-5: Complete v2 UI functionality (completed)
+ aideator-api │ [event: pod aideator/aideator-api-554bdd4c54-47c22] Successfully pulled image "k3d-registry.localhost:5000/aideator-api:tilt-1b22594c9a11fd29" in 7.278998961s
+ aideator-api │      ┊ Scheduled       - <1s
+ aideator-api │      ┊ Initialized     - <1s
+ aideator-api │      ┊ Ready           - 9s
+ aideator-api │ INFO:     Started server process [1]
+ aideator-api │ INFO:     Waiting for application startup.
+ aideator-api │ [2m2025-07-16T05:32:22.483342Z[0m [[32m[1minfo     [0m] [1mStarting AIdeator v1.0.0      [0m [[0m[1m[34mapp.main[0m][0m [36mfilename[0m=[35mmain.py[0m [36mfunc_name[0m=[35mlifespan[0m [36mlineno[0m=[35m29[0m
+ aideator-api │ [2m2025-07-16T05:32:22.518166Z[0m [[32m[1minfo     [0m] [1mDatabase tables created successfully[0m [[0m[1m[34mapp.core.database[0m][0m [36mfilename[0m=[35mdatabase.py[0m [36mfunc_name[0m=[35mcreate_db_and_tables[0m [36mlineno[0m=[35m81[0m
+ aideator-api │ [2m2025-07-16T05:32:22.519130Z[0m [[32m[1minfo     [0m] [1mDatabase initialized          [0m [[0m[1m[34mapp.main[0m][0m [36mfilename[0m=[35mmain.py[0m [36mfunc_name[0m=[35mlifespan[0m [36mlineno[0m=[35m33[0m
+ aideator-api │ INFO:     Application startup complete.
+ aideator-api │ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)

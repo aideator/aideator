@@ -8,7 +8,7 @@ from sqlmodel import select
 from app.core.database import get_session
 from app.core.dependencies import CurrentUserAPIKey
 from app.core.logging import get_logger
-from app.models.run import AgentOutput, Run
+from app.models.task import Task, TaskOutput
 from app.schemas.common import PaginatedResponse
 
 logger = get_logger(__name__)
@@ -17,7 +17,7 @@ router = APIRouter()
 
 @router.get(
     "/runs/{run_id}/outputs",
-    response_model=PaginatedResponse[AgentOutput],
+    response_model=PaginatedResponse[TaskOutput],
     summary="Get agent outputs for a run",
     description="Retrieve paginated agent outputs from database with optional filtering",
 )
@@ -29,7 +29,7 @@ async def get_run_outputs(
     output_type: str | None = Query(None, description="Filter by output type (stdout, stderr, status, etc.)"),
     limit: int = Query(100, ge=1, le=1000, description="Number of outputs to return"),
     offset: int = Query(0, ge=0, description="Number of outputs to skip"),
-) -> PaginatedResponse[AgentOutput]:
+) -> PaginatedResponse[TaskOutput]:
     """
     Retrieve agent outputs for a specific run.
     
@@ -37,39 +37,38 @@ async def get_run_outputs(
     supporting the real-time streaming architecture with historical data access.
     """
 
-    # Verify run exists and user has access
-    run_query = select(Run).where(Run.id == run_id)
+    # Verify task exists and user has access (lookup by legacy run_id → internal_run_id)
+    task_query = select(Task).where(Task.internal_run_id == run_id)
     if current_user.user:
-        run_query = run_query.where(Run.user_id == current_user.user.id)
+        task_query = task_query.where(Task.user_id == current_user.user.id)
 
-    result = await db.execute(run_query)
-    run = result.scalar_one_or_none()
+    result = await db.execute(task_query)
+    task_row = result.scalar_one_or_none()
 
-    if not run:
+    if not task_row:
         from fastapi import HTTPException, status
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Run not found or access denied"
         )
-
     # Build outputs query with filters
-    outputs_query = select(AgentOutput).where(AgentOutput.task_id == run.task_id)
+    outputs_query = select(TaskOutput).where(TaskOutput.task_id == task_row.id)
 
     if variation_id is not None:
-        outputs_query = outputs_query.where(AgentOutput.variation_id == variation_id)
+        outputs_query = outputs_query.where(TaskOutput.variation_id == variation_id)
 
     if output_type is not None:
-        outputs_query = outputs_query.where(AgentOutput.output_type == output_type)
+        outputs_query = outputs_query.where(TaskOutput.output_type == output_type)
 
     # Order by timestamp (most recent first)
-    outputs_query = outputs_query.order_by(AgentOutput.timestamp.desc())
+    outputs_query = outputs_query.order_by(TaskOutput.timestamp.desc())
 
     # Get total count for pagination
-    count_query = select(AgentOutput).where(AgentOutput.task_id == run.task_id)
+    count_query = select(TaskOutput).where(TaskOutput.task_id == task_row.id)
     if variation_id is not None:
-        count_query = count_query.where(AgentOutput.variation_id == variation_id)
+        count_query = count_query.where(TaskOutput.variation_id == variation_id)
     if output_type is not None:
-        count_query = count_query.where(AgentOutput.output_type == output_type)
+        count_query = count_query.where(TaskOutput.output_type == output_type)
 
     from sqlalchemy import func
     total_result = await db.execute(select(func.count()).select_from(count_query.subquery()))
@@ -83,9 +82,9 @@ async def get_run_outputs(
     outputs = result.scalars().all()
 
     logger.info(
-        f"Retrieved {len(outputs)} agent outputs for run {run_id}",
+        f"Retrieved {len(outputs)} task outputs for task_id={task_row.id} (legacy run_id={run_id})",
         extra={
-            "run_id": run_id,
+            "task_id": task_row.id,
             "variation_id": variation_id,
             "output_type": output_type,
             "total": total,
@@ -119,15 +118,15 @@ async def get_run_outputs_summary(
     Provides overview of output types, variation counts, and timing information.
     """
 
-    # Verify run exists and user has access
-    run_query = select(Run).where(Run.id == run_id)
+    # Verify task exists and user has access (legacy run_id → internal_run_id)
+    task_query = select(Task).where(Task.internal_run_id == run_id)
     if current_user.user:
-        run_query = run_query.where(Run.user_id == current_user.user.id)
+        task_query = task_query.where(Task.user_id == current_user.user.id)
 
-    result = await db.execute(run_query)
-    run = result.scalar_one_or_none()
+    result = await db.execute(task_query)
+    task_row = result.scalar_one_or_none()
 
-    if not run:
+    if not task_row:
         from fastapi import HTTPException, status
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -138,29 +137,29 @@ async def get_run_outputs_summary(
     from sqlalchemy import func
 
     summary_query = select(
-        AgentOutput.output_type,
-        AgentOutput.variation_id,
-        func.count(AgentOutput.id).label("count"),
-        func.min(AgentOutput.timestamp).label("first_output"),
-        func.max(AgentOutput.timestamp).label("last_output")
+        TaskOutput.output_type,
+        TaskOutput.variation_id,
+        func.count(TaskOutput.id).label("count"),
+        func.min(TaskOutput.timestamp).label("first_output"),
+        func.max(TaskOutput.timestamp).label("last_output")
     ).where(
-        AgentOutput.task_id == run.task_id
+        TaskOutput.task_id == task_row.id
     ).group_by(
-        AgentOutput.output_type, AgentOutput.variation_id
+        TaskOutput.output_type, TaskOutput.variation_id
     ).order_by(
-        AgentOutput.variation_id, AgentOutput.output_type
+        TaskOutput.variation_id, TaskOutput.output_type
     )
 
     result = await db.execute(summary_query)
     summary_data = result.all()
 
     # Total outputs count
-    total_query = select(func.count(AgentOutput.id)).where(AgentOutput.task_id == run.task_id)
+    total_query = select(func.count(TaskOutput.id)).where(TaskOutput.task_id == task_row.id)
     total_result = await db.execute(total_query)
     total_outputs = total_result.scalar() or 0
 
     # Variation count
-    variations_query = select(func.count(func.distinct(AgentOutput.variation_id))).where(AgentOutput.task_id == run.task_id)
+    variations_query = select(func.count(func.distinct(TaskOutput.variation_id))).where(TaskOutput.task_id == task_row.id)
     variations_result = await db.execute(variations_query)
     total_variations = variations_result.scalar() or 0
 
@@ -183,7 +182,7 @@ async def get_run_outputs_summary(
 
 @router.get(
     "/runs/{run_id}/outputs/latest",
-    response_model=list[AgentOutput],
+    response_model=list[TaskOutput],
     summary="Get latest agent outputs",
     description="Get the most recent outputs for each variation",
 )
@@ -192,22 +191,22 @@ async def get_latest_outputs(
     current_user: CurrentUserAPIKey,
     db: AsyncSession = Depends(get_session),
     per_variation: int = Query(5, ge=1, le=50, description="Number of latest outputs per variation"),
-) -> list[AgentOutput]:
+) -> list[TaskOutput]:
     """
     Get the latest outputs for each variation in a run.
     
     Useful for getting current status of all running agents.
     """
 
-    # Verify run exists and user has access
-    run_query = select(Run).where(Run.id == run_id)
+    # Verify task exists and user has access
+    task_query = select(Task).where(Task.internal_run_id == run_id)
     if current_user.user:
-        run_query = run_query.where(Run.user_id == current_user.user.id)
+        task_query = task_query.where(Task.user_id == current_user.user.id)
 
-    result = await db.execute(run_query)
-    run = result.scalar_one_or_none()
+    result = await db.execute(task_query)
+    task_row = result.scalar_one_or_none()
 
-    if not run:
+    if not task_row:
         from fastapi import HTTPException, status
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -219,26 +218,26 @@ async def get_latest_outputs(
 
     # Get latest outputs using row_number window function
     query = text("""
-        SELECT id, run_id, variation_id, content, timestamp, output_type
+        SELECT id, task_id, variation_id, content, timestamp, output_type
         FROM (
             SELECT *,
                    ROW_NUMBER() OVER (PARTITION BY variation_id ORDER BY timestamp DESC) as rn
-            FROM agent_outputs
+            FROM task_outputs
             WHERE task_id = :task_id
         ) ranked
         WHERE rn <= :per_variation
         ORDER BY variation_id, timestamp DESC
     """)
 
-    result = await db.execute(query, {"task_id": run.task_id, "per_variation": per_variation})
+    result = await db.execute(query, {"task_id": task_row.id, "per_variation": per_variation})
     rows = result.fetchall()
 
-    # Convert to AgentOutput objects
+    # Convert to TaskOutput objects
     outputs = []
     for row in rows:
-        output = AgentOutput(
+        output = TaskOutput(
             id=row.id,
-            run_id=row.run_id,
+            task_id=task_row.id,
             variation_id=row.variation_id,
             content=row.content,
             timestamp=row.timestamp,

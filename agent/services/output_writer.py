@@ -37,13 +37,13 @@ class OutputWriter:
                 print(f"✅ Using task_id={self.task_id} from environment (unified tasks)")
                 return True
             else:
-                # Fallback to legacy run lookup
-                run = await self.db_service.get_run_by_run_id(self.config.run_id)
-                if run:
-                    self.task_id = run.task_id
-                    print(f"✅ Found task_id={self.task_id} via run lookup (legacy)")
+                # Fallback to lookup using legacy RUN_ID encoded in internal_run_id
+                task = await self.db_service.get_task_by_internal_run_id(self.config.run_id)
+                if task:
+                    self.task_id = task.id
+                    print(f"✅ Found task_id={self.task_id} via internal_run_id lookup (legacy)")
                     return True
-                print(f"⚠️ Could not find run with run_id={self.config.run_id}")
+                print(f"⚠️ Could not find task with internal_run_id={self.config.run_id}")
                 return False
         except Exception as e:
             print(f"❌ Failed to initialize OutputWriter: {e}")
@@ -70,7 +70,7 @@ class OutputWriter:
             return False
 
         try:
-            success = await self.db_service.write_agent_output(
+            success = await self.db_service.write_task_output(
                 task_id=self.task_id,
                 variation_id=self.variation_id,
                 content=content,

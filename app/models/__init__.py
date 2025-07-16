@@ -1,9 +1,10 @@
-from .run import Run
+from .run import AgentOutput, Run
 from .task import Task, TaskOutput, TaskStatus
 from .user import User
 
 __all__ = [
-    "Run", 
+    "AgentOutput",
+    "Run",
     "Task",
     "TaskOutput",
     "TaskStatus",

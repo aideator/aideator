@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.database import get_session
 from app.core.logging import get_logger
-from app.models.run import AgentOutput, Run, RunStatus
+from app.models.task import Task, TaskOutput, TaskStatus
 from app.models.user import User
 
 logger = get_logger(__name__)
@@ -34,33 +34,33 @@ async def get_overview(
     current_user: User | None = Depends(get_current_user_dev_bypass),
 ) -> dict[str, Any]:
     """Get overall database statistics."""
-    # Total runs
-    total_runs = await db.scalar(select(func.count(Run.id)))
+    # Total tasks
+    total_tasks = await db.scalar(select(func.count(Task.id)))
 
-    # Runs by status
+    # Tasks by status
     status_counts = await db.execute(
-        select(Run.status, func.count(Run.id)).group_by(Run.status)
+        select(Task.status, func.count(Task.id)).group_by(Task.status)
     )
-    runs_by_status = {status.value: count for status, count in status_counts}
+    tasks_by_status = {status.value: count for status, count in status_counts}
 
     # Total messages
-    total_messages = await db.scalar(select(func.count(AgentOutput.id)))
+    total_messages = await db.scalar(select(func.count(TaskOutput.id)))
 
     # Messages by type
     type_counts = await db.execute(
-        select(AgentOutput.output_type, func.count(AgentOutput.id)).group_by(
-            AgentOutput.output_type
+        select(TaskOutput.output_type, func.count(TaskOutput.id)).group_by(
+            TaskOutput.output_type
         )
     )
     messages_by_type = dict(type_counts)
 
     # Recent activity (last 24 hours)
     yesterday = datetime.utcnow() - timedelta(days=1)
-    recent_runs = await db.scalar(
-        select(func.count(Run.id)).where(Run.created_at > yesterday)
+    recent_tasks = await db.scalar(
+        select(func.count(Task.id)).where(Task.created_at > yesterday)
     )
     recent_messages = await db.scalar(
-        select(func.count(AgentOutput.id)).where(AgentOutput.timestamp > yesterday)
+        select(func.count(TaskOutput.id)).where(TaskOutput.timestamp > yesterday)
     )
 
     # Database size (SQLite specific)
@@ -74,53 +74,53 @@ async def get_overview(
     except Exception:
         db_size = 0
 
-    # Average messages per run
-    avg_messages = total_messages / max(total_runs, 1)
+    # Average messages per task
+    avg_messages = total_messages / max(total_tasks, 1)
 
-    # Active runs count
-    active_runs = await db.scalar(
-        select(func.count(Run.id)).where(
+    # Active tasks count
+    active_tasks = await db.scalar(
+        select(func.count(Task.id)).where(
             or_(
-                Run.status == RunStatus.RUNNING,
-                Run.status == RunStatus.PENDING,
+                Task.status == TaskStatus.RUNNING,
+                Task.status == TaskStatus.PENDING,
             )
         )
     )
 
     return {
-        "active_runs": active_runs or 0,
+        "active_tasks": active_tasks or 0,
         "total_messages": total_messages or 0,
         "recent_messages_1h": recent_messages or 0,
         "timestamp": datetime.utcnow().isoformat(),
     }
 
 
-@router.get("/runs", summary="Get current runs")
-async def get_runs(
+@router.get("/tasks", summary="Get current tasks")
+async def get_tasks(
     limit: int = Query(10, le=50),
     db: AsyncSession = Depends(get_session),
     current_user: User | None = Depends(get_current_user_dev_bypass),
 ) -> list[dict[str, Any]]:
-    """Get active runs with message metrics."""
+    """Get active tasks with message metrics."""
     # Build query
-    query = select(Run).order_by(desc(Run.created_at)).limit(limit)
+    query = select(Task).order_by(desc(Task.created_at)).limit(limit)
 
-    # Get runs
+    # Get tasks
     result = await db.execute(query)
-    runs = result.scalars().all()
+    tasks = result.scalars().all()
 
-    # Get message counts for each run
-    run_list = []
-    for run in runs:
+    # Get message counts for each task
+    task_list = []
+    for task in tasks:
         # Get message counts by variation
         variation_counts = await db.execute(
             select(
-                AgentOutput.variation_id,
-                func.count(AgentOutput.id).label("count"),
-                func.max(AgentOutput.timestamp).label("last_message"),
+                TaskOutput.variation_id,
+                func.count(TaskOutput.id).label("count"),
+                func.max(TaskOutput.timestamp).label("last_message"),
             )
-            .where(AgentOutput.run_id == run.id)
-            .group_by(AgentOutput.variation_id)
+            .where(TaskOutput.task_id == task.id)
+            .group_by(TaskOutput.variation_id)
         )
 
         variation_data = {}
@@ -137,36 +137,36 @@ async def get_runs(
                 last_message_time = last_msg
 
         # Calculate message rate
-        if run.started_at and last_message_time:
-            duration = (last_message_time - run.started_at).total_seconds()
+        if task.started_at and last_message_time:
+            duration = (last_message_time - task.started_at).total_seconds()
             message_rate = total_messages / max(duration, 1)
         else:
             message_rate = 0
 
-        run_list.append(
+        task_list.append(
             {
-                "id": run.id,
-                "status": run.status.value,
-                "github_url": getattr(run, "github_url", "") or "",
-                "prompt": (run.prompt[:100] + "..." if len(run.prompt) > 100 else run.prompt) if run.prompt else "",
-                "variations": getattr(run, "variations", 1) or 1,
-                "created_at": run.created_at.isoformat(),
-                "started_at": run.started_at.isoformat() if run.started_at else None,
+                "id": task.id,
+                "status": task.status.value,
+                "github_url": getattr(task, "github_url", "") or "",
+                "prompt": (task.prompt[:100] + "..." if len(task.prompt) > 100 else task.prompt) if task.prompt else "",
+                "variations": getattr(task, "variations", 1) or 1,
+                "created_at": task.created_at.isoformat(),
+                "started_at": task.started_at.isoformat() if task.started_at else None,
                 "message_count": total_messages,
                 "message_rate_per_second": round(message_rate, 2),
                 "variation_metrics": variation_data,
-                "winning_variation_id": getattr(run, "winning_variation_id", None),
+                "internal_run_id": getattr(task, "internal_run_id", None),
             }
         )
 
-    return run_list
+    return task_list
 
 
-@router.get("/messages", summary="Get recent messages across all runs")
+@router.get("/messages", summary="Get recent messages across all tasks")
 async def get_message_stream(
     limit: int = Query(100, le=500),
     offset: int = Query(0),
-    run_id: str | None = Query(None),
+    task_id: int | None = Query(None),
     variation_id: int | None = Query(None),
     output_type: str | None = Query(None),
     search: str | None = Query(None),
@@ -175,19 +175,19 @@ async def get_message_stream(
 ) -> dict[str, Any]:
     """Get recent messages with filtering."""
     # Build query
-    query = select(AgentOutput)
+    query = select(TaskOutput)
 
     # Apply filters
     conditions = []
-    if run_id:
-        conditions.append(AgentOutput.run_id == run_id)
+    if task_id:
+        conditions.append(TaskOutput.task_id == task_id)
     if variation_id is not None:
-        conditions.append(AgentOutput.variation_id == variation_id)
+        conditions.append(TaskOutput.variation_id == variation_id)
     if output_type:
-        conditions.append(AgentOutput.output_type == output_type)
+        conditions.append(TaskOutput.output_type == output_type)
     if search:
         conditions.append(
-            func.lower(AgentOutput.content).like(func.lower(f"%{search}%"))
+            func.lower(TaskOutput.content).like(func.lower(f"%{search}%"))
         )
 
     if conditions:
@@ -201,7 +201,7 @@ async def get_message_stream(
     total_count = await db.scalar(count_query)
 
     # Apply pagination and ordering
-    query = query.order_by(desc(AgentOutput.timestamp)).offset(offset).limit(limit)
+    query = query.order_by(desc(TaskOutput.timestamp)).offset(offset).limit(limit)
 
     # Execute query
     result = await db.execute(query)
@@ -214,7 +214,7 @@ async def get_message_stream(
         "messages": [
             {
                 "id": msg.id,
-                "run_id": msg.run_id,
+                "task_id": msg.task_id,
                 "variation_id": msg.variation_id,
                 "content": msg.content,
                 "timestamp": msg.timestamp.isoformat(),
@@ -229,23 +229,23 @@ async def get_message_stream(
 async def search_messages(
     query: str = Query(..., min_length=1),
     limit: int = Query(50, le=200),
-    run_id: str | None = Query(None),
+    task_id: int | None = Query(None),
     output_type: str | None = Query(None),
     db: AsyncSession = Depends(get_session),
     current_user: User | None = Depends(get_current_user_dev_bypass),
 ) -> list[dict[str, Any]]:
     """Search message content."""
     # Build search query
-    search_query = select(AgentOutput).where(
-        func.lower(AgentOutput.content).like(func.lower(f"%{query}%"))
+    search_query = select(TaskOutput).where(
+        func.lower(TaskOutput.content).like(func.lower(f"%{query}%"))
     )
 
-    if run_id:
-        search_query = search_query.where(AgentOutput.run_id == run_id)
+    if task_id:
+        search_query = search_query.where(TaskOutput.task_id == task_id)
     if output_type:
-        search_query = search_query.where(AgentOutput.output_type == output_type)
+        search_query = search_query.where(TaskOutput.output_type == output_type)
 
-    search_query = search_query.order_by(desc(AgentOutput.timestamp)).limit(limit)
+    search_query = search_query.order_by(desc(TaskOutput.timestamp)).limit(limit)
 
     # Execute search
     result = await db.execute(search_query)
@@ -254,7 +254,7 @@ async def search_messages(
     return [
         {
             "id": msg.id,
-            "run_id": msg.run_id,
+            "task_id": msg.task_id,
             "variation_id": msg.variation_id,
             "content": msg.content[:500] + "..." if len(msg.content) > 500 else msg.content,
             "timestamp": msg.timestamp.isoformat(),
@@ -276,17 +276,17 @@ async def get_live_activity(
     # Get activity from last 5 minutes
     since = datetime.utcnow() - timedelta(minutes=5)
 
-    # Get active containers (runs with recent messages)
+    # Get active containers (tasks with recent messages)
     active_containers_query = select(
-        AgentOutput.run_id,
-        AgentOutput.variation_id,
-        func.count(AgentOutput.id).label("message_count"),
-        func.max(AgentOutput.timestamp).label("latest_timestamp"),
-        func.max(AgentOutput.content).label("latest_message")
+        TaskOutput.task_id,
+        TaskOutput.variation_id,
+        func.count(TaskOutput.id).label("message_count"),
+        func.max(TaskOutput.timestamp).label("latest_timestamp"),
+        func.max(TaskOutput.content).label("latest_message")
     ).where(
-        AgentOutput.timestamp > since
+        TaskOutput.timestamp > since
     ).group_by(
-        AgentOutput.run_id, AgentOutput.variation_id
+        TaskOutput.task_id, TaskOutput.variation_id
     ).order_by(
         desc("latest_timestamp")
     ).limit(10)
@@ -296,7 +296,7 @@ async def get_live_activity(
 
     for row in result:
         container_activity.append({
-            "run_id": row.run_id,
+            "task_id": row.task_id,
             "variation_id": row.variation_id,
             "message_count": row.message_count,
             "latest_timestamp": row.latest_timestamp.isoformat(),
@@ -330,12 +330,12 @@ async def health_check(
         health_checks["database_connection"] = True
 
         # Test read
-        await db.scalar(select(func.count(Run.id)))
+        await db.scalar(select(func.count(Task.id)))
         health_checks["read_test"] = True
 
         # Test write (create and delete a test record)
-        test_output = AgentOutput(
-            run_id="health-check-test",
+        test_output = TaskOutput(
+            task_id=999999,  # Use a test task ID
             variation_id=0,
             content="Health check test",
             output_type="system",

@@ -104,6 +104,7 @@ class TaskResponse(BaseModel):
     total_cost_usd: float | None = None
     error_message: str | None = None
     polling_url: str
+    websocket_url: str | None = None
     estimated_duration_seconds: int | None = None
 
     class Config:
