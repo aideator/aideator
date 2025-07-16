@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     enable_kubernetes_secrets: bool = True  # Set false for local development
     
     # Security Features
-    enable_rate_limiting: bool = True  # Disable for development
+    # Removed rate limiting - not needed for core functionality
     enable_cors_strict: bool = True  # Allow all origins in dev
     enable_jwt_expiration: bool = True  # Long-lived tokens in dev
     
@@ -102,10 +102,7 @@ class Settings(BaseSettings):
     jaeger_agent_host: str | None = None
     jaeger_agent_port: int | None = None
 
-    # Rate Limiting
-    rate_limit_enabled: bool = True
-    rate_limit_requests: int = 100
-    rate_limit_period: int = 60
+    # Removed rate limiting configuration - not needed for core functionality
 
     # LiteLLM Proxy Configuration
     LITELLM_PROXY_URL: str = "http://localhost:4000"

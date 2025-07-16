@@ -14,7 +14,6 @@ from app.core.database import create_db_and_tables
 from app.core.logging import setup_logging
 from app.middleware.development import DevelopmentAuthMiddleware
 from app.middleware.logging import LoggingMiddleware
-from app.middleware.rate_limit import RateLimitMiddleware
 from app.services.redis_service import redis_service
 from app.tasks.model_sync_task import model_sync_task
 
@@ -128,8 +127,6 @@ def create_application() -> FastAPI:
     if settings.allowed_hosts != ["*"]:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
 
-    if getattr(settings, 'enable_rate_limiting', True):
-        app.add_middleware(RateLimitMiddleware)
 
     # Add development middleware for simplified auth (must be before LoggingMiddleware)
     if settings.simple_dev_mode or settings.auto_create_test_user:
