@@ -429,7 +429,7 @@
                 end_date: document.getElementById('runsEndDate').value
             };
 
-            const data = await fetchData('/runs', params);
+            const data = await fetchData('/admin-messaging/runs', params);
             
             if (!data) {
                 document.getElementById('runsTableBody').innerHTML = 
@@ -508,7 +508,7 @@
             // Get run IDs from both agent_outputs and runs tables
             const [outputData, runData] = await Promise.all([
                 fetchData('/run-ids'),
-                fetchData('/runs?limit=100')
+                fetchData('/admin-messaging/runs?limit=100')
             ]);
             
             const select = document.getElementById('outputRunId');

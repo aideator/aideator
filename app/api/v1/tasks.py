@@ -66,10 +66,10 @@ async def create_task(
     await db.commit()
     await db.refresh(new_task)
 
-    # Build internal run_id for compatibility (uuid-like)
-    import uuid
-
-    run_id = f"task-{new_task.id}-{uuid.uuid4().hex[:8]}"
+    # Build internal run_id to match Kubernetes job naming
+    # This MUST match the job name pattern: task-{task_id}-{variation_id}
+    # For now, store just the base pattern - agents will append variation_id
+    run_id = f"task-{new_task.id}"
     new_task.internal_run_id = run_id
     await db.commit()
 
@@ -135,9 +135,9 @@ async def list_tasks(
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_session),
 ) -> TaskListResponse:
-    """Get list of tasks for the main page (reads from runs table)."""
+    """Get list of tasks for the main page (reads from tasks table)."""
 
-    # Query runs for the current user, ordered by creation date (newest first)
+    # Query tasks for the current user, ordered by creation date (newest first)
     tasks_query = (
         select(Task)
         .where(Task.user_id == current_user.id)
@@ -154,7 +154,7 @@ async def list_tasks(
     count_result = await db.execute(count_query)
     total = count_result.scalar() or 0
 
-    # Convert runs to task list items
+    # Convert tasks to task list items
     tasks = []
     for task_row in tasks_rows:
         # Generate title from prompt (truncate if needed)

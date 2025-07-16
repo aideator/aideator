@@ -14,7 +14,7 @@ the decoupled background processing architecture that mimics:
 The workflow separates task submission from task monitoring:
 
 1. TASK SUBMISSION (Main Page)
-   User Input → POST /api/v1/runs → Database → Kubernetes Jobs → Background Processing
+   User Input → POST /api/v1/tasks → Database → Kubernetes Jobs → Background Processing
 
 2. BACKGROUND PROCESSING  
    K8s Jobs → Write to SQL (agent_outputs table) → Continue independently
@@ -480,7 +480,7 @@ class EnvironmentChecker:
         🌐 API ARCHITECTURE
         
         Tests the separated API endpoints that implement the background processing workflow:
-        • POST /api/v1/runs: Task submission (like OpenAI Codex "Run" button)  
+        • POST /api/v1/tasks: Task submission (like OpenAI Codex "Run" button)  
         • GET /api/v1/tasks: Task monitoring (like Cursor.com background status)
         • Authentication bypass in development mode
         """
@@ -517,34 +517,27 @@ class EnvironmentChecker:
                 test_run = {
                     "github_url": "https://github.com/fastapi/fastapi",
                     "prompt": "Test background processing workflow validation",
-                    "model_variants": [
-                        {
-                            "model_definition_id": "gpt-4o-mini",
-                            "temperature": 0.1,
-                            "max_tokens": 1000
-                        }
-                    ],
-                    "use_claude_code": False,
+                    "model_names": ["gpt-4o-mini"],
                     "agent_mode": "litellm"
                 }
 
-                response = await client.post(f"{self.base_url}/api/v1/runs", json=test_run)
+                response = await client.post(f"{self.base_url}/api/v1/tasks", json=test_run)
                 if response.status_code == 202:  # Accepted for processing
                     data = response.json()
-                    run_id = data.get("run_id")
-                    self.print_success(f"Run creation successful: {run_id}")
-                    self.print_workflow("Submission Flow", "Frontend → POST /api/v1/runs → K8s Jobs → Background Processing")
+                    task_id = data.get("task_id")
+                    self.print_success(f"Task creation successful: {task_id}")
+                    self.print_workflow("Submission Flow", "Frontend → POST /api/v1/tasks → K8s Jobs → Background Processing")
 
                     # Test 4: Task detail endpoint
                     await asyncio.sleep(1)  # Brief pause for database write
-                    response = await client.get(f"{self.base_url}/api/v1/tasks/{run_id}")
+                    response = await client.get(f"{self.base_url}/api/v1/tasks/{task_id}")
                     if response.status_code == 200:
                         task_data = response.json()
                         self.print_success("Task detail endpoint works")
                         self.print_info(f"Task status: {task_data.get('task_status', 'unknown')}")
 
                         # Test 5: Agent outputs endpoint
-                        response = await client.get(f"{self.base_url}/api/v1/tasks/{run_id}/outputs")
+                        response = await client.get(f"{self.base_url}/api/v1/tasks/{task_id}/outputs")
                         if response.status_code == 200:
                             outputs = response.json()
                             self.print_success("Agent outputs endpoint accessible")
@@ -603,26 +596,19 @@ class EnvironmentChecker:
                 workflow_test = {
                     "github_url": "https://github.com/python/cpython",
                     "prompt": "Background workflow validation - add error handling to a simple function",
-                    "model_variants": [
-                        {
-                            "model_definition_id": "gpt-4o-mini",
-                            "temperature": 0.2,
-                            "max_tokens": 2000
-                        }
-                    ],
-                    "use_claude_code": False,
+                    "model_names": ["gpt-4o-mini"],
                     "agent_mode": "litellm"
                 }
 
                 # Submit task
-                response = await client.post(f"{self.base_url}/api/v1/runs", json=workflow_test)
+                response = await client.post(f"{self.base_url}/api/v1/tasks", json=workflow_test)
                 if response.status_code != 202:
                     self.print_error(f"Task submission failed: {response.status_code}")
                     self.record_result("Background Workflow", False, "Submission failed")
                     return False
 
                 data = response.json()
-                task_id = data["run_id"]
+                task_id = data["task_id"]
                 websocket_url = data.get("websocket_url", "")
 
                 self.print_success(f"✅ Task submitted: {task_id}")
@@ -635,7 +621,7 @@ class EnvironmentChecker:
                 response = await client.get(f"{self.base_url}/api/v1/tasks")
                 if response.status_code == 200:
                     tasks_data = response.json()
-                    task_found = any(task["id"] == task_id for task in tasks_data.get("tasks", []))
+                    task_found = any(str(task["id"]) == str(task_id) for task in tasks_data.get("tasks", []))
 
                     if task_found:
                         self.print_success("✅ Task appears in task list")

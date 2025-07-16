@@ -16,7 +16,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sqlmodel import func, select, text
 
 from app.core.database import get_session
-from app.models.run import AgentOutput, Run, RunStatus
+from app.models.run import Run, RunStatus
+from app.models.task import TaskOutput
 from app.models.user import User
 
 # =============================================================================
@@ -251,7 +252,7 @@ class TestDataBuilder:
             for variation_data in task_data["outputs"]:
                 variation_id = variation_data["variation_id"]
                 for output_data in variation_data["outputs"]:
-                    output = AgentOutput(
+                    output = TaskOutput(
                         task_id=run.task_id,
                         variation_id=variation_id,
                         content=output_data["content"],

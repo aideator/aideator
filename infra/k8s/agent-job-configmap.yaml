@@ -8,10 +8,10 @@ data:
     apiVersion: batch/v1
     kind: Job
     metadata:
-      name: "agent-{run_id}-{variation_id}"
+      name: "task-{task_id}-{variation_id}"
       labels:
         app: aideator-agent
-        run-id: "{run_id}"
+        task-id: "{task_id}"
         variation-id: "{variation_id}"
         component: agent
     spec:
@@ -21,7 +21,7 @@ data:
         metadata:
           labels:
             app: aideator-agent
-            run-id: "{run_id}"
+            task-id: "{task_id}"
             variation-id: "{variation_id}"
             component: agent
         spec:
@@ -43,8 +43,8 @@ data:
                   value: "{prompt}"
                 - name: VARIATION_ID
                   value: "{variation_id}"
-                - name: RUN_ID
-                  value: "{run_id}"
+                - name: TASK_ID
+                  value: "{task_id}"
                 - name: LOG_LEVEL
                   value: "INFO"
                 - name: PYTHONUNBUFFERED

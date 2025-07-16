@@ -41,6 +41,6 @@ still compile while the new path is being built._
    • After code is clean, delete the migration-gate file and apply Alembic 002.
 
 6. **Cleanup**
-   • Remove dead `Run` / `AgentOutput` references, delete models when safe.
+   • Remove dead `Run` / `TaskOutput` references, delete models when safe.
 
 "Step by step, migrate we must. – Yoda"

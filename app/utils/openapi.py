@@ -41,8 +41,8 @@ def custom_openapi(app: FastAPI) -> Callable[[], dict[str, Any]]:
         # Add tags with descriptions
         openapi_schema["tags"] = [
             {
-                "name": "Runs",
-                "description": "Agent run management endpoints",
+                "name": "Tasks",
+                "description": "Task management endpoints",
             },
             {
                 "name": "Streaming",
@@ -126,15 +126,15 @@ def custom_openapi(app: FastAPI) -> Callable[[], dict[str, Any]]:
             openapi_schema["paths"] = {}
 
         # WebSocket endpoints for streaming
-        openapi_schema["paths"]["/ws/runs/{run_id}"] = {
+        openapi_schema["paths"]["/ws/tasks/{task_id}"] = {
             "get": {
                 "tags": ["WebSocket"],
-                "summary": "WebSocket stream for agent outputs",
+                "summary": "WebSocket stream for task outputs",
                 "description": """
-                WebSocket endpoint for real-time streaming of agent outputs.
+                WebSocket endpoint for real-time streaming of task outputs.
 
                 **Connection:**
-                - Connect to: `ws://localhost:8000/ws/runs/{run_id}`
+                - Connect to: `ws://localhost:8000/ws/tasks/{task_id}`
                 - Protocol: WebSocket
                 - Authentication: Optional (query params or headers)
 
@@ -148,7 +148,7 @@ def custom_openapi(app: FastAPI) -> Callable[[], dict[str, Any]]:
                 - `pong` - Ping response
 
                 **Message Types Sent:**
-                - `cancel` - Cancel the run
+                - `cancel` - Cancel the task
                 - `ping` - Keepalive ping
 
                 **Message Format:**
@@ -157,7 +157,7 @@ def custom_openapi(app: FastAPI) -> Callable[[], dict[str, Any]]:
                   "type": "llm|stdout|status|control_ack|error|pong",
                   "message_id": "stream_id",
                   "data": {
-                    "run_id": "run-abc123",
+                    "task_id": "123",
                     "variation_id": "0",
                     "content": "Agent output text...",
                     "timestamp": "2024-01-01T00:00:00Z",
@@ -168,22 +168,22 @@ def custom_openapi(app: FastAPI) -> Callable[[], dict[str, Any]]:
                 """,
                 "parameters": [
                     {
-                        "name": "run_id",
+                        "name": "task_id",
                         "in": "path",
                         "required": True,
-                        "schema": {"type": "string"},
-                        "description": "The run ID to stream",
+                        "schema": {"type": "integer"},
+                        "description": "The task ID to stream",
                     }
                 ],
                 "responses": {
                     "101": {"description": "WebSocket connection established"},
-                    "404": {"description": "Run not found"},
+                    "404": {"description": "Task not found"},
                     "403": {"description": "Access denied"},
                 },
             }
         }
 
-        openapi_schema["paths"]["/ws/runs/{run_id}/debug"] = {
+        openapi_schema["paths"]["/ws/tasks/{task_id}/debug"] = {
             "get": {
                 "tags": ["WebSocket"],
                 "summary": "WebSocket debug stream for stdout logs only",
@@ -191,7 +191,7 @@ def custom_openapi(app: FastAPI) -> Callable[[], dict[str, Any]]:
                 WebSocket endpoint for debugging - streams only stdout logs for a specific variation.
 
                 **Connection:**
-                - Connect to: `ws://localhost:8000/ws/runs/{run_id}/debug?variation_id=0`
+                - Connect to: `ws://localhost:8000/ws/tasks/{task_id}/debug?variation_id=0`
                 - Protocol: WebSocket
                 - Filters: Only stdout messages for specified variation
 
@@ -201,7 +201,7 @@ def custom_openapi(app: FastAPI) -> Callable[[], dict[str, Any]]:
                   "type": "stdout",
                   "message_id": "stream_id",
                   "data": {
-                    "run_id": "run-abc123",
+                    "task_id": "123",
                     "variation_id": "0",
                     "content": "Debug log output...",
                     "timestamp": "2024-01-01T00:00:00Z"
@@ -211,11 +211,11 @@ def custom_openapi(app: FastAPI) -> Callable[[], dict[str, Any]]:
                 """,
                 "parameters": [
                     {
-                        "name": "run_id",
+                        "name": "task_id",
                         "in": "path",
                         "required": True,
-                        "schema": {"type": "string"},
-                        "description": "The run ID to debug",
+                        "schema": {"type": "integer"},
+                        "description": "The task ID to debug",
                     },
                     {
                         "name": "variation_id",
@@ -227,7 +227,7 @@ def custom_openapi(app: FastAPI) -> Callable[[], dict[str, Any]]:
                 ],
                 "responses": {
                     "101": {"description": "WebSocket connection established"},
-                    "404": {"description": "Run not found"},
+                    "404": {"description": "Task not found"},
                 },
             }
         }

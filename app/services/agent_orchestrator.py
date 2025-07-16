@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.models.task import Task, TaskStatus
-from app.schemas.runs import AgentConfig
+from app.schemas.tasks import AgentConfig
 from app.services.kubernetes_service import KubernetesService
 
 logger = get_logger(__name__)

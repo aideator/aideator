@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Clear agent_outputs data from database.
+Clear task_outputs data from database.
 """
 
 import asyncio
@@ -10,8 +10,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 
-async def clear_agent_outputs():
-    """Clear all agent_outputs data from database."""
+async def clear_task_outputs():
+    """Clear all task_outputs data from database."""
     # Use the standard database URL from environment or default
     database_url = os.getenv("DATABASE_URL", "postgresql://aideator:aideator123@localhost:5432/aideator")
 
@@ -27,13 +27,13 @@ async def clear_agent_outputs():
         engine = create_async_engine(database_url)
 
         async with engine.begin() as conn:
-            # Clear agent_outputs table
-            result = await conn.execute(text("DELETE FROM agent_outputs;"))
-            print(f"Deleted {result.rowcount} records from agent_outputs table")
+            # Clear task_outputs table
+            result = await conn.execute(text("DELETE FROM task_outputs;"))
+            print(f"Deleted {result.rowcount} records from task_outputs table")
 
             # Reset auto-increment counter
-            await conn.execute(text("ALTER SEQUENCE agent_outputs_id_seq RESTART WITH 1;"))
-            print("Reset agent_outputs ID sequence")
+            await conn.execute(text("ALTER SEQUENCE task_outputs_id_seq RESTART WITH 1;"))
+            print("Reset task_outputs ID sequence")
 
         await engine.dispose()
         print("Database cleared successfully")
@@ -45,5 +45,5 @@ async def clear_agent_outputs():
     return True
 
 if __name__ == "__main__":
-    success = asyncio.run(clear_agent_outputs())
+    success = asyncio.run(clear_task_outputs())
     exit(0 if success else 1)

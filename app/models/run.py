@@ -74,22 +74,3 @@ class Run(SQLModel, table=True):
     def id(self) -> str:
         """Alias for run_id kept for backward compatibility."""
         return self.run_id
-
-
-class AgentOutput(SQLModel, table=True):
-    """
-    Database model for agent outputs.
-
-    Each output belongs to a specific variation (0, 1, 2, etc.) within a run.
-    """
-
-    __tablename__ = "agent_outputs"
-
-    id: int | None = Field(default=None, primary_key=True)
-    task_id: int = Field(foreign_key="runs.task_id", index=True)
-    variation_id: int = Field(default=0, index=True)  # Which model variation (0, 1, 2, etc.)
-    content: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow, index=True)
-    output_type: str = Field(
-        default="stdout"
-    )  # stdout, stderr, status, summary, diffs, logging, addinfo

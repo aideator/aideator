@@ -34,10 +34,9 @@ class AIdeatorAgent:
 
     def __init__(self):
         """Initialize agent - maintains original interface."""
-        self.variation_id = os.getenv("VARIATION_ID", "0")
+        # Use TASK_ID as the primary identifier (run_id deprecated)
         self.task_id = os.getenv("TASK_ID")
-        # Generate run_id from task_id for backward compatibility
-        self.run_id = f"task-{self.task_id}-{self.variation_id}" if self.task_id else "local-test"
+        self.variation_id = os.getenv("VARIATION_ID", "0")
 
         # Initialize the orchestrator that does the real work
         self._orchestrator = AgentOrchestrator()
@@ -51,7 +50,9 @@ class AIdeatorAgent:
             level=logging.INFO,
             format="%(asctime)s - %(levelname)s - %(message)s"
         )
-        self.logger = logging.getLogger(f"agent_{self.run_id}_{self.variation_id}")
+        self.logger = logging.getLogger(
+            f"agent_task-{self.task_id or 'local'}_{self.variation_id}"
+        )
 
     async def run(self) -> None:
         """Main agent execution - delegates to orchestrator."""
@@ -75,7 +76,7 @@ class AIdeatorAgent:
         """
         log_entry = {
             "timestamp": datetime.now(UTC).isoformat(),
-            "run_id": self.run_id,
+            "task_id": self.task_id,
             "variation_id": self.variation_id,
             "level": level,
             "message": message,
@@ -104,11 +105,9 @@ async def main():
             if await db_service.health_check():
                 print("✅ Database connection successful")
 
-                # Try to write a startup message if we have environment variables  
+                # Try to write a startup message if we have environment variables
                 variation_id = int(os.getenv("VARIATION_ID", "0"))
                 task_id_env = os.getenv("TASK_ID")
-                # Generate run_id from task_id for backward compatibility
-                run_id = f"task-{task_id_env}-{variation_id}" if task_id_env else "unknown"
 
                 if task_id_env:
                     # Use task_id directly from environment (unified tasks)
@@ -116,24 +115,12 @@ async def main():
                     await db_service.write_log(
                         task_id=task_id,
                         variation_id=variation_id,
-                        log_message=f"Agent starting up for task_id={task_id}, run_id={run_id} (UNIFIED TASK VERSION)",
+                        log_message=f"Agent starting up for task_id={task_id}, variation_id={variation_id}",
                         log_level="INFO"
                     )
                     print(f"✅ Wrote startup message to database for task_id={task_id}")
                 else:
-                    # Fallback to legacy run lookup using internal_run_id
-                    task = await db_service.get_task_by_internal_run_id(run_id)
-                    if task:
-                        task_id = task.id
-                        await db_service.write_log(
-                            task_id=task_id,
-                            variation_id=variation_id,
-                            log_message=f"Agent starting up for run_id={run_id}, task_id={task_id} (LEGACY VERSION)",
-                            log_level="INFO"
-                        )
-                        print(f"✅ Wrote startup message to database for task_id={task_id}")
-                    else:
-                        print(f"⚠️ Could not find task with internal_run_id={run_id}")
+                    print(f"❌ TASK_ID environment variable not set - cannot continue")
 
             else:
                 print("❌ Database health check failed")
@@ -170,15 +157,10 @@ async def main():
                 if task_id_env:
                     # Use task_id directly (unified tasks)
                     task_id = int(task_id_env)
-                    await db_service.write_error(task_id, 0, error_msg)
-                else:
-                    # Fallback to legacy run lookup using internal_run_id
-                    # Generate run_id from task_id for backward compatibility
                     variation_id = int(os.getenv("VARIATION_ID", "0"))
-                    run_id = f"task-{task_id_env}-{variation_id}" if task_id_env else "unknown"
-                    task = await db_service.get_task_by_internal_run_id(run_id)
-                    if task:
-                        await db_service.write_error(task.id, 0, error_msg)
+                    await db_service.write_error(task_id, variation_id, error_msg)
+                else:
+                    print("❌ Cannot write error - TASK_ID not set")
                 await db_service.close()
         except:
             pass  # Best effort

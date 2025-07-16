@@ -11,7 +11,8 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 
 # Import models to ensure they're registered with SQLModel
-from app.models.run import AgentOutput, Run  # noqa: F401
+from app.models.run import Run  # noqa: F401
+from app.models.task import Task, TaskOutput  # noqa: F401
 from app.models.user import User  # noqa: F401
 
 settings = get_settings()

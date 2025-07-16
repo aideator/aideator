@@ -1,22 +1,22 @@
 # AIdeator
 
-**Simple multi-agent AI comparison platform for coding tasks**
+**Background pipeline for AI-assisted development**
 
-AIdeator enables side-by-side comparison of different AI approaches to the same coding task. Built with a student-friendly development philosophy, it prioritizes simplicity and quick setup over architectural complexity. Think GitHub Actions for AI agents - submit a task, agents run in containers, view results.
+AIdeator is a development pipeline that runs AI agents in the background while you continue coding. Built with a student-friendly development philosophy, it prioritizes simplicity and quick setup over architectural complexity. Think CI/CD for AI assistance - submit tasks to the pipeline, keep working while agents process in parallel, check results when convenient.
 
 ## 🚀 Key Features
 
-### Simple Multi-Agent Comparison
-- **2-Page Frontend**: Submit tasks → View results (no complex navigation)
-- **3-Endpoint API**: POST /runs, GET /runs/{id}, GET /runs/{id}/outputs
-- **Container Execution**: Agents run in isolated containers (Podman locally, Kubernetes in cloud)
-- **Side-by-Side Results**: Compare different AI approaches and implementations
+### AI Development Pipeline
+- **Fire-and-Forget**: Submit development tasks to the pipeline and continue coding
+- **Background Processing**: AI agents work asynchronously while you focus on other tasks
+- **Parallel Execution**: Multiple agents explore different implementation approaches simultaneously
+- **Pipeline Observability**: Monitor agent progress when convenient through simple web interface
 
-### GitHub Actions-Like Workflow
-- **Submit & Go**: Submit coding tasks and agents run in background
-- **Job Execution**: Each agent runs as an independent container job
-- **Progress Monitoring**: Real-time logs and outputs via database polling
-- **Multiple Providers**: Support for OpenAI, Anthropic, and other LLM providers
+### Asynchronous Development Workflow
+- **Pipeline Submission**: POST tasks to the pipeline, get immediate acknowledgment
+- **Background Agents**: Each agent runs in isolated containers processing independently
+- **Progress Monitoring**: Check pipeline status and outputs via database polling
+- **Multiple Providers**: Leverage OpenAI, Anthropic, and other LLMs in parallel
 
 ### Student-Friendly Development
 - **10-Minute Setup**: Simple installation with minimal complexity
@@ -28,18 +28,18 @@ AIdeator enables side-by-side comparison of different AI approaches to the same 
 
 ### Core Components
 - **Frontend**: 2 pages (Submit + Results)
-- **API**: 3 endpoints (create run, get run, get outputs)
+- **API**: 3 endpoints (create task, get task, get outputs)
 - **Database**: Single PostgreSQL instance
 - **Containers**: Podman (local) or Kubernetes (cloud)
 
 ### Workflow
 ```
-1. Submit Task → POST /api/v1/runs → Database Entry → Container Job
-2. Monitor Progress → GET /api/v1/runs/{id}/outputs → Database → Display
+1. Submit Task → POST /api/v1/tasks → Database Entry → Container Job
+2. Monitor Progress → GET /api/v1/tasks/{id}/outputs → Database → Display
 ```
 
 ### Data Flow
-- **Single Table**: `runs` table stores everything
+- **Single Table**: `tasks` table stores everything
 - **No Sessions**: Stateless operation
 - **No Complex Auth**: Simple development mode
 - **Container Logs**: All outputs captured in database
@@ -108,100 +108,159 @@ tilt up
 tilt trigger database-migrate
 ```
 
-## 🎯 Core Use Case: Multi-Agent Comparison
+## 🎯 Core Use Case: Background AI Development Pipeline
 
-### Simple 2-Page Workflow
-1. **Submit Page** (`http://localhost:3000`)
-   - Enter GitHub repository URL and coding prompt
-   - Select AI models to compare (GPT-4, Claude, etc.)
-   - Submit task → Container jobs start in background
+### Simple Pipeline Workflow
+1. **Submit to Pipeline** (`http://localhost:3000`)
+   - Enter GitHub repository URL and development prompt
+   - Select AI agents for parallel exploration (GPT-4, Claude, etc.)
+   - Submit task → Pipeline starts processing in background
 
-2. **Results Page** (`http://localhost:3000/runs/{id}`)
-   - View side-by-side outputs from different AI models
-   - Compare approaches, code changes, and reasoning
-   - All outputs captured in real-time via database polling
+2. **Continue Working** 
+   - Keep coding while AI agents process your task
+   - No blocking, no waiting - pure asynchronous workflow
+   - Pipeline runs independently in the background
 
-### What You Get
-- **Different AI Perspectives**: See how GPT-4 vs Claude approaches the same task
-- **Code Comparison**: View proposed changes side-by-side
-- **Execution Logs**: Full transparency into AI reasoning process
-- **Error Analysis**: Understand where different models succeed/fail
+3. **Check Pipeline Results** (`http://localhost:3000/tasks/{id}`)
+   - View outputs from parallel AI agents when convenient
+   - See different implementation approaches explored
+   - All pipeline activity captured for full observability
 
-### Container Execution
-- **Isolated Jobs**: Each AI model runs in separate container
-- **Resource Limits**: Prevents runaway processes
-- **Automatic Cleanup**: Containers terminate after completion
-- **Progress Tracking**: Real-time status via database
+### Pipeline Benefits
+- **Asynchronous Development**: Submit and forget, check results later
+- **Parallel Exploration**: Multiple AI agents work on your task simultaneously
+- **Non-Blocking Workflow**: Continue your work while pipeline processes
+- **Full Observability**: Complete visibility into pipeline execution
 
-## 🔧 Development Commands
+### Pipeline Execution
+- **Isolated Processing**: Each agent runs in separate container
+- **Resource Management**: Pipeline prevents runaway processes
+- **Automatic Cleanup**: Pipeline manages container lifecycle
+- **Progress Tracking**: Real-time pipeline status via database
 
+## 🔧 System Management
+
+### Installation Commands
 ```bash
-# Environment Management
-tilt up                        # Start full development environment
+# System-wide installation
+sudo make install           # Install as system package
+sudo make uninstall         # Remove installation
+
+# Service management
+aideator start              # Start all services
+aideator stop               # Stop all services
+aideator restart            # Restart services
+aideator status             # Check service status
+
+# Configuration
+aideator config set KEY=value  # Set configuration
+aideator config get KEY        # Get configuration
+aideator config list          # List all settings
+```
+
+### Development Commands
+```bash
+# Development environment (alternative to installation)
+tilt up                        # Start development environment
 tilt down                     # Stop all services
 tilt trigger database-migrate  # Run database migrations
 
 # Testing & Validation
 uv run python scripts/check_everything.py    # Full environment validation
-uv run python scripts/test_api_endpoints.py  # API architecture testing
-
-# Container Management
-./force-rebuild-agent.sh     # Force rebuild agent containers
+uv run python scripts/test_api_endpoints.py  # API testing
 
 # Code Quality
 uv run test-all              # Run all tests and quality checks
 cd frontend && npm run test  # Frontend tests
 ```
 
-## 📊 Monitoring & Observability
+## 📊 Data & Storage
+
+### Data Persistence
+- **Database**: PostgreSQL stored in XDG-compliant directories
+- **Configuration**: `~/.config/aideator/config.toml`
+- **Logs**: `~/.local/share/aideator/logs/`
+- **Container Images**: Managed by Podman/Docker
 
 ### Service Health
 - **API Health**: `http://localhost:8000/health`
-- **Database**: PostgreSQL with persistent storage
-- **Redis**: Optional for enhanced streaming
-- **Kubernetes**: Job status and resource monitoring
+- **Database Status**: `aideator status database`
+- **Container Status**: `aideator status containers`
+- **Full Status**: `aideator status`
 
-### Logging & Metrics
+### Monitoring
 - **Structured logging** with request IDs
-- **Prometheus metrics** for monitoring
-- **Database persistence** of all agent outputs
-- **Real-time streaming** via WebSocket connections
+- **Database-driven progress** tracking
+- **Container resource** monitoring
+- **Simple polling** for real-time updates (no WebSocket complexity)
 
-## 🌟 Use Cases
+## 🌟 Primary Use Cases: Pipeline-Based Development
 
-### Code Analysis
-- **Repository analysis** with multiple AI perspectives
-- **Code review** automation with different models
-- **Documentation generation** comparison
+### Core Concept
+**"Submit AI development tasks to the pipeline and continue working while agents process in parallel"**
 
-### Development Workflow
-- **Prototype comparison** - see different implementation approaches
-- **Model evaluation** - compare AI model performance on coding tasks
-- **Educational tool** - understand different AI reasoning patterns
+### Practical Pipeline Applications
+- **Automated Refactoring**: Submit legacy code for parallel refactoring approaches while you work on features
+- **Code Analysis**: Pipeline analyzes codebase for improvements while you continue development
+- **Documentation Generation**: AI agents create documentation in background as you code
+- **Implementation Exploration**: Explore multiple approaches to a problem without blocking your workflow
 
-### Research & Development
-- **Multi-model benchmarking** on coding tasks
-- **Prompt engineering** with side-by-side results
-- **AI behavior analysis** across different providers
+### Example Pipeline Workflows
 
-## 🔒 Security & Production
+#### Background Refactoring
+1. **Submit**: "Refactor this authentication module to use JWT"
+2. **Continue**: Work on other features while pipeline processes
+3. **Review**: Check multiple refactoring approaches when ready
+4. **Apply**: Choose the best approach or combine insights
 
-### Development Mode
-- **Global API keys** for simplified development
-- **Authentication bypass** for local testing
-- **Persistent database** storage in `/tmp`
+#### Parallel Code Review
+1. **Submit**: "Review this pull request for security issues"
+2. **Pipeline**: Multiple AI agents analyze code independently
+3. **Results**: Comprehensive security analysis ready when you need it
 
-### Production Considerations
-- **Per-user API key management** with encryption
-- **Full authentication** system with JWT tokens
-- **Distributed storage** and backup strategies
+#### Asynchronous Documentation
+1. **Submit**: "Generate API documentation for this service"
+2. **Background**: Agents create docs while you keep coding
+3. **Complete**: Well-documented code without interrupting flow
+
+### Pipeline Value
+- **Non-Blocking**: Never wait for AI - submit and continue working
+- **Parallel Processing**: Multiple agents explore solutions simultaneously
+- **Developer Flow**: Maintains coding momentum with background assistance
+- **Comprehensive Results**: Get thorough analysis from parallel agent execution
+
+## 🔒 Deployment Options
+
+### Local Development (Default)
+- **Global API keys** stored in user config
+- **Simple authentication** bypass for development
+- **XDG-compliant** data storage in user directories
+- **Podman containers** for agent isolation
+
+### Production Deployment
+- **Kubernetes** for container orchestration
+- **Per-user API key** management with encryption
+- **Persistent volumes** for database storage
 - **Resource limits** and monitoring
+- **Proper authentication** with JWT tokens
 
-## 🤝 Contributing
+### Security Considerations
+- **Container isolation** prevents cross-contamination
+- **Resource limits** prevent runaway processes
+- **Database encryption** for sensitive data
+- **API key management** with proper rotation
+
+## 🤝 Development Philosophy
+
+### Simplicity First
+- **Ease of development** prioritized over architectural complexity
+- **10-minute setup** goal for new developers
+- **Student-friendly** patterns and documentation
+- **Minimal dependencies** - only what's necessary
 
 ### Development Workflow
 1. **Read** `CLAUDE.md` for detailed development guidelines
-2. **Follow** the student-friendly Tilt setup
+2. **Use** simple installation or development setup
 3. **Test** changes with validation scripts
 4. **Submit** pull requests with comprehensive testing
 
@@ -210,22 +269,31 @@ cd frontend && npm run test  # Frontend tests
 - **Ruff formatting** for Python backend
 - **Comprehensive testing** with pytest and Jest
 - **Database migrations** for schema changes
+- **Container testing** with agent validation
 
 ## 📚 Documentation
 
 - **`CLAUDE.md`** - Comprehensive development guide
-- **`TASK-RUN-ARCHITECTURE.md`** - Background processing architecture
 - **`frontend/DESIGN-SYSTEM.md`** - UI component guidelines
 - **API Documentation** - Available at `http://localhost:8000/docs`
+- **Installation Guide** - `./setup-development.sh` for interactive setup
 
 ## 🎓 Educational Focus
 
 AIdeator is designed as a **student-friendly** project with:
-- **Simple Kubernetes setup** using k3d and Tilt
+- **10-minute setup** from clone to running
+- **Simple architecture** - no unnecessary complexity
 - **Clear documentation** with step-by-step guides
 - **Comprehensive validation** scripts
-- **Real-world patterns** for cloud-native development
+- **Real-world patterns** without enterprise overhead
+
+### Key Learning Outcomes
+- **API Design**: RESTful patterns with FastAPI
+- **Container Orchestration**: Podman locally, Kubernetes in production
+- **Database Design**: PostgreSQL with migrations
+- **Frontend Development**: Modern React with TypeScript
+- **AI Integration**: Multi-provider LLM orchestration
 
 ---
 
-*Built with modern cloud-native principles for reliable, scalable AI agent orchestration*
+*Built with student-friendly simplicity for asynchronous AI development pipelines*

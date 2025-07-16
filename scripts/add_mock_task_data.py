@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Generate mock task data in database to replace frontend static data.
-This script creates realistic agent_outputs entries that match the original mock data structure.
+This script creates realistic TaskOutput entries that match the original mock data structure.
 """
 
 import asyncio
@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sqlmodel import select
 
 from app.core.database import get_session
-from app.models.run import AgentOutput, Run, RunStatus
+from app.models.task import Task, TaskOutput, TaskStatus
 from app.models.user import User
 
 
@@ -59,7 +59,7 @@ async def insert_agent_output(
 ) -> None:
     """Insert a structured agent output entry."""
     async for db in get_session():
-        output = AgentOutput(
+        output = TaskOutput(
             task_id=task_id,
             variation_id=variation_id,
             content=json.dumps(content_data),
@@ -73,36 +73,36 @@ async def insert_agent_output(
 
 async def create_task_1_data():
     """Create data for task 1: Make hello world label ominous"""
-    run_id = "1"
     user_id = await get_or_create_test_user()
 
-    # Create run entry and get task_id
+    # Create task entry
     task_id = None
     async for db in get_session():
-        # Check if run already exists
-        result = await db.execute(select(Run).where(Run.run_id == run_id))
-        existing_run = result.scalar_one_or_none()
+        # Check if task already exists
+        result = await db.execute(select(Task).where(Task.id == 1))
+        existing_task = result.scalar_one_or_none()
 
-        if not existing_run:
-            run = Run(
-                run_id=run_id,
-                user_id=user_id,
+        if not existing_task:
+            task = Task(
+                id=1,
                 github_url="https://github.com/aideator/helloworld",
                 prompt="Make hello world label ominous",
+                agent_mode="claude-cli",
                 variations=3,
-                status=RunStatus.COMPLETED,
-                task_status="completed",
+                status=TaskStatus.COMPLETED,
+                user_id=user_id,
                 created_at=datetime.utcnow() - timedelta(hours=8, minutes=15),
-                completed_at=datetime.utcnow() - timedelta(hours=8, minutes=10)
+                completed_at=datetime.utcnow() - timedelta(hours=8, minutes=10),
+                internal_run_id="task-1-mock"
             )
-            db.add(run)
+            db.add(task)
             await db.commit()
-            await db.refresh(run)  # Get the auto-generated task_id
-            task_id = run.task_id
-            print(f"Created run: {run_id} with task_id: {task_id}")
+            await db.refresh(task)
+            task_id = task.id
+            print(f"Created task: {task_id}")
         else:
-            task_id = existing_run.task_id
-            print(f"Run {run_id} already exists with task_id: {task_id}, updating outputs only")
+            task_id = existing_task.id
+            print(f"Task {task_id} already exists, updating outputs only")
         break
 
     # Create agent outputs for each variation
@@ -201,36 +201,36 @@ async def create_task_1_data():
 
 async def create_task_2_data():
     """Create data for task 2: Make hello world message cheerier"""
-    run_id = "2"
     user_id = await get_or_create_test_user()
 
-    # Create run entry and get task_id
+    # Create task entry
     task_id = None
     async for db in get_session():
-        # Check if run already exists
-        result = await db.execute(select(Run).where(Run.run_id == run_id))
-        existing_run = result.scalar_one_or_none()
+        # Check if task already exists
+        result = await db.execute(select(Task).where(Task.id == 2))
+        existing_task = result.scalar_one_or_none()
 
-        if not existing_run:
-            run = Run(
-                run_id=run_id,
-                user_id=user_id,
+        if not existing_task:
+            task = Task(
+                id=2,
                 github_url="https://github.com/aideator/helloworld",
                 prompt="Make hello world message cheerier",
+                agent_mode="claude-cli",
                 variations=3,
-                status=RunStatus.COMPLETED,
-                task_status="completed",
+                status=TaskStatus.COMPLETED,
+                user_id=user_id,
                 created_at=datetime.utcnow() - timedelta(hours=7, minutes=29),
-                completed_at=datetime.utcnow() - timedelta(hours=7, minutes=25)
+                completed_at=datetime.utcnow() - timedelta(hours=7, minutes=25),
+                internal_run_id="task-2-mock"
             )
-            db.add(run)
+            db.add(task)
             await db.commit()
-            await db.refresh(run)  # Get the auto-generated task_id
-            task_id = run.task_id
-            print(f"Created run: {run_id} with task_id: {task_id}")
+            await db.refresh(task)
+            task_id = task.id
+            print(f"Created task: {task_id}")
         else:
-            task_id = existing_run.task_id
-            print(f"Run {run_id} already exists with task_id: {task_id}, updating outputs only")
+            task_id = existing_task.id
+            print(f"Task {task_id} already exists, updating outputs only")
         break
 
     # Create agent outputs for each variation - matches updated mock data
@@ -343,8 +343,7 @@ async def create_other_tasks_data():
             "id": "3",
             "title": "Update hello world message",
             "github_url": "https://github.com/aideator/helloworld",
-            "status": RunStatus.PENDING,
-            "task_status": "open",
+            "status": TaskStatus.PENDING,
             "variations": 1,
             "created_at": datetime.utcnow() - timedelta(days=3)
         },
@@ -352,8 +351,7 @@ async def create_other_tasks_data():
             "id": "4",
             "title": "Update hello world message",
             "github_url": "https://github.com/aideator/helloworld",
-            "status": RunStatus.FAILED,
-            "task_status": "failed",
+            "status": TaskStatus.FAILED,
             "variations": 1,
             "created_at": datetime.utcnow() - timedelta(days=4)
         },
@@ -361,8 +359,7 @@ async def create_other_tasks_data():
             "id": "5",
             "title": "Complete v2 UI functionality",
             "github_url": "https://github.com/heyalchang/dev-runner",
-            "status": RunStatus.COMPLETED,
-            "task_status": "completed",
+            "status": TaskStatus.COMPLETED,
             "variations": 3,
             "created_at": datetime.utcnow() - timedelta(days=5)
         }
@@ -370,25 +367,25 @@ async def create_other_tasks_data():
 
     async for db in get_session():
         for task_data in other_tasks:
-            # Check if run already exists
-            result = await db.execute(select(Run).where(Run.run_id == task_data["id"]))
-            existing_run = result.scalar_one_or_none()
+            # Check if task already exists
+            result = await db.execute(select(Task).where(Task.id == int(task_data["id"])))
+            existing_task = result.scalar_one_or_none()
 
-            if not existing_run:
-                run = Run(
-                    run_id=task_data["id"],
+            if not existing_task:
+                task = Task(
+                    id=int(task_data["id"]),
                     user_id=user_id,
                     github_url=task_data["github_url"],
                     prompt=task_data["title"],
                     variations=task_data["variations"],
                     status=task_data["status"],
-                    task_status=task_data["task_status"],
-                    created_at=task_data["created_at"]
+                    created_at=task_data["created_at"],
+                    internal_run_id=f"task-{task_data['id']}-mock"
                 )
-                db.add(run)
-                print(f"Created run: {task_data['id']}")
+                db.add(task)
+                print(f"Created task: {task_data['id']}")
             else:
-                print(f"Run {task_data['id']} already exists")
+                print(f"Task {task_data['id']} already exists")
         await db.commit()
         break
 

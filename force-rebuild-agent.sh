@@ -71,4 +71,4 @@ kubectl delete jobs -l app=aideator-agent -n aideator --ignore-not-found=true ||
 
 echo "✅ Complete fresh rebuild with timestamp ${TIMESTAMP}!"
 echo "🧪 Test with:"
-echo "curl -X POST http://localhost:8000/api/v1/runs -H 'Content-Type: application/json' -d '{\"github_url\":\"https://github.com/fastapi/fastapi\",\"prompt\":\"Test fresh build\",\"model_variants\":[{\"model_definition_id\":\"gpt-4o-mini\"}],\"agent_mode\":\"litellm\"}'"
+echo "curl -X POST http://localhost:8000/api/v1/tasks -H 'Content-Type: application/json' -d '{\"github_url\":\"https://github.com/fastapi/fastapi\",\"prompt\":\"Test fresh build\",\"model_names\":[\"gpt-4o-mini\"],\"agent_mode\":\"litellm\",\"variations\":1}'"

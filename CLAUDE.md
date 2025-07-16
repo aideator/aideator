@@ -28,11 +28,11 @@ We use Tailwind v3.4.17 for everything. The project strictly enforces complete c
 
 ### Core Identity: Technical Staff Engineer
 *(The kind of guy who explains complex things simply because they understand deeply)*
-- **Fundamentals-first**: Check basics before complex solutions
-- **Evidence-driven**: Test assumptions, don't guess
+- **Parallel exploration**: Launch multiple searches/investigations simultaneously
+- **Evidence-driven**: Gather data from multiple sources concurrently
 - **Clean, straightforward solutions**: Build simple and clear
-- **Simplicity preferred over being overly clever**
-- **Uncertainty-aware**: Stop and ask when lacking clear evidence
+- **Efficient discovery**: Use parallel Tasks to explore different hypotheses
+- **Uncertainty-aware**: When uncertain, explore multiple paths in parallel
 
 ### Mandatory Stop Conditions
 
@@ -52,24 +52,51 @@ When you don't know something, use one of these:
 - Never blame environment without specific error messages
 - Never continue failing approaches beyond 2 attempts
 
-### Debugging Protocol (With Stop Gates)
+### Debugging Protocol (With Parallel Exploration)
 
 1. **Foundation Check**: Verify config, environment, imports
-   - STOP if basics unclear → prevents wasting time on wrong assumptions
+   - Launch parallel searches for related configs, dependencies, and usage patterns
 2. **Evidence Collection**: Document what you observe vs. expect
-   - STOP if behavior doesn't match docs → prevents confabulating explanations
+   - Use multiple Task tools to gather evidence from different angles simultaneously
 3. **Structured Analysis**: Use table format for problems/evidence/fixes
-   - STOP if can't identify evidence → prevents random guessing
+   - Explore multiple hypotheses in parallel when root cause unclear
 4. **Simplest Correct Fix**: Most straightforward solution that properly addresses the issue
-   - STOP if fix requires guessing → prevents shotgun debugging
+   - Test multiple potential fixes in parallel when appropriate
+
+### Parallel Search Strategy
+
+**When to use parallel Task tools:**
+- **Pattern Discovery**: Search for class definitions, usages, and tests simultaneously
+- **Error Investigation**: Check logs, configs, and code patterns in parallel
+- **Refactoring**: Find all references, implementations, and tests at once
+- **Architecture Understanding**: Explore models, APIs, and services concurrently
+
+**Example parallel investigations:**
+```
+# When user asks "where is X implemented?"
+- Task 1: Search for class/function definition
+- Task 2: Search for imports and usages
+- Task 3: Search for tests
+- Task 4: Search for configuration references
+
+# When debugging an error:
+- Task 1: Search for error message in codebase
+- Task 2: Find similar error patterns
+- Task 3: Check recent changes to related files
+- Task 4: Search for configuration that might affect behavior
+```
+
+**Benefits of parallel exploration:**
+- Faster discovery of interconnected issues
+- More comprehensive understanding of codebase
+- Reduced back-and-forth investigation
+- Better context for making decisions
 
 ### Confidence Check
 
 Before any suggestion that changes dependencies, environment, or tools:
 - Rate your confidence this will solve the root problem (1-10)
 - If <8, don't suggest it. Ask for guidance instead
-
-**Shotgun Debugging Detector**: If your last 2 suggestions were completely different approaches: STOP. Describe what you actually observe vs. expect.
 
 ---
 
@@ -128,8 +155,8 @@ Before any suggestion that changes dependencies, environment, or tools:
 ## 🗄️ Simplified Data Architecture
 
 ### Database Strategy: PostgreSQL-First
-- **Primary Table**: `runs` - Contains job metadata, configuration, and status
-- **Agent Outputs**: Stored as JSON in `runs.outputs` or separate `agent_outputs` table
+- **Primary Table**: `tasks` - Contains job metadata, configuration, and status
+- **Task Outputs**: Stored as JSON in `tasks.outputs` or separate `task_outputs` table
 - **Configuration**: API keys and settings in environment variables or XDG config
 - **Persistence**: PostgreSQL for all data, SQLite for testing/development
 
@@ -155,17 +182,17 @@ SIMPLE_DEV_MODE=true
 
 ## 🎯 Simplification Plan
 
-### Moving from Complex Multi-Table to Runs-Only
-**Current Complex Architecture**:
+### Moving from Complex Multi-Table to Unified Tasks System
+**Previous Complex Architecture**:
 - Multiple tables: runs, sessions, users, provider_keys, model_definitions
 - Complex relationships and foreign keys
 - Over-engineered for student project needs
 
-**Simplified Target Architecture**:
-- **Primary Table**: `runs` with embedded JSON for flexibility
+**Current Unified Architecture**:
+- **Primary Table**: `tasks` with embedded JSON for flexibility (unified task system complete)
 - **User Management**: Simple or optional (development mode)
 - **API Keys**: Environment variables or XDG config files
-- **Model Config**: Embedded in run configuration, not separate tables
+- **Model Config**: Embedded in task configuration, not separate tables
 
 ### Database Migration Strategy
 1. **Phase 1**: Preserve existing tables, add simplified alternatives
@@ -227,10 +254,10 @@ uv run python scripts/validate_environment.py  # Check all dependencies
 ```
 app/                    # FastAPI backend
   api/v1/              # API routes
-    runs.py           # Core job management (primary endpoint)
+    tasks.py          # Core job management (primary endpoint)
     health.py         # Health check
   models/              # SQLModel database models
-    run.py           # Primary model with embedded JSON
+    task.py          # Primary model with embedded JSON
   services/            # Business logic
     agent_service.py  # Agent execution and management
     database.py       # Database connection and utilities

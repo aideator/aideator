@@ -105,13 +105,13 @@ async def get_runs(
     # Build query
     query = select(Task).order_by(desc(Task.created_at)).limit(limit)
 
-    # Get runs
+    # Get tasks
     result = await db.execute(query)
-    runs = result.scalars().all()
+    tasks = result.scalars().all()
 
-    # Get message counts for each run
-    run_list = []
-    for run in runs:
+    # Get message counts for each task
+    task_list = []
+    for task in tasks:
         # Get message counts by variation
         variation_counts = await db.execute(
             select(
@@ -119,7 +119,7 @@ async def get_runs(
                 func.count(TaskOutput.id).label("count"),
                 func.max(TaskOutput.timestamp).label("last_message"),
             )
-            .where(TaskOutput.task_id == run.id)
+            .where(TaskOutput.task_id == task.id)
             .group_by(TaskOutput.variation_id)
         )
 
@@ -137,29 +137,29 @@ async def get_runs(
                 last_message_time = last_msg
 
         # Calculate message rate
-        if run.started_at and last_message_time:
-            duration = (last_message_time - run.started_at).total_seconds()
+        if task.started_at and last_message_time:
+            duration = (last_message_time - task.started_at).total_seconds()
             message_rate = total_messages / max(duration, 1)
         else:
             message_rate = 0
 
-        run_list.append(
+        task_list.append(
             {
-                "id": run.id,
-                "status": run.status.value,
-                "github_url": getattr(run, "github_url", "") or "",
-                "prompt": (run.prompt[:100] + "..." if len(run.prompt) > 100 else run.prompt) if run.prompt else "",
-                "variations": getattr(run, "variations", 1) or 1,
-                "created_at": run.created_at.isoformat(),
-                "started_at": run.started_at.isoformat() if run.started_at else None,
+                "id": task.id,
+                "status": task.status.value,
+                "github_url": getattr(task, "github_url", "") or "",
+                "prompt": (task.prompt[:100] + "..." if len(task.prompt) > 100 else task.prompt) if task.prompt else "",
+                "variations": getattr(task, "variations", 1) or 1,
+                "created_at": task.created_at.isoformat(),
+                "started_at": task.started_at.isoformat() if task.started_at else None,
                 "message_count": total_messages,
                 "message_rate_per_second": round(message_rate, 2),
                 "variation_metrics": variation_data,
-                "winning_variation_id": getattr(run, "winning_variation_id", None),
+                "winning_variation_id": getattr(task, "winning_variation_id", None),
             }
         )
 
-    return run_list
+    return task_list
 
 
 @router.get("/messages", summary="Get recent messages across all runs")
@@ -214,7 +214,7 @@ async def get_message_stream(
         "messages": [
             {
                 "id": msg.id,
-                "run_id": msg.task_id, # This field is still named 'run_id' in the output for compatibility with frontend, but holds task_id
+                "task_id": msg.task_id,
                 "variation_id": msg.variation_id,
                 "content": msg.content,
                 "timestamp": msg.timestamp.isoformat(),
@@ -254,7 +254,7 @@ async def search_messages(
     return [
         {
             "id": msg.id,
-            "run_id": msg.task_id, # This field is still named 'run_id' in the output for compatibility with frontend, but holds task_id
+            "task_id": msg.task_id,
             "variation_id": msg.variation_id,
             "content": msg.content[:500] + "..." if len(msg.content) > 500 else msg.content,
             "timestamp": msg.timestamp.isoformat(),
@@ -335,7 +335,7 @@ async def health_check(
 
         # Test write (create and delete a test record)
         test_output = TaskOutput(
-            run_id="health-check-test", # This should likely be task_id, but keeping run_id for now as it's the column name
+            task_id=1,  # Use a valid task_id for health check
             variation_id=0,
             content="Health check test",
             output_type="system",

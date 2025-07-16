@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.run import Run, RunStatus
-from app.schemas.runs import AgentConfig
+from app.schemas.tasks import AgentConfig
 from app.services.agent_orchestrator import AgentOrchestrator
 from app.services.kubernetes_service import KubernetesService
 

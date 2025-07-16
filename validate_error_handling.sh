@@ -1,6 +1,7 @@
 #!/bin/bash
 """
-Validation script for error handling improvements.
+Validation script for error-handling improvements.
+Updated for task-based architecture (task_id replaces legacy run_id).
 Checks the modifications without running Python directly.
 """
 

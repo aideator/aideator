@@ -305,7 +305,7 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col bg-gray-950">
-          <Tabs defaultValue="diff" className="flex-1 flex flex-col">
+          <Tabs defaultValue="logs" className="flex-1 flex flex-col">
             <TabsList className="px-4 border-b border-gray-800 bg-transparent justify-start rounded-none">
               <TabsTrigger
                 value="diff"

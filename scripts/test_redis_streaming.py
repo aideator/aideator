@@ -79,9 +79,9 @@ async def test_redis_streaming():
     # 5. Test SSE endpoints
     print("\n5️⃣ Testing SSE endpoints...")
     print("   To test SSE streaming, run these commands in separate terminals:")
-    print(f"   kubectl: curl -N http://localhost:8000/api/v1/runs/{test_run_id}/stream")
+    print(f"   kubectl: curl -N http://localhost:8000/api/v1/tasks/{test_run_id}/stream")
     print(
-        f"   Redis:   curl -N http://localhost:8000/api/v1/runs/{test_run_id}/stream/redis"
+        f"   Redis:   curl -N http://localhost:8000/api/v1/tasks/{test_run_id}/stream/redis"
     )
 
     # 6. Monitor Redis channels

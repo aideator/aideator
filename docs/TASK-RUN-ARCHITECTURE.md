@@ -27,12 +27,12 @@ User Input → POST /api/v1/runs → runs table → Kubernetes Jobs → Backgrou
 
 ### 2. Background Processing
 ```
-Kubernetes Jobs → Write to agent_outputs table → Continue processing
+Kubernetes Jobs → Write to task_outputs table → Continue processing
 ```
 
 **Process:**
 1. Each Kubernetes job runs its assigned variation
-2. Jobs write all outputs directly to SQL (`agent_outputs` table):
+2. Jobs write all outputs directly to SQL (`task_outputs` table):
    - stdout/stderr logs
    - Status updates
    - Code diffs
@@ -43,28 +43,28 @@ Kubernetes Jobs → Write to agent_outputs table → Continue processing
 
 ### 3. Task Monitoring Flow (Task Detail Page)
 ```
-User Navigation → GET /api/v1/tasks/{task_id} → Read agent_outputs → Display Progress
+User Navigation → GET /api/v1/tasks/{task_id} → Read task_outputs → Display Progress
 ```
 
 **Process:**
 1. User clicks on task from task list
 2. Frontend navigates to `/task/{task_id}` page
 3. Frontend calls task detail API endpoints
-4. API reads from `agent_outputs` table for that task
+4. API reads from `task_outputs` table for that task
 5. Frontend displays real-time progress, logs, and results
 
 ## API Structure
 
 ### Task Creation APIs
-- `POST /api/v1/runs` - Create new task and fire Kubernetes jobs
+- `POST /api/v1/tasks` - Create new task and fire Kubernetes jobs
   - Input: repository, prompt, variations
-  - Output: run_id, job status
+  - Output: task_id, job status
   - Side effect: Creates Kubernetes jobs
 
 ### Task Monitoring APIs  
 - `GET /api/v1/tasks` - List all tasks for main page (maps to runs table)
 - `GET /api/v1/tasks/{task_id}` - Get task details and progress
-- `GET /api/v1/tasks/{task_id}/outputs` - Get agent outputs for a task
+- `GET /api/v1/tasks/{task_id}/outputs` - Get task outputs for a task
 - `GET /api/v1/tasks/{task_id}/variations/{variation_id}/outputs` - Get outputs for specific variation
 
 ## Database Schema
@@ -76,7 +76,7 @@ User Navigation → GET /api/v1/tasks/{task_id} → Read agent_outputs → Displ
    - `status`, `task_status`
    - `created_at`, `started_at`, `completed_at`
 
-2. **`agent_outputs`** - All agent communication and results
+2. **`task_outputs`** - All task communication and results
    - `run_id` (foreign key to runs.id)
    - `variation_id` (which agent variation)
    - `content`, `output_type`, `timestamp`
@@ -96,7 +96,7 @@ User Navigation → GET /api/v1/tasks/{task_id} → Read agent_outputs → Displ
 
 ### 3. SQL-Centric Communication
 - All inter-component communication goes through PostgreSQL
-- Agent outputs are the single source of truth
+- Task outputs are the single source of truth
 - No direct WebSocket or Redis dependencies for core functionality
 - Enables replay, debugging, and historical analysis
 
@@ -115,7 +115,7 @@ User Navigation → GET /api/v1/tasks/{task_id} → Read agent_outputs → Displ
 - Navigation to task details
 
 ### Task Detail Page (`/task/{task_id}`)
-- Real-time progress from `agent_outputs`
+- Real-time progress from `task_outputs`
 - Variation comparison (tabbed interface)
 - Logs, diffs, and results
 - Winner selection and actions
@@ -123,21 +123,22 @@ User Navigation → GET /api/v1/tasks/{task_id} → Read agent_outputs → Displ
 ## Implementation Status
 
 ### ✅ Completed
-- Basic runs table schema
-- Agent output logging to SQL
+- Unified task system architecture
+- Task output logging to SQL
 - Kubernetes job execution
-- Task creation API
-
-### 🚧 In Progress
-- API endpoint restructuring
+- Task creation and monitoring APIs
+- API endpoint restructuring to `/tasks`
 - Frontend page separation
 - Task detail page implementation
 
+### 🚧 In Progress
+- Task output polling/streaming for task detail page
+- Variation comparison UI enhancements
+
 ### 📋 Todo
-- Agent output polling/streaming for task detail page
-- Variation comparison UI
 - Winner selection functionality
-- Historical task browsing
+- Historical task browsing improvements
+- Advanced task filtering and search
 
 ## References
 

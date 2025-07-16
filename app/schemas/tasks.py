@@ -4,6 +4,50 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.core.config import get_settings
+
+settings = get_settings()
+
+
+class AgentConfig(BaseModel):
+    """Configuration for AI agents."""
+
+    model: str = Field(
+        default=settings.default_agent_model,
+        description="Model to use for the agent",
+        examples=["claude-3-opus-20240229", "claude-3-sonnet-20240229"],
+    )
+    temperature: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Temperature for model generation",
+    )
+    max_tokens: int = Field(
+        default=4096,
+        ge=1,
+        le=8192,
+        description="Maximum tokens to generate",
+    )
+    system_prompt: str | None = Field(
+        None,
+        description="Optional system prompt to prepend",
+    )
+    stop_sequences: list[str] | None = Field(
+        None,
+        description="Stop sequences for generation",
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "model": "claude-3-opus-20240229",
+                "temperature": 0.7,
+                "max_tokens": 4096,
+            }
+        }
+    }
+
 
 class TaskListItem(BaseModel):
     """Task item for the main page list (maps to frontend 'sessions' format)."""

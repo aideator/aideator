@@ -18,7 +18,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlmodel import select
 
 sys.path.append("/app")
-from app.models.run import AgentOutput, Run, RunStatus
+from app.models.run import Run, RunStatus
 from app.models.task import Task, TaskOutput, TaskStatus
 
 logger = logging.getLogger(__name__)
@@ -145,30 +145,6 @@ class DatabaseService:
             )
             return None
 
-    async def _get_legacy_task_id_for_unified_task(self, session: AsyncSession, unified_task_id: int) -> int | None:
-        """
-        Helper method to find the legacy runs.task_id that corresponds to a unified tasks.id.
-        This is needed for dual write during migration.
-        """
-        try:
-            # First get the unified task to find its internal_run_id
-            unified_query = select(Task).where(Task.id == unified_task_id)
-            unified_result = await session.execute(unified_query)
-            unified_task = unified_result.scalar_one_or_none()
-            
-            if not unified_task or not unified_task.internal_run_id:
-                return None
-                
-            # Then find the legacy run with matching run_id
-            legacy_query = select(Run).where(Run.run_id == unified_task.internal_run_id)
-            legacy_result = await session.execute(legacy_query)
-            legacy_run = legacy_result.scalar_one_or_none()
-            
-            return legacy_run.task_id if legacy_run else None
-            
-        except Exception as e:
-            logger.error(f"Failed to find legacy task_id for unified task {unified_task_id}: {e}")
-            return None
 
     async def write_task_output(
         self,
@@ -180,7 +156,6 @@ class DatabaseService:
     ) -> bool:
         """
         Canonical writer for the unified task_outputs table.
-        DUAL WRITE: Writes to both task_outputs and agent_outputs for safety during migration.
         """
         write_timestamp = timestamp or datetime.utcnow()
         
@@ -196,30 +171,13 @@ class DatabaseService:
                 )
                 session.add(task_output)
                 
-                # DUAL WRITE: Also write to legacy agent_outputs table for safety
-                # Need to find the legacy runs.task_id that corresponds to this unified tasks.id
-                legacy_task_id = await self._get_legacy_task_id_for_unified_task(session, task_id)
-                
-                if legacy_task_id:
-                    agent_output = AgentOutput(
-                        task_id=legacy_task_id,
-                        variation_id=variation_id,
-                        content=content,
-                        output_type=output_type,
-                        timestamp=write_timestamp
-                    )
-                    session.add(agent_output)
-                    logger.debug(f"Dual write: Also wrote to agent_outputs with legacy task_id {legacy_task_id}")
-                else:
-                    logger.warning(f"Could not find legacy task_id for unified task {task_id}, skipping agent_outputs write")
-                
                 await session.commit()
                 logger.debug(
-                    f"Dual write: Wrote {output_type} output for task {task_id}, variation {variation_id}"
+                    f"Wrote {output_type} output for task {task_id}, variation {variation_id}"
                 )
                 return True
         except Exception as e:
-            logger.error(f"Failed to write task output (dual write): {e}")
+            logger.error(f"Failed to write task output: {e}")
             try:
                 await session.rollback()
             except Exception:
@@ -247,11 +205,11 @@ class DatabaseService:
     async def write_status_update(
         self,
         task_id: int,
-        status: RunStatus,
+        status: TaskStatus,
         error_message: str | None = None
     ) -> bool:
         """
-        Update run status in the database.
+        Update task status in the database.
         
         Args:
             task_id: The task ID (primary key)
@@ -263,30 +221,30 @@ class DatabaseService:
         """
         try:
             async with self.async_session_factory() as session:
-                query = select(Run).where(Run.task_id == task_id)
+                query = select(Task).where(Task.id == task_id)
                 result = await session.execute(query)
-                run = result.scalar_one_or_none()
+                task = result.scalar_one_or_none()
 
-                if not run:
-                    logger.error(f"Run with task_id {task_id} not found")
+                if not task:
+                    logger.error(f"Task with ID {task_id} not found")
                     return False
 
-                run.status = status
+                task.status = status
                 if error_message:
-                    run.error_message = error_message
+                    task.error_message = error_message
 
-                if status == RunStatus.RUNNING and not run.started_at:
-                    run.started_at = datetime.utcnow()
-                elif status in [RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED]:
-                    run.completed_at = datetime.utcnow()
+                if status == TaskStatus.RUNNING and not task.started_at:
+                    task.started_at = datetime.utcnow()
+                elif status in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]:
+                    task.completed_at = datetime.utcnow()
 
                 await session.commit()
 
-                logger.info(f"Updated run {task_id} status to {status}")
+                logger.info(f"Updated task {task_id} status to {status}")
                 return True
 
         except Exception as e:
-            logger.error(f"Failed to update run status: {e}")
+            logger.error(f"Failed to update task status: {e}")
             try:
                 await session.rollback()
             except:

@@ -107,7 +107,7 @@ Visit: http://localhost:8000/docs
 **Expected result:** Swagger UI showing 70+ endpoints organized by tags:
 - System (health check)
 - Auth (authentication)
-- Runs (agent management)
+- Tasks (task management)
 - Sessions (session management)
 - Models (LLM models)
 - Provider Keys (API key management)
@@ -241,8 +241,8 @@ ENABLE_JWT_EXPIRATION=false
 TEST_LOGIN=$(curl -s http://localhost:8000/api/v1/auth/dev/test-login)
 TOKEN=$(echo $TEST_LOGIN | python -c "import sys, json; print(json.load(sys.stdin)['access_token'])")
 
-# 2. Create a test run (if runs endpoint is available)
-curl -X POST http://localhost:8000/api/v1/runs \
+# 2. Create a test task (if tasks endpoint is available)
+curl -X POST http://localhost:8000/api/v1/tasks \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -252,8 +252,8 @@ curl -X POST http://localhost:8000/api/v1/runs \
     "model": "gpt-4o-mini"
   }'
 
-# 3. List your runs
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/v1/runs
+# 3. List your tasks
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/v1/tasks
 ```
 
 ### Test Model Management

@@ -58,7 +58,6 @@ class KubernetesService:
         # Replace placeholders
         job_yaml = job_yaml.format(
             task_id=task_id,
-            run_id=run_id,
             variation_id=variation_id,
             repo_url=repo_url,
             prompt=self._escape_yaml_string(prompt),  # Proper YAML escaping
@@ -90,7 +89,7 @@ class KubernetesService:
                 raise RuntimeError(f"Failed to create job: {stderr_str}")
 
             logger.info(
-                f"Created job {job_name} for run {run_id}, variation {variation_id}"
+                f"Created job {job_name} for task {task_id}, variation {variation_id}"
             )
             return job_name
 
@@ -298,9 +297,13 @@ class KubernetesService:
         return [pod for pod in pods if pod]
 
     def _extract_variation_id(self, pod_name: str) -> int | None:
-        """Extract variation ID from pod name."""
-        # Pod names follow pattern: task-{task_id}-{variation_id}-{suffix}
-        # or batch-{run_id}-{index}-{suffix} (legacy)
+        """Extract variation ID from pod name.
+        
+        Pod names now follow pattern: task-{task_id}-{variation_id}-{suffix}
+        (legacy agent-{run_id}-... pattern no longer used).
+        """
+        # Pod names follow pattern: agent-{run_id}-{variation_id}-{suffix}
+        # or batch-{run_id}-{index}-{suffix}
         parts = pod_name.split("-")
         if len(parts) >= 3:
             try:

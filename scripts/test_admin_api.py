@@ -11,9 +11,9 @@ def test_admin_endpoints():
     print("🧪 Testing Admin API Endpoints...\n")
 
     # Test 1: Database Stats
-    print("1. Testing /api/v1/admin/stats")
+    print("1. Testing /api/v1/admin-messaging/overview")
     try:
-        response = requests.get(f"{API_BASE}/api/v1/admin/stats", timeout=10)
+        response = requests.get(f"{API_BASE}/api/v1/admin-messaging/overview", timeout=10)
         if response.status_code == 200:
             overview = response.json()
             print("✅ Overview endpoint working!")
@@ -30,10 +30,10 @@ def test_admin_endpoints():
     print()
 
     # Test 2: Active Runs
-    print("2. Testing /api/v1/admin/runs/active")
+    print("2. Testing /api/v1/admin-messaging/runs")
     try:
         response = requests.get(
-            f"{API_BASE}/api/v1/admin/runs/active?include_completed=true&limit=20",
+            f"{API_BASE}/api/v1/admin-messaging/runs?limit=20",
             timeout=10,
         )
         if response.status_code == 200:
@@ -55,7 +55,7 @@ def test_admin_endpoints():
     print("3. Testing /api/v1/admin-messaging/messages")
     try:
         response = requests.get(
-            f"{API_BASE}/api/v1/admin/messages/stream?limit=10", timeout=10
+            f"{API_BASE}/api/v1/admin-messaging/messages?limit=10", timeout=10
         )
         if response.status_code == 200:
             data = response.json()
@@ -75,9 +75,9 @@ def test_admin_endpoints():
     print()
 
     # Test 4: Health Check
-    print("4. Testing /api/v1/admin/health")
+    print("4. Testing /api/v1/health")
     try:
-        response = requests.get(f"{API_BASE}/api/v1/admin/health", timeout=10)
+        response = requests.get(f"{API_BASE}/api/v1/health", timeout=10)
         if response.status_code == 200:
             health = response.json()
             print("✅ Health endpoint working!")

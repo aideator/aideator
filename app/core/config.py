@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     max_concurrent_runs: int = Field(default=10, ge=1, le=50)
     max_concurrent_jobs: int = Field(
         default=20, ge=1, le=100
-    )  # Total jobs across all runs
+    )  # Total jobs across all tasks
 
     # Repository Configuration
     allowed_git_hosts: list[str] = ["github.com", "gitlab.com"]

@@ -20,7 +20,7 @@ What was completed
 
 4. **Back-compat provided**
    • Nothing else broke – legacy calls still compile/run.
-   • Next phases can gradually replace `Run` / `AgentOutput` usages.
+   • Next phases can gradually replace `Run` / `TaskOutput` usages.
 
 Next phases
 -----------

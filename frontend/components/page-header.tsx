@@ -24,7 +24,7 @@ export function PageHeader() {
   }, [taskId])
   
   if (task) {
-    // Task page header
+    // Task page header (uses /tasks endpoints)
     return (
       <header className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-gray-950">
         <div className="flex items-center gap-4">

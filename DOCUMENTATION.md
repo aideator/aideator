@@ -3,24 +3,24 @@
 ## Table of Contents
 - [Overview](#overview)
 - [Architecture](#architecture)
-- [Redis Streaming Migration](#redis-streaming-migration)
 - [Getting Started](#getting-started)
 - [Configuration](#configuration)
 - [Development](#development)
 - [Testing](#testing)
 - [Deployment](#deployment)
+- [API Reference](#api-reference)
 
 ## Overview
 
-AIdeator is a Kubernetes-native multi-agent AI orchestration platform that runs multiple AI agents in parallel in isolated containers, streaming their thought processes in real-time via Server-Sent Events (SSE).
+AIdeator is a Kubernetes-native multi-agent AI orchestration platform that runs multiple AI agents in parallel in isolated containers, with real-time progress monitoring through HTTP polling.
 
 ### Key Features
-- **Parallel Agent Execution**: Run 1-5 AI agent variations simultaneously
+- **Parallel Agent Execution**: Run 1-6 AI agent variations simultaneously
 - **Container Isolation**: Each agent runs in its own Kubernetes Job
-- **Real-time Streaming**: Live output via SSE with Redis pub/sub or kubectl logs
-- **Model Flexibility**: Support for LiteLLM (OpenAI, Anthropic, etc.) and Claude Code CLI
+- **Real-time Monitoring**: Live output via HTTP polling of PostgreSQL
+- **Model Flexibility**: Support for Claude CLI, Gemini CLI, and other providers
 - **GitHub Integration**: Analyze any public repository
-- **Result Persistence**: Select and save winning variations
+- **Unified Task System**: Simplified task/run architecture with embedded JSON
 
 ## Architecture
 
@@ -28,156 +28,64 @@ AIdeator is a Kubernetes-native multi-agent AI orchestration platform that runs 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
 │   Frontend  │────▶│   FastAPI   │────▶│ Kubernetes  │
-│  (Next.js)  │◀────│   Backend   │◀────│    Jobs     │
-└─────────────┘ SSE └─────────────┘     └─────────────┘
-                            │
-                            ▼
-                     ┌─────────────┐
-                     │    Redis    │
-                     │  (Pub/Sub)  │
-                     └─────────────┘
+│  (Next.js)  │◀────│   Backend   │     │    Jobs     │
+└─────────────┘HTTP └─────────────┘     └─────────────┘
+                            │                    │
+                            ▼                    ▼
+                     ┌─────────────┐      ┌──────────┐
+                     │ PostgreSQL  │◀─────│  Agent   │
+                     │   Database  │      │Container │
+                     └─────────────┘      └──────────┘
 ```
 
 ### Data Flow
-1. User submits run request via frontend
+1. User submits task request via frontend
 2. Backend creates Kubernetes Jobs for each agent variation
-3. Agents stream output via stdout and Redis pub/sub
-4. Backend aggregates streams and sends to frontend via SSE
-5. Frontend displays real-time output in grid layout
+3. Agents write outputs directly to PostgreSQL `task_outputs` table
+4. Frontend polls `/api/v1/tasks/{task_id}/outputs` every 3 seconds
+5. Frontend displays real-time output in tabbed interface
 
-## Redis Streaming Migration
+### Database Architecture
 
-### Overview
-AIdeator has migrated from kubectl logs-based streaming to Redis pub/sub as the primary streaming mechanism. This provides improved reliability, better performance, and enables future enhancements.
+#### Unified Task System
+The system uses a simplified PostgreSQL-based architecture:
 
-### Migration Phases
-
-#### Phase 1: Dual Publishing (Completed)
-- Agents publish to both stdout (for kubectl logs) and Redis
-- Both streaming endpoints available
-- Zero disruption to existing functionality
-
-#### Phase 2: Redis Primary (Current)
-- Redis is now the default streaming backend
-- kubectl logs remains as fallback option
-- Frontend can switch between backends via UI toggle
-
-#### Phase 3: Redis Only (Planned)
-- Remove kubectl streaming code entirely
-- Implement Redis Streams for persistence
-- Add replay capability for reconnections
-
-### Redis Architecture
-
-#### Channel Structure
-```
-run:{run_id}:output:{variation_id}  # Agent LLM outputs
-run:{run_id}:logs:{variation_id}    # System logs (filtered)
-run:{run_id}:status                 # Job status updates
-run:{run_id}:control                # Future: control messages
+```sql
+-- Primary tables
+tasks          -- Main task metadata and configuration
+task_outputs   -- All agent outputs with timestamps
+users          -- User management (optional in dev mode)
 ```
 
-#### Message Format
-```json
-{
-  "content": "Agent output text",
-  "timestamp": "2024-01-10T10:30:00Z",
-  "variation_id": "0"
-}
-```
+#### Output Types
+Agent outputs are categorized by type in the `task_outputs` table:
+- `job_data` - Main job execution data
+- `assistant_response` - AI model responses
+- `error` - Error messages
+- `system_status` - System-level status updates
+- `debug` - Debug information (when enabled)
+- `stdout`/`stderr` - Raw command outputs
+- `diffs` - Code differences
+- `summary` - Task summaries
 
-### Configuration
+### Polling Architecture
 
-#### Backend Configuration
-```bash
-# .env file
-REDIS_URL=redis://localhost:6379/0
-```
+The system uses HTTP polling for real-time updates:
 
-#### Frontend Configuration
-```bash
-# frontend/.env.local
-NEXT_PUBLIC_STREAMING_BACKEND=redis  # or 'kubectl' for fallback
-```
+1. **Frontend Hook** (`use-agent-logs.ts`):
+   - Polls every 3 seconds
+   - Implements 5-second cache to reduce API load
+   - Fetches from `/api/v1/tasks/{taskId}/outputs`
 
-#### Runtime Configuration
-Users can switch streaming backends via the "Advanced Settings" panel in the run creation form:
-- **Redis Pub/Sub** (default) - Better reliability and performance
-- **Kubectl Logs** - Legacy fallback option
+2. **API Endpoint**:
+   - Supports filtering by `since` timestamp
+   - Can filter by `variation_id` and `output_type`
+   - Returns up to 1000 outputs per request
 
-### Benefits of Redis Streaming
-
-1. **Reliability**
-   - No subprocess pipes to break
-   - Automatic reconnection handling
-   - Built-in buffering
-
-2. **Performance**
-   - Direct pub/sub vs log parsing
-   - Lower latency
-   - Better scalability
-
-3. **Features**
-   - Bidirectional communication (future)
-   - Message persistence with Redis Streams (future)
-   - Pattern subscriptions for monitoring
-
-4. **Observability**
-   - `redis-cli monitor` for debugging
-   - Pub/sub metrics
-   - Channel introspection
-
-### Monitoring Redis Streaming
-
-#### Check Redis Connection
-```bash
-# API health endpoint shows Redis status
-curl http://localhost:8000/health
-
-# Direct Redis connection test
-redis-cli ping
-```
-
-#### Monitor Active Streams
-```bash
-# Watch all messages for a run
-redis-cli psubscribe "run:*"
-
-# Monitor specific run
-redis-cli psubscribe "run:${RUN_ID}:*"
-
-# Count subscribers
-redis-cli pubsub numsub "run:${RUN_ID}:output:0"
-```
-
-#### Debug Streaming Issues
-```bash
-# Test Redis streaming endpoint
-curl -N http://localhost:8000/api/v1/runs/${RUN_ID}/stream/redis
-
-# Compare with kubectl endpoint
-curl -N http://localhost:8000/api/v1/runs/${RUN_ID}/stream
-
-# Check Redis memory usage
-redis-cli info memory
-```
-
-### Troubleshooting
-
-#### Redis Connection Failed
-- Verify Redis is running: `kubectl get pods -n aideator | grep redis`
-- Check Redis service: `kubectl get svc -n aideator aideator-redis`
-- Test connection: `redis-cli -h localhost -p 6379 ping`
-
-#### No Stream Output
-- Verify agent is publishing: `redis-cli monitor`
-- Check correct channel: `redis-cli pubsub channels`
-- Verify run exists: Check API `/runs/{run_id}/status`
-
-#### Stream Disconnections
-- Check browser console for reconnection attempts
-- Verify heartbeat messages arriving (every 30s)
-- Check Redis memory: `redis-cli info memory`
+3. **Performance Optimizations**:
+   - Client-side caching reduces redundant requests
+   - Timestamp-based filtering minimizes data transfer
+   - Indexed database queries for fast retrieval
 
 ## Getting Started
 
@@ -219,14 +127,14 @@ tilt up
 - `ANTHROPIC_API_KEY` - For Claude Code CLI
 
 #### Optional
-- `REDIS_URL` - Redis connection string (default: `redis://localhost:6379/0`)
-- `DATABASE_URL` - Database connection (default: SQLite)
+- `DATABASE_URL` - PostgreSQL connection (default: `postgresql://aideator:aideator123@localhost:5432/aideator`)
 - `SECRET_KEY` - API secret key
-- `MAX_VARIATIONS` - Maximum agent variations (default: 5)
+- `MAX_VARIATIONS` - Maximum agent variations (default: 3)
+- `GEMINI_API_KEY` - For Gemini CLI agent mode
+- `SIMPLE_DEV_MODE` - Enable development mode with auth bypass (default: true)
 
 ### Frontend Configuration
-- `NEXT_PUBLIC_API_BASE_URL` - Backend API URL
-- `NEXT_PUBLIC_STREAMING_BACKEND` - Default streaming backend (`redis` or `kubectl`)
+- `NEXT_PUBLIC_API_URL` - Backend API URL (default: `http://localhost:8000`)
 - `PORT` - Frontend port (default: 3000)
 
 ## Development
@@ -245,30 +153,34 @@ tilt down
 
 ### Testing Components Individually
 
-#### Test Redis Streaming
-```python
-# Run test script
-python scripts/test_redis_streaming.py
-```
-
 #### Test Agent Locally
 ```bash
 # Set environment variables
-export REDIS_URL=redis://localhost:6379
-export RUN_ID=test-123
+export DATABASE_URL=postgresql://aideator:aideator123@localhost:5432/aideator
+export TASK_ID=1
 export VARIATION_ID=0
+export REPO_URL=https://github.com/octocat/Hello-World
+export PROMPT="Analyze this repository"
+export AGENT_MODE=claude-cli
 
 # Run agent
 python agent/main.py
 ```
 
-#### Test SSE Endpoints
+#### Test API Endpoints
 ```bash
-# Redis endpoint
-curl -N http://localhost:8000/api/v1/runs/${RUN_ID}/stream/redis
+# Create a new task
+curl -X POST http://localhost:8000/api/v1/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "github_url": "https://github.com/octocat/Hello-World",
+    "prompt": "Analyze this repository",
+    "model_names": ["gpt-4o-mini"],
+    "agent_mode": "claude-cli"
+  }'
 
-# kubectl endpoint (fallback)
-curl -N http://localhost:8000/api/v1/runs/${RUN_ID}/stream
+# Poll for outputs
+curl http://localhost:8000/api/v1/tasks/{task_id}/outputs
 ```
 
 ## Testing
@@ -287,32 +199,35 @@ cd frontend && npm test
 cd frontend && npm run test:e2e
 ```
 
-### Load Testing Redis Streaming
+### Load Testing
 ```bash
-# Create multiple subscribers
-for i in {1..10}; do
-  curl -N http://localhost:8000/api/v1/runs/load-test/stream/redis &
+# Create multiple concurrent tasks
+for i in {1..5}; do
+  curl -X POST http://localhost:8000/api/v1/tasks \
+    -H "Content-Type: application/json" \
+    -d '{"github_url": "https://github.com/octocat/Hello-World", "prompt": "Test task '$i'"}' &
 done
 
-# Publish test messages
-redis-cli publish "run:load-test:output:0" '{"content":"Test message"}'
+# Monitor database load
+watch -n 1 'psql -U aideator -d aideator -c "SELECT COUNT(*) FROM task_outputs"'
 ```
 
 ## Deployment
 
 ### Production Considerations
 
-#### Redis Configuration
-- Use Redis Sentinel or Cluster for HA
-- Enable persistence (AOF or RDB)
-- Set appropriate memory limits
-- Configure eviction policies
+#### Database Configuration
+- Use PostgreSQL with replication for HA
+- Configure connection pooling
+- Set appropriate memory and CPU limits
+- Regular backups and point-in-time recovery
 
 #### Security
-- Enable Redis AUTH
-- Use TLS for Redis connections
+- Use strong database passwords
+- Enable SSL/TLS for database connections
 - Implement network policies
 - Set resource quotas
+- Store API keys in Kubernetes secrets
 
 #### Scaling
 - Horizontal pod autoscaling for API
@@ -340,38 +255,82 @@ helm install aideator ./deploy/charts/aideator \
 
 ### Key Endpoints
 
-#### Create Run
+#### Create Task
 ```
-POST /api/v1/runs
+POST /api/v1/tasks
 {
   "github_url": "https://github.com/user/repo",
   "prompt": "Analyze this repository",
-  "variations": 3,
-  "use_claude_code": false,
-  "agent_config": {
-    "model": "gpt-4",
-    "temperature": 0.7
-  }
+  "model_names": ["gpt-4o-mini", "claude-3-5-sonnet"],
+  "agent_mode": "claude-cli",
+  "variations": 2  // Optional, defaults to len(model_names)
 }
-```
 
-#### Stream Output (Redis)
-```
-GET /api/v1/runs/{run_id}/stream/redis
-```
-Server-Sent Events with:
-- `agent_output` - Agent responses
-- `agent_complete` - Variation finished
-- `run_complete` - All agents done
-- `heartbeat` - Keep-alive signal
-
-#### Select Winner
-```
-POST /api/v1/runs/{run_id}/select
+Response:
 {
-  "variation_id": 0
+  "task_id": 123,
+  "websocket_url": "/ws/tasks/123",  // Not implemented
+  "polling_url": "/api/v1/tasks/123/outputs",
+  "status": "pending"
 }
 ```
+
+#### List Tasks
+```
+GET /api/v1/tasks?limit=10&offset=0
+
+Response:
+{
+  "tasks": [
+    {
+      "id": "123",
+      "title": "Analyze this repository",
+      "details": "10:30 AM · aideator/repo",
+      "status": "Completed",
+      "versions": 2,
+      "additions": 150,
+      "deletions": 30
+    }
+  ],
+  "total": 50,
+  "has_more": true
+}
+```
+
+#### Get Task Details
+```
+GET /api/v1/tasks/{task_id}
+```
+Returns task metadata with variation details.
+
+#### Get Task Outputs (Polling)
+```
+GET /api/v1/tasks/{task_id}/outputs?since=2024-01-01T00:00:00Z&variation_id=0&output_type=assistant_response
+
+Query params:
+- since: ISO timestamp to get outputs after
+- variation_id: Filter by specific variation (0, 1, 2...)
+- output_type: Filter by type (job_data, error, assistant_response, etc.)
+- limit: Max outputs to return (default 100, max 1000)
+
+Response:
+[
+  {
+    "id": 1,
+    "task_id": 123,
+    "variation_id": 0,
+    "content": "Agent output text",
+    "timestamp": "2024-01-01T10:30:00Z",
+    "output_type": "assistant_response"
+  }
+]
+```
+
+#### Get Variation Outputs
+```
+GET /api/v1/tasks/{task_id}/variations/{variation_id}/outputs
+```
+Same as above but pre-filtered to a specific variation.
 
 ## Contributing
 

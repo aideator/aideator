@@ -327,7 +327,7 @@
         }
 
         async function refreshRuns() {
-            const data = await fetchData('/runs?limit=10');
+            const data = await fetchData('/admin-messaging/runs?limit=10');
             const container = document.getElementById('recentRuns');
             
             if (!data || !Array.isArray(data)) {
