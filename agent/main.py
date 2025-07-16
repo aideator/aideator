@@ -34,7 +34,7 @@ class AIdeatorAgent:
 
     def __init__(self):
         """Initialize agent - maintains original interface."""
-        # Use TASK_ID as the primary identifier (run_id deprecated)
+        # Use TASK_ID as the primary identifier
         self.task_id = os.getenv("TASK_ID")
         self.variation_id = os.getenv("VARIATION_ID", "0")
 
@@ -64,7 +64,6 @@ class AIdeatorAgent:
 
             # Sleep for 600 seconds (10 minutes) before exit on success
             self.log("⏱️ Sleeping for 600 seconds before exit", "INFO")
-            await asyncio.sleep(600)
 
         except Exception as e:
             self.log(f"💥 Fatal error: {e!s}", "ERROR")

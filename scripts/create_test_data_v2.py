@@ -16,8 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sqlmodel import func, select, text
 
 from app.core.database import get_session
-from app.models.run import Run, RunStatus
-from app.models.task import TaskOutput
+from app.models.task import Task, TaskOutput, TaskStatus
 from app.models.user import User
 
 # =============================================================================
@@ -42,8 +41,7 @@ TASK_1_DATA = {
         "github_url": "https://github.com/aideator/helloworld",
         "prompt": "Make hello world label ominous",
         "variations": 3,
-        "status": RunStatus.COMPLETED,
-        "task_status": "completed",
+        "status": TaskStatus.COMPLETED,
         "created_at": datetime.utcnow() - timedelta(hours=8, minutes=15),
         "completed_at": datetime.utcnow() - timedelta(hours=8, minutes=10)
     },
@@ -95,8 +93,7 @@ TASK_2_DATA = {
         "github_url": "https://github.com/aideator/helloworld",
         "prompt": "Make hello world message cheerier",
         "variations": 3,
-        "status": RunStatus.COMPLETED,
-        "task_status": "completed",
+        "status": TaskStatus.COMPLETED,
         "created_at": datetime.utcnow() - timedelta(hours=7, minutes=29),
         "completed_at": datetime.utcnow() - timedelta(hours=7, minutes=25)
     },
@@ -141,8 +138,7 @@ ADDITIONAL_TASKS = [
         "github_url": "https://github.com/fastapi/fastapi",
         "title": "Add comprehensive error handling to the FastAPI authentication middleware",
         "variations": 4,
-        "status": RunStatus.COMPLETED,
-        "task_status": "completed",
+        "status": TaskStatus.COMPLETED,
         "created_at": datetime.utcnow() - timedelta(hours=4, minutes=12)
     },
     {
@@ -150,8 +146,7 @@ ADDITIONAL_TASKS = [
         "github_url": "https://github.com/microsoft/typescript",
         "title": "Implement type-safe event handling system for DOM interactions",
         "variations": 2,
-        "status": RunStatus.COMPLETED,
-        "task_status": "completed",
+        "status": TaskStatus.COMPLETED,
         "created_at": datetime.utcnow() - timedelta(hours=2, minutes=45)
     },
     {
@@ -159,8 +154,7 @@ ADDITIONAL_TASKS = [
         "github_url": "https://github.com/facebook/react",
         "title": "Optimize component re-rendering performance with React.memo and useMemo",
         "variations": 3,
-        "status": RunStatus.COMPLETED,
-        "task_status": "completed",
+        "status": TaskStatus.COMPLETED,
         "created_at": datetime.utcnow() - timedelta(hours=1, minutes=33)
     }
 ]
@@ -232,19 +226,29 @@ class TestDataBuilder:
         # Check if run already exists
         run_id = task_data["run"]["run_id"]
         result = await manager.db.execute(
-            select(Run).where(Run.run_id == run_id)
+            select(Task).where(Task.internal_run_id == run_id)
         )
-        existing_run = result.scalar_one_or_none()
+        existing_task = result.scalar_one_or_none()
 
-        if existing_run:
-            print(f"Run {run_id} already exists (task_id: {existing_run.task_id}), skipping...")
-            return existing_run
+        if existing_task:
+            print(f"Task {run_id} already exists (task_id: {existing_task.id}), skipping...")
+            return existing_task
 
-        # Create new run
-        run_data = {**task_data["run"], "user_id": user_id}
-        run = Run(**run_data)
-        run = await manager.create_and_track(run)
-        print(f"Created run: {run_id} (task_id: {run.task_id})")
+        # Create new task
+        run_data = task_data["run"]
+        task = Task(
+            id=int(run_data["run_id"]),
+            user_id=user_id,
+            github_url=run_data["github_url"],
+            prompt=run_data["prompt"],
+            variations=run_data["variations"],
+            status=run_data["status"],
+            created_at=run_data["created_at"],
+            completed_at=run_data.get("completed_at"),
+            internal_run_id=run_data["run_id"]
+        )
+        task = await manager.create_and_track(task)
+        print(f"Created task: {run_id} (task_id: {task.id})")
 
         # Create outputs for each variation
         if "outputs" in task_data:
@@ -253,7 +257,7 @@ class TestDataBuilder:
                 variation_id = variation_data["variation_id"]
                 for output_data in variation_data["outputs"]:
                     output = TaskOutput(
-                        task_id=run.task_id,
+                        task_id=task.id,
                         variation_id=variation_id,
                         content=output_data["content"],
                         output_type=output_data["type"],
@@ -270,32 +274,32 @@ class TestDataBuilder:
     async def create_simple_run(self, manager: TestDataManager, task_data: dict[str, Any], user_id: str):
         """Create a simple run without detailed outputs."""
 
-        # Check if run already exists
-        run_id = task_data["id"]
+        # Check if task already exists
+        task_id = int(task_data["id"])
         result = await manager.db.execute(
-            select(Run).where(Run.run_id == run_id)
+            select(Task).where(Task.id == task_id)
         )
-        existing_run = result.scalar_one_or_none()
+        existing_task = result.scalar_one_or_none()
 
-        if existing_run:
-            print(f"Run {run_id} already exists, skipping...")
-            return existing_run
+        if existing_task:
+            print(f"Task {task_id} already exists, skipping...")
+            return existing_task
 
-        # Create new run
-        run = Run(
-            run_id=run_id,
+        # Create new task
+        task = Task(
+            id=task_id,
             user_id=user_id,
             github_url=task_data["github_url"],
             prompt=task_data["title"],
             variations=task_data["variations"],
             status=task_data["status"],
-            task_status=task_data["task_status"],
-            created_at=task_data["created_at"]
+            created_at=task_data["created_at"],
+            internal_run_id=f"task-{task_id}-simple"
         )
-        run = await manager.create_and_track(run)
-        print(f"Created simple run: {run_id} (task_id: {run.task_id})")
+        task = await manager.create_and_track(task)
+        print(f"Created simple task: {task_id}")
 
-        return run
+        return task
 
 
 # =============================================================================

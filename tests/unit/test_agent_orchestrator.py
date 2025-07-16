@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.run import Run, RunStatus
+from app.models.task import Task, TaskStatus
 from app.schemas.tasks import AgentConfig
 from app.services.agent_orchestrator import AgentOrchestrator
 from app.services.kubernetes_service import KubernetesService
@@ -390,14 +390,14 @@ class TestAgentOrchestrator:
     async def test_update_run_status_success(self, orchestrator):
         """Test updating run status in database."""
         mock_session = AsyncMock(spec=AsyncSession)
-        mock_run = Mock(spec=Run)
-        mock_session.get.return_value = mock_run
+        mock_task = Mock(spec=Task)
+        mock_session.get.return_value = mock_task
 
         await orchestrator._update_run_status(
-            mock_session, "test-run", RunStatus.COMPLETED
+            mock_session, "test-run", TaskStatus.COMPLETED
         )
 
-        assert mock_run.status == RunStatus.COMPLETED
+        assert mock_task.status == TaskStatus.COMPLETED
         mock_session.commit.assert_called_once()
 
     @pytest.mark.asyncio
@@ -408,7 +408,7 @@ class TestAgentOrchestrator:
 
         # Should not raise exception
         await orchestrator._update_run_status(
-            mock_session, "non-existent", RunStatus.FAILED
+            mock_session, "non-existent", TaskStatus.FAILED
         )
 
         mock_session.commit.assert_not_called()
@@ -417,13 +417,13 @@ class TestAgentOrchestrator:
     async def test_update_run_status_error(self, orchestrator):
         """Test handling database error when updating status."""
         mock_session = AsyncMock(spec=AsyncSession)
-        mock_run = Mock(spec=Run)
-        mock_session.get.return_value = mock_run
+        mock_task = Mock(spec=Task)
+        mock_session.get.return_value = mock_task
         mock_session.commit.side_effect = Exception("DB error")
 
         # Should not raise exception
         await orchestrator._update_run_status(
-            mock_session, "test-run", RunStatus.FAILED
+            mock_session, "test-run", TaskStatus.FAILED
         )
 
         mock_session.rollback.assert_called_once()

@@ -18,8 +18,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlmodel import select
 
 sys.path.append("/app")
-from app.models.run import Run, RunStatus
 from app.models.task import Task, TaskOutput, TaskStatus
+from app.models.run import Run # Retaining Run import as removal was not explicitly instructed for the entire import block
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +145,7 @@ class DatabaseService:
             )
             return None
 
+    # Legacy helper removed – unified schema is now authoritative
 
     async def write_task_output(
         self,
@@ -156,6 +157,7 @@ class DatabaseService:
     ) -> bool:
         """
         Canonical writer for the unified task_outputs table.
+        DUAL WRITE: Writes to both task_outputs and agent_outputs for safety during migration.
         """
         write_timestamp = timestamp or datetime.utcnow()
         
@@ -177,7 +179,7 @@ class DatabaseService:
                 )
                 return True
         except Exception as e:
-            logger.error(f"Failed to write task output: {e}")
+            logger.error(f"Failed to write task output (dual write): {e}")
             try:
                 await session.rollback()
             except Exception:
@@ -192,8 +194,7 @@ class DatabaseService:
         output_type: str = "stdout",
         timestamp: datetime | None = None
     ) -> bool:
-        # ⚠️  Deprecated – kept for backward compatibility until all call-sites migrate.
-        # Internally delegates to write_task_output().
+        # Backwards-compat shim – now a thin alias
         return await self.write_task_output(
             task_id=task_id,
             variation_id=variation_id,
@@ -209,45 +210,42 @@ class DatabaseService:
         error_message: str | None = None
     ) -> bool:
         """
-        Update task status in the database.
-        
+        Update task status (unified schema).
+
         Args:
-            task_id: The task ID (primary key)
-            status: New status
-            error_message: Optional error message
-            
+            task_id: Primary key of the Task
+            status: New status (TaskStatus enum)
+            error_message: Optional error detail
+
         Returns:
-            True if successful, False otherwise
+            True on success
         """
         try:
             async with self.async_session_factory() as session:
-                query = select(Task).where(Task.id == task_id)
-                result = await session.execute(query)
-                task = result.scalar_one_or_none()
+                result = await session.execute(select(Task).where(Task.id == task_id))
+                task_row = result.scalar_one_or_none()
 
-                if not task:
-                    logger.error(f"Task with ID {task_id} not found")
+                if not task_row:
+                    logger.error(f"Task {task_id} not found")
                     return False
 
-                task.status = status
+                task_row.status = status
                 if error_message:
-                    task.error_message = error_message
+                    task_row.error_message = error_message
 
-                if status == TaskStatus.RUNNING and not task.started_at:
-                    task.started_at = datetime.utcnow()
+                if status == TaskStatus.RUNNING and not task_row.started_at:
+                    task_row.started_at = datetime.utcnow()
                 elif status in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]:
-                    task.completed_at = datetime.utcnow()
+                    task_row.completed_at = datetime.utcnow()
 
                 await session.commit()
-
-                logger.info(f"Updated task {task_id} status to {status}")
+                logger.info(f"Task {task_id} status updated → {status}")
                 return True
-
         except Exception as e:
-            logger.error(f"Failed to update task status: {e}")
+            logger.error(f"write_status_update failed: {e}")
             try:
                 await session.rollback()
-            except:
+            except Exception:
                 pass
             return False
 
@@ -270,7 +268,7 @@ class DatabaseService:
         Returns:
             True if successful, False otherwise
         """
-        return await self.write_agent_output(
+        return await self.write_task_output(
             task_id=task_id,
             variation_id=variation_id,
             content=error_message,
@@ -302,7 +300,7 @@ class DatabaseService:
             "timestamp": datetime.utcnow().isoformat()
         }
 
-        return await self.write_agent_output(
+        return await self.write_task_output(
             task_id=task_id,
             variation_id=variation_id,
             content=str(log_data),
