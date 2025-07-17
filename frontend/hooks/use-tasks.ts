@@ -10,6 +10,7 @@ export interface Task {
   versions?: number
   additions?: number
   deletions?: number
+  archived: boolean
 }
 
 export interface TasksResponse {
@@ -31,7 +32,7 @@ export interface UseTasksReturn {
  * Hook for fetching tasks from the API
  * Replaces the mock sessions data with real database data
  */
-export function useTasks(limit: number = 20): UseTasksReturn {
+export function useTasks(limit: number = 20, archived: boolean = false): UseTasksReturn {
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -44,7 +45,8 @@ export function useTasks(limit: number = 20): UseTasksReturn {
       setError(null)
       
       // Call the tasks API endpoint (separated from runs)
-      const url = `http://localhost:8000/api/v1/tasks?limit=${limit}`
+      const endpoint = archived ? '/archived' : ''
+      const url = `http://localhost:8000/api/v1/tasks${endpoint}?limit=${limit}`
       console.log('Fetching tasks from:', url)
       // Get auth token from localStorage
       const token = localStorage.getItem('github_token')
@@ -88,7 +90,7 @@ export function useTasks(limit: number = 20): UseTasksReturn {
 
   useEffect(() => {
     fetchTasks()
-  }, [limit])
+  }, [limit, archived])
 
   return {
     tasks,

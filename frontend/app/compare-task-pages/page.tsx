@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CheckCircle, X, AlertTriangle, FileCode, Terminal } from "lucide-react"
+import { formatLogTimestamp } from "@/utils/timezone"
 import { 
   getBodyClasses, 
   getHeadingClasses, 
@@ -148,7 +149,7 @@ function TaskPageOriginal() {
               {mockLogs.map((log) => (
                 <div key={log.id} className="flex gap-3 text-sm">
                   <span className="text-gray-500 text-xs w-24 flex-shrink-0">
-                    {new Date(log.timestamp).toLocaleTimeString()}
+                    {formatLogTimestamp(log.timestamp)}
                   </span>
                   <pre className="text-gray-300 whitespace-pre-wrap flex-1">{log.content}</pre>
                 </div>
@@ -165,7 +166,7 @@ function TaskPageOriginal() {
                       <div className="flex items-center gap-2 mb-2">
                         <h4 className="font-medium text-red-300">Error</h4>
                         <span className="text-xs text-gray-500">
-                          {new Date(errorItem.timestamp).toLocaleTimeString()}
+                          {formatLogTimestamp(errorItem.timestamp)}
                         </span>
                       </div>
                       <pre className="text-sm p-3 rounded border overflow-x-auto whitespace-pre-wrap bg-black/50 border-red-700/50 text-red-200">
@@ -257,7 +258,7 @@ function TaskPageTokens() {
               {mockLogs.map((log) => (
                 <div key={log.id} className={`flex ${getGapSpacing('sm')} text-sm`}>
                   <span className={`${getBodyClasses('muted')} text-xs w-24 flex-shrink-0`}>
-                    {new Date(log.timestamp).toLocaleTimeString()}
+                    {formatLogTimestamp(log.timestamp)}
                   </span>
                   <pre className={`${getBodyClasses('primary')} whitespace-pre-wrap flex-1`}>{log.content}</pre>
                 </div>
@@ -274,7 +275,7 @@ function TaskPageTokens() {
                       <div className={`flex items-center ${getGapSpacing('sm')} ${getMarginSpacing('xs')}`}>
                         <h4 className={`font-medium ${getStatusColorClasses('failed')}`}>Error</h4>
                         <span className={`text-xs ${getBodyClasses('muted')}`}>
-                          {new Date(errorItem.timestamp).toLocaleTimeString()}
+                          {formatLogTimestamp(errorItem.timestamp)}
                         </span>
                       </div>
                       <pre className={`text-sm ${getPaddingSpacing('sm')} rounded border overflow-x-auto whitespace-pre-wrap bg-black/50 border-red-700/50 text-red-200`}>

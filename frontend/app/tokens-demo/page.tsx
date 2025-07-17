@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { AutoResizeTextarea } from "@/components/auto-resize-textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { GitBranch, Layers, Mic, Github, RefreshCw, AlertCircle } from "lucide-react"
+import { GitBranch, Layers, Mic, Github, RefreshCw, AlertCircle, ArrowUp } from "lucide-react"
 import Link from "next/link"
 import { useTasks } from "@/hooks/use-tasks"
 import { useAuth } from "@/components/auth/auth-provider"
@@ -26,6 +26,7 @@ import {
   getAgentColorClasses,
   getOutputTypeColorClasses
 } from "@/lib/design-tokens"
+import { cn } from "@/lib/utils"
 import { AgentOutputViewerTokens } from "@/components/agent-output-viewer-tokens"
 import { TokenSystemComparison } from "@/components/token-system-comparison"
 
@@ -71,9 +72,6 @@ export default function TokensDemo() {
     }
   }, [branches, selectedBranch, branchLoaded, setSelectedBranch])
 
-  const handleAsk = () => {
-    alert("Ask button clicked!")
-  }
 
   const handleCode = async () => {
     // Use provided task text or generate random demo prompt
@@ -252,23 +250,19 @@ export default function TokensDemo() {
                 <Mic className="w-5 h-5" />
               </Button>
               {taskText.trim() && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleAsk}
-                    className={`rounded-full ${getPaddingSpacing('button')} h-auto ${componentTokens.ui.card.secondary} hover:bg-gray-700/60`}
-                  >
-                    Ask
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleCode}
-                    className={`rounded-full ${getPaddingSpacing('button')} h-auto ${componentTokens.ui.button.primary}`}
-                  >
-                    Code
-                  </Button>
-                </>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleCode}
+                  className={cn(
+                    "rounded-lg transition-all duration-200",
+                    taskText.trim() 
+                      ? "bg-blue-600 hover:bg-blue-700 text-white" 
+                      : "hover:bg-gray-800 text-gray-400"
+                  )}
+                >
+                  <ArrowUp className="w-5 h-5" />
+                </Button>
               )}
             </div>
           </div>

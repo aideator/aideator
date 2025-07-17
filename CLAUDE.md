@@ -150,6 +150,11 @@ Before any suggestion that changes dependencies, environment, or tools:
 - **Configuration**: XDG-compliant config directories and .env files
 - **Networking**: Simplified port mapping to avoid "network hell"
 
+### 🚨 DEPLOYMENT CRITICAL
+- **ONLY use Tiltfile for deployment** - this is the single source of truth
+- **NEVER suggest Helm charts or files in `/deprecated/infra/`** - these are deprecated
+- All Kubernetes orchestration goes through the Tiltfile at project root
+
 ---
 
 ## 🗄️ Simplified Data Architecture

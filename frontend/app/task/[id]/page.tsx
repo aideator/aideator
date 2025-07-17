@@ -9,47 +9,11 @@ import { Input } from "@/components/ui/input"
 import { useTaskDetail } from "@/hooks/use-task-detail"
 import { useAgentLogs } from "@/hooks/use-agent-logs"
 import { useAgentErrors } from "@/hooks/use-agent-errors"
+import { useTaskDiffs } from "@/hooks/use-task-diffs"
 import { notFound } from "next/navigation"
 import DiffViewer from "@/components/diff-viewer"
+import { formatLogTimestamp } from "@/utils/timezone"
 
-// Convert task data to XML format for DiffViewer
-function convertTaskDataToXml(versionData: any): string {
-  if (!versionData?.files || versionData.files.length === 0) {
-    return `<diff_analysis>
-  <file>
-    <name>No files to display</name>
-    <diff>No changes detected in this task</diff>
-    <changes>No modifications were made during task execution</changes>
-  </file>
-</diff_analysis>`
-  }
-
-  const fileElements = versionData.files.map((file: any) => {
-    // Convert diff array back to standard diff format
-    const diffText = file.diff.map((line: any) => {
-      if (line.type === 'add') {
-        return `+${line.content}`
-      } else if (line.type === 'del') {
-        return `-${line.content}`
-      } else {
-        return line.content
-      }
-    }).join('\n')
-
-    // Generate changes summary
-    const changesSummary = `File modified with ${file.additions} additions and ${file.deletions} deletions`
-
-    return `  <file>
-    <name>${file.name}</name>
-    <diff>${diffText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</diff>
-    <changes>${changesSummary}</changes>
-  </file>`
-  }).join('\n')
-
-  return `<diff_analysis>
-${fileElements}
-</diff_analysis>`
-}
 
 export default function TaskPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -57,6 +21,7 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
   const { task, loading, error } = useTaskDetail(id)
   const { logs, isLoading: logsLoading, error: logsError, getLogsByVariation, hasLogsForVariation } = useAgentLogs(id)
   const { errors, isLoading: errorsLoading, error: errorsError, getErrorsByVariation, hasErrorsForVariation } = useAgentErrors(id)
+  const { diffs, loading: diffsLoading, error: diffsError } = useTaskDiffs(id, activeVersion - 1)
   const logsContainerRef = useRef<HTMLDivElement>(null)
 
   // Auto-scroll to bottom when new logs arrive
@@ -155,7 +120,7 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
         {variationLogs.map((log) => (
           <div key={log.id} className="flex gap-3 text-sm">
             <span className="text-gray-500 text-xs w-24 flex-shrink-0">
-              {new Date(log.timestamp).toLocaleTimeString()}
+              {formatLogTimestamp(log.timestamp)}
             </span>
             <pre className="text-gray-300 whitespace-pre-wrap flex-1">{log.content}</pre>
           </div>
@@ -224,7 +189,7 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
                     {errorItem.output_type === 'error' ? 'Error' : 'Stderr Output'}
                   </h4>
                   <span className="text-xs text-gray-500">
-                    {new Date(errorItem.timestamp).toLocaleTimeString()}
+                    {formatLogTimestamp(errorItem.timestamp)}
                   </span>
                 </div>
                 <pre className={`text-sm p-3 rounded border overflow-x-auto whitespace-pre-wrap ${
@@ -246,6 +211,44 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
         )}
       </div>
     )
+  }
+
+  // Render diffs content for the current variation
+  const renderDiffsContent = () => {
+    if (diffsError) {
+      return (
+        <div className="text-center py-8">
+          <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-4" />
+          <p className="text-red-300 mb-2">Failed to load diffs</p>
+          <p className="text-gray-400 text-sm">{diffsError}</p>
+        </div>
+      )
+    }
+
+    if (diffsLoading && diffs.length === 0) {
+      return (
+        <div className="text-center py-8">
+          <div className="animate-pulse rounded-full h-6 w-6 border-b-2 border-blue-400 mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading diff data...</p>
+        </div>
+      )
+    }
+
+    if (diffs.length === 0) {
+      return (
+        <div className="text-center py-8">
+          <FileCode className="w-8 h-8 text-gray-500 mx-auto mb-4" />
+          <p className="text-gray-400">No diffs available yet</p>
+          <p className="text-gray-500 text-sm mt-2">Diffs will appear after the agent makes changes</p>
+        </div>
+      )
+    }
+
+    // Get the latest diff data (most recent timestamp)
+    const latestDiff = diffs[diffs.length - 1]
+    
+    // Pass XML content directly to DiffViewer
+    return <DiffViewer xmlData={latestDiff.content} />
   }
 
   return (
@@ -330,7 +333,7 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
               </TabsTrigger>
             </TabsList>
             <TabsContent value="diff" className="flex-1 overflow-y-auto p-4">
-              <DiffViewer xmlData={convertTaskDataToXml(versionData)} />
+              {renderDiffsContent()}
             </TabsContent>
             <TabsContent value="logs" className="flex-1 overflow-y-auto p-4 font-mono text-sm">
               {renderLogsContent()}

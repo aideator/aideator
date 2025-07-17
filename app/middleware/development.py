@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.database import async_session_maker
 from app.models.user import User
+from app.utils.dev_user import get_or_create_dev_user
 
 
 class DevelopmentAuthMiddleware:
@@ -49,7 +50,7 @@ class DevelopmentAuthMiddleware:
         # Add development user to request state for bypassing auth
         if self.settings.simple_dev_mode:
             async with async_session_maker() as db:
-                test_user = await self._get_or_create_test_user(db)
+                test_user = await get_or_create_dev_user(db)
                 request.state.dev_user = test_user
 
         await self.app(scope, receive, send)
@@ -57,31 +58,7 @@ class DevelopmentAuthMiddleware:
     async def _ensure_test_user_exists(self):
         """Ensure test user exists in database."""
         async with async_session_maker() as db:
-            await self._get_or_create_test_user(db)
-
-    async def _get_or_create_test_user(self, db: AsyncSession) -> User:
-        """Get or create the test user."""
-        # Check if test user exists
-        query = select(User).where(User.email == "test@aideator.local")
-        result = await db.execute(query)
-        user = result.scalar_one_or_none()
-
-        if not user:
-            # Create test user
-            user = User(
-                id=f"user_test_{secrets.token_urlsafe(12)}",
-                email="test@aideator.local",
-                name="Test User",
-                company="AIdeator Development",
-                is_active=True,
-                is_superuser=True,  # Make superuser for full access
-                created_at=datetime.utcnow(),
-            )
-            db.add(user)
-            await db.commit()
-            await db.refresh(user)
-
-        return user
+            await get_or_create_dev_user(db)
 
 
 async def get_dev_user_from_request(request: Request) -> User | None:

@@ -22,6 +22,7 @@ import {
   Terminal,
   Play
 } from 'lucide-react'
+import { formatLogTimestamp, formatUserTimestamp } from '@/utils/timezone'
 import { 
   getBodyClasses, 
   getStatusColorClasses,
@@ -460,7 +461,7 @@ export default function AdminDashboard() {
                           </div>
                           <div className="text-right">
                             <div className={`${getBodyClasses('secondary')} text-sm`}>
-                              {new Date(activity.latest_timestamp).toLocaleTimeString()}
+                              {formatLogTimestamp(activity.latest_timestamp)}
                             </div>
                             <div className={`${getBodyClasses('primary')} text-sm max-w-xs overflow-hidden text-ellipsis`}>
                               {activity.latest_message}
@@ -511,7 +512,7 @@ export default function AdminDashboard() {
                               {run.id}
                             </div>
                             <div className={`${getBodyClasses('secondary')} text-sm`}>
-                              {new Date(run.created_at).toLocaleString()}
+                              {formatUserTimestamp(run.created_at, undefined, 'full')}
                             </div>
                           </div>
                           <div className={`text-right flex items-center ${getGapSpacing('sm')}`}>
@@ -573,7 +574,7 @@ export default function AdminDashboard() {
                               </span>
                             </div>
                             <span className={`${getBodyClasses('secondary')} text-sm`}>
-                              {new Date(message.timestamp).toLocaleString()}
+                              {formatUserTimestamp(message.timestamp, undefined, 'full')}
                             </span>
                           </div>
                           <div className={`${getBodyClasses('primary')} text-sm ${commonTypographyCombinations.codeInline}`}>

@@ -149,6 +149,45 @@ class OutputWriter:
 
         return await self.write_job_data(message)
 
+    async def write_git_diff(self, file_changes: dict) -> bool:
+        """Write git diff output in format expected by frontend.
+        
+        Args:
+            file_changes: Dict with file_changes structure:
+                {
+                    "file_changes": [
+                        {
+                            "name": "file.py",
+                            "additions": 5,
+                            "deletions": 2,
+                            "diff": [{"type": "add", "content": "new line"}, ...]
+                        }
+                    ]
+                }
+            
+        Returns:
+            True if successful
+        """
+        import json
+        
+        # Convert to JSON string for storage
+        content = json.dumps(file_changes)
+        
+        # Use "diffs" output_type to match frontend expectations
+        return await self.write_output(content, "diffs")
+
+    async def write_git_diff_xml(self, xml_content: str) -> bool:
+        """Write git diff output as XML for frontend DiffViewer.
+        
+        Args:
+            xml_content: XML string in diff_analysis format with AI-generated summaries
+            
+        Returns:
+            True if successful
+        """
+        # Use "diffs" output_type to match frontend expectations
+        return await self.write_output(xml_content, "diffs")
+
     async def write_system_status(self, status_message: str) -> bool:
         """Write system status message.
         

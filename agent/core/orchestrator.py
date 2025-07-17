@@ -6,6 +6,9 @@ This replaces the monolithic AIdeatorAgent logic with a clean orchestration patt
 
 import shutil
 import asyncio # Add this import for asyncio.sleep
+import subprocess
+import json
+import re
 
 from agent.analyzers.codebase import CodebaseAnalyzer
 from agent.analyzers.repository import RepositoryAnalyzer
@@ -13,7 +16,6 @@ from agent.config.providers import ProviderConfig
 from agent.config.settings import AgentConfig
 from agent.providers.claude_cli import ClaudeCLIProvider
 from agent.providers.gemini_cli import GeminiCLIProvider
-from agent.providers.litellm_cli import LiteLLMCLIProvider
 from agent.services.database_service import DatabaseService
 from agent.services.output_writer import OutputWriter
 from agent.utils.errors import (
@@ -72,6 +74,10 @@ class AgentOrchestrator:
                 success=True,
                 response_length=len(response)
             )
+
+            # Generate git diff after successful execution (only in code mode)
+            if self.config.is_code_mode:
+                await self._generate_git_diff()
 
             await self.output_writer.write_job_data("✅ Agent execution completed successfully")
 
@@ -138,8 +144,8 @@ class AgentOrchestrator:
         elif self.config.agent_mode == "gemini-cli":
             self.provider = GeminiCLIProvider(self.config, self.output_writer)
         else:
-            # Default to LiteLLM
-            self.provider = LiteLLMCLIProvider(self.config, self.output_writer)
+            # Default to Claude CLI
+            self.provider = ClaudeCLIProvider(self.config, self.output_writer)
 
         # Initialize analyzers (only needed for code mode)
         self.repo_analyzer = RepositoryAnalyzer(self.config, self.output_writer)
@@ -212,6 +218,342 @@ class AgentOrchestrator:
             if run_data["status"] not in ["in_progress"]: # Only clean up if not actively running
                 del self.active_runs[task_id] # Change 5: delete with task_id
     # REPOMARK:SCOPE
+
+    async def _run_git_command(self, command: list[str], cwd: str = None) -> subprocess.CompletedProcess:
+        """Run a git command safely in the container.
+        
+        Args:
+            command: Git command as list of strings (e.g., ['git', 'diff', 'HEAD'])
+            cwd: Working directory (defaults to repo directory)
+            
+        Returns:
+            CompletedProcess result
+        """
+        if cwd is None and self.repo_analyzer:
+            cwd = str(self.repo_analyzer.config.repo_dir)
+        
+        try:
+            result = subprocess.run(
+                command,
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=30  # 30 second timeout
+            )
+            return result
+        except subprocess.TimeoutExpired:
+            await self.output_writer.write_error(f"Git command timed out: {' '.join(command)}")
+            raise
+        except Exception as e:
+            await self.output_writer.write_error(f"Git command failed: {e}")
+            raise
+
+    def _parse_git_diff(self, diff_output: str) -> dict:
+        """Parse git diff output into structured format for frontend.
+        
+        Args:
+            diff_output: Raw git diff output
+            
+        Returns:
+            Dict with file_changes structure expected by frontend
+        """
+        if not diff_output.strip():
+            return {"file_changes": []}
+        
+        files = []
+        current_file = None
+        diff_lines = []
+        
+        for line in diff_output.split('\n'):
+            # New file marker
+            if line.startswith('diff --git'):
+                # Save previous file if exists
+                if current_file:
+                    files.append(self._create_file_change(current_file, diff_lines))
+                
+                # Extract file path (handle a/path b/path format)
+                parts = line.split()
+                if len(parts) >= 4:
+                    file_path = parts[3][2:]  # Remove "b/" prefix
+                    current_file = {"name": file_path}
+                    diff_lines = []
+            
+            # File header lines (index, ---, +++)
+            elif line.startswith('index ') or line.startswith('---') or line.startswith('+++'):
+                continue
+                
+            # Hunk header (@@ -1,4 +1,6 @@)
+            elif line.startswith('@@'):
+                diff_lines.append({
+                    "type": "normal",
+                    "oldLine": None,
+                    "newLine": None,
+                    "content": line
+                })
+                
+            # Content lines
+            elif current_file is not None:
+                if line.startswith('+'):
+                    diff_lines.append({
+                        "type": "add",
+                        "oldLine": None,
+                        "newLine": None,  # Frontend will calculate
+                        "content": line[1:]  # Remove + prefix
+                    })
+                elif line.startswith('-'):
+                    diff_lines.append({
+                        "type": "del", 
+                        "oldLine": None,  # Frontend will calculate
+                        "newLine": None,
+                        "content": line[1:]  # Remove - prefix
+                    })
+                elif line.startswith(' '):
+                    diff_lines.append({
+                        "type": "normal",
+                        "oldLine": None,  # Frontend will calculate
+                        "newLine": None,  # Frontend will calculate
+                        "content": line[1:]  # Remove space prefix
+                    })
+        
+        # Don't forget the last file
+        if current_file:
+            files.append(self._create_file_change(current_file, diff_lines))
+        
+        return {"file_changes": files}
+
+    def _create_file_change(self, file_info: dict, diff_lines: list) -> dict:
+        """Create a file change entry with additions/deletions count.
+        
+        Args:
+            file_info: Dict with file name
+            diff_lines: List of diff line objects
+            
+        Returns:
+            Complete file change dict
+        """
+        additions = sum(1 for line in diff_lines if line["type"] == "add")
+        deletions = sum(1 for line in diff_lines if line["type"] == "del")
+        
+        return {
+            "name": file_info["name"],
+            "additions": additions,
+            "deletions": deletions,
+            "diff": diff_lines
+        }
+
+    async def _generate_git_diff(self) -> None:
+        """Generate git diff with AI summaries after claude-cli execution and write to database."""
+        try:
+            await self.output_writer.write_job_data("📝 Generating git diff of changes...")
+            
+            # First check if we're in a git repository
+            git_status_result = await self._run_git_command(['git', 'status', '--porcelain'])
+            
+            if git_status_result.returncode != 0:
+                await self.output_writer.write_job_data("⚠️ Not in a git repository - skipping diff generation")
+                return
+            
+            # Check if there are any changes
+            if not git_status_result.stdout.strip():
+                await self.output_writer.write_job_data("ℹ️ No changes detected in repository")
+                # Write empty XML diff for frontend
+                empty_xml = self._create_empty_diff_xml()
+                await self.output_writer.write_git_diff_xml(empty_xml)
+                return
+            
+            # Generate diff of all changes (staged and unstaged)
+            diff_result = await self._run_git_command(['git', 'diff', 'HEAD'])
+            
+            if diff_result.returncode == 0:
+                if diff_result.stdout.strip():
+                    await self.output_writer.write_job_data("🤖 Generating AI summaries for file changes...")
+                    
+                    # Parse diff and generate XML with AI summaries
+                    diff_xml = await self._generate_diff_xml_with_summaries(diff_result.stdout)
+                    
+                    # Write XML to database with "diffs" output_type
+                    await self.output_writer.write_git_diff_xml(diff_xml)
+                    
+                    # Count files for status message
+                    file_count = diff_result.stdout.count('diff --git')
+                    await self.output_writer.write_job_data(f"✅ Generated diff with AI summaries for {file_count} changed files")
+                else:
+                    await self.output_writer.write_job_data("ℹ️ No diff content to display")
+                    # Write empty XML for frontend consistency
+                    empty_xml = self._create_empty_diff_xml()
+                    await self.output_writer.write_git_diff_xml(empty_xml)
+            else:
+                error_msg = f"Git diff command failed: {diff_result.stderr}"
+                await self.output_writer.write_error(error_msg)
+                # Still write empty XML so frontend doesn't wait forever
+                empty_xml = self._create_empty_diff_xml()
+                await self.output_writer.write_git_diff_xml(empty_xml)
+                
+        except Exception as e:
+            error_msg = f"Failed to generate git diff: {e}"
+            await self.output_writer.write_error(error_msg)
+            await self.output_writer.write_job_data("⚠️ Git diff generation failed - continuing without diff")
+            # Still write empty XML so frontend doesn't wait forever
+            try:
+                empty_xml = self._create_empty_diff_xml()
+                await self.output_writer.write_git_diff_xml(empty_xml)
+            except Exception:
+                pass  # Don't let secondary errors mask the main error
+
+    async def _generate_diff_xml_with_summaries(self, diff_output: str) -> str:
+        """Generate XML diff format with AI-generated summaries for each file.
+        
+        Args:
+            diff_output: Raw git diff output
+            
+        Returns:
+            XML string in format expected by frontend DiffViewer
+        """
+        if not diff_output.strip():
+            return self._create_empty_diff_xml()
+        
+        file_diffs = []
+        current_file = None
+        current_diff_lines = []
+        
+        for line in diff_output.split('\n'):
+            # New file marker
+            if line.startswith('diff --git'):
+                # Process previous file if exists
+                if current_file and current_diff_lines:
+                    file_diff_content = '\n'.join(current_diff_lines)
+                    summary = await self._summarize_file_changes(current_file, file_diff_content)
+                    file_diffs.append({
+                        'name': current_file,
+                        'diff': file_diff_content,
+                        'changes': summary
+                    })
+                
+                # Extract file path (handle a/path b/path format)
+                parts = line.split()
+                if len(parts) >= 4:
+                    current_file = parts[3][2:]  # Remove "b/" prefix
+                    current_diff_lines = []
+            
+            # Collect all diff lines for this file
+            elif current_file is not None:
+                current_diff_lines.append(line)
+        
+        # Don't forget the last file
+        if current_file and current_diff_lines:
+            file_diff_content = '\n'.join(current_diff_lines)
+            summary = await self._summarize_file_changes(current_file, file_diff_content)
+            file_diffs.append({
+                'name': current_file,
+                'diff': file_diff_content,
+                'changes': summary
+            })
+        
+        return self._create_diff_xml(file_diffs)
+
+    async def _summarize_file_changes(self, filename: str, diff_content: str) -> str:
+        """Use Anthropic API to generate English summary of file changes.
+        
+        Args:
+            filename: Name of the file being changed
+            diff_content: The git diff content for this file
+            
+        Returns:
+            Human-readable summary of changes
+        """
+        try:
+            # Create a focused prompt for change analysis
+            prompt = f"""Analyze this git diff for {filename} and provide a concise summary of the changes:
+
+{diff_content}
+
+Provide a brief, clear summary of what was changed in this file. Focus on:
+- What functionality was added, modified, or removed
+- The purpose/intent of the changes
+- Any new imports, dependencies, or components added
+
+Keep it under 100 words and make it readable for developers. Avoid technical jargon about line numbers or syntax."""
+
+            # Use the same provider that's already configured for the main task
+            summary = await self.provider.generate_response(prompt)
+            return summary.strip()
+            
+        except Exception as e:
+            # Fallback to basic description if AI summary fails
+            await self.output_writer.write_job_data(f"⚠️ Failed to generate AI summary for {filename}: {e}")
+            
+            # Provide a more informative fallback based on file type and changes
+            lines_added = diff_content.count('\n+')
+            lines_removed = diff_content.count('\n-')
+            
+            # Try to identify the type of change
+            if '+' in diff_content and '-' not in diff_content:
+                change_type = "Added new content to"
+            elif '-' in diff_content and '+' not in diff_content:
+                change_type = "Removed content from"
+            else:
+                change_type = "Modified"
+            
+            return f"{change_type} {filename} ({lines_added} additions, {lines_removed} deletions)"
+
+    def _create_empty_diff_xml(self) -> str:
+        """Create empty diff XML for when no changes are detected."""
+        return """<diff_analysis>
+  <file>
+    <name>No files modified</name>
+    <diff>No changes detected in this task</diff>
+    <changes>No modifications were made during task execution</changes>
+  </file>
+</diff_analysis>"""
+
+    def _create_diff_xml(self, file_diffs: list[dict]) -> str:
+        """Create XML structure expected by frontend DiffViewer.
+        
+        Args:
+            file_diffs: List of dicts with name, diff, and changes keys
+            
+        Returns:
+            XML string formatted for DiffViewer
+        """
+        if not file_diffs:
+            return self._create_empty_diff_xml()
+
+        file_elements = []
+        for file_data in file_diffs:
+            # Escape XML special characters
+            name = self._escape_xml(file_data['name'])
+            diff = self._escape_xml(file_data['diff'])
+            changes = self._escape_xml(file_data['changes'])
+
+            file_elements.append(f"""  <file>
+    <name>{name}</name>
+    <diff>{diff}</diff>
+    <changes>{changes}</changes>
+  </file>""")
+
+        return f"""<diff_analysis>
+{chr(10).join(file_elements)}
+</diff_analysis>"""
+
+    def _escape_xml(self, text: str) -> str:
+        """Escape XML special characters in text content.
+        
+        Args:
+            text: Text to escape
+            
+        Returns:
+            XML-safe text
+        """
+        if not text:
+            return ""
+        
+        # Replace XML special characters
+        return (text
+                .replace('&', '&amp;')
+                .replace('<', '&lt;')
+                .replace('>', '&gt;')
+                .replace('"', '&quot;')
+                .replace("'", '&apos;'))
 
     async def _cleanup(self) -> None:
         """Clean up resources and connections."""

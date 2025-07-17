@@ -23,6 +23,7 @@ from app.models.user import User
 from app.schemas.auth import (
     UserResponse,
 )
+from app.utils.dev_user import get_or_create_dev_user
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -257,23 +258,8 @@ async def dev_test_login(
             detail="Not found",
         )
 
-    # Find or create test user
-    result = await db.execute(select(User).where(User.email == "test@aideator.local"))
-    user = result.scalar_one_or_none()
-
-    if not user:
-        # Create test user
-        user = User(
-            id=f"user_test_{secrets.token_urlsafe(12)}",
-            email="test@aideator.local",
-            name="Test User",
-            company="AIdeator Development",
-            is_active=True,
-            is_superuser=False,
-        )
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
+    # Find or create test user using standardized utility
+    user = await get_or_create_dev_user(db)
 
     return {
         "user": {

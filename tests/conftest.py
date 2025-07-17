@@ -160,12 +160,10 @@ def make_user(db_session: AsyncSession):
     """Factory for creating test users."""
 
     async def _make_user(**kwargs):
-        from app.api.v1.auth import get_password_hash
-
         defaults = {
             "id": f"user_test_{asyncio.get_event_loop().time()}",
             "email": f"test_{asyncio.get_event_loop().time()}@example.com",
-            "hashed_password": get_password_hash("TestPassword123"),
+            "name": "Test User",
             "is_active": True,
             "is_superuser": False,
         }
@@ -183,22 +181,20 @@ def make_api_key(db_session: AsyncSession):
     """Factory for creating test API keys."""
 
     async def _make_api_key(user: User, **kwargs):
-        from app.api.v1.auth import generate_api_key, get_password_hash
-
-        api_key = generate_api_key()
-        defaults = {
+        # API key authentication removed - using GitHub OAuth only
+        # This fixture is kept for backward compatibility but creates dummy data
+        from datetime import datetime
+        
+        dummy_key = {
             "id": f"key_test_{asyncio.get_event_loop().time()}",
             "user_id": user.id,
-            "key_hash": get_password_hash(api_key),
             "name": "Test API Key",
             "is_active": True,
             "scopes": ["runs:create", "runs:read"],
+            "created_at": datetime.utcnow()
         }
-        key_record = APIKey(**{**defaults, **kwargs})
-        db_session.add(key_record)
-        await db_session.commit()
-        await db_session.refresh(key_record)
-        return api_key, key_record
+        
+        return "dummy_api_key", dummy_key
 
     return _make_api_key
 

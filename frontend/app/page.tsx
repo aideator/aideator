@@ -5,12 +5,15 @@ import { Button } from "@/components/ui/button"
 import { AutoResizeTextarea } from "@/components/auto-resize-textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { GitBranch, Layers, Mic, Github, RefreshCw, AlertCircle } from "lucide-react"
+import { GitBranch, Layers, Mic, Github, RefreshCw, AlertCircle, Archive, X, ArrowUp } from "lucide-react"
 import Link from "next/link"
 import { useTasks } from "@/hooks/use-tasks"
+import { useArchive } from "@/hooks/use-archive"
 import { useAuth } from "@/components/auth/auth-provider"
 import { useGitHubRepos, useGitHubBranches } from "@/hooks/use-github-repos"
 import { useLocalStorage } from "@/hooks/use-local-storage"
+import { useConfirmation } from "@/hooks/use-confirmation"
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog"
 import { 
   getHeadingClasses, 
   getBodyClasses, 
@@ -24,11 +27,16 @@ import {
   commonSpacingCombinations,
   componentTokens
 } from "@/lib/design-tokens"
+import { cn } from "@/lib/utils"
 
 export default function Home() {
   const [taskText, setTaskText] = useState("")
+  const [hoveredTask, setHoveredTask] = useState<string | null>(null)
   const { tasks, loading, error, refetch } = useTasks()
+  const { tasks: archivedTasks, loading: archivedLoading, error: archivedError, refetch: refetchArchived } = useTasks(20, true)
+  const { archiving, deleting, archiveTask, unarchiveTask, deleteTask } = useArchive()
   const { user, token } = useAuth()
+  const confirmation = useConfirmation()
   
   // Persistent settings
   const [variations, setVariations, variationsLoaded] = useLocalStorage('task_variations', 1)
@@ -67,9 +75,6 @@ export default function Home() {
     }
   }, [branches, selectedBranch, branchLoaded, setSelectedBranch])
 
-  const handleAsk = () => {
-    alert("Ask button clicked!")
-  }
 
   const handleCode = async () => {
     // Use provided task text or generate random demo prompt
@@ -120,10 +125,88 @@ export default function Home() {
         window.location.href = `/task/${result.task_id}`
       } else {
         const error = await response.json()
-        alert(`Error creating task: ${error.detail || 'Unknown error'}`)
+        console.error('Task creation failed:', error)
+        
+        // Provide better error messages
+        let errorMessage = 'Unknown error'
+        if (error.detail) {
+          if (Array.isArray(error.detail)) {
+            // Validation errors
+            errorMessage = error.detail.map((e: any) => e.msg).join(', ')
+          } else if (typeof error.detail === 'string') {
+            errorMessage = error.detail
+          }
+        }
+        alert(`Error creating task: ${errorMessage}`)
       }
     } catch (err) {
+      console.error('Network error:', err)
       alert(`Network error: ${err}`)
+    }
+  }
+
+  const handleArchive = async (e: React.MouseEvent, taskId: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    try {
+      await archiveTask(taskId)
+      refetch() // Refresh main tasks list
+      refetchArchived() // Refresh archived tasks list
+    } catch (err) {
+      alert(`Failed to archive task: ${err}`)
+    }
+  }
+
+  const handleUnarchive = async (e: React.MouseEvent, taskId: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    try {
+      await unarchiveTask(taskId)
+      refetch() // Refresh main tasks list
+      refetchArchived() // Refresh archived tasks list
+    } catch (err) {
+      alert(`Failed to unarchive task: ${err}`)
+    }
+  }
+
+  const handleDelete = async (e: React.MouseEvent, taskId: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    // Prevent double-clicks
+    if (deleting === taskId) {
+      console.log(`Delete already in progress for task ${taskId}, ignoring click`)
+      return
+    }
+    
+    try {
+      await confirmation.confirm(
+        {
+          title: 'Delete Task',
+          description: 'Are you sure you want to permanently delete this task?',
+          confirmText: 'Delete',
+          cancelText: 'Cancel',
+          variant: 'destructive',
+        },
+        async () => {
+          console.log(`Starting delete for task ${taskId}`)
+          await deleteTask(taskId)
+          console.log(`Delete successful for task ${taskId}, refreshing list`)
+          refetchArchived() // Refresh archived tasks list
+        }
+      )
+    } catch (err) {
+      console.error(`Delete failed for task ${taskId}:`, err)
+      
+      // Provide more user-friendly error messages
+      let errorMessage = 'Unknown error occurred'
+      if (err instanceof Error) {
+        errorMessage = err.message
+      } else if (typeof err === 'string') {
+        errorMessage = err
+      }
+      
+      alert(`Failed to delete task: ${errorMessage}`)
     }
   }
 
@@ -229,23 +312,19 @@ export default function Home() {
                 <Mic className="w-5 h-5" />
               </Button>
               {taskText.trim() && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleAsk}
-                    className={`rounded-full ${getPaddingSpacing('button')} h-auto ${componentTokens.ui.card.secondary} hover:bg-gray-700/60`}
-                  >
-                    Ask
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleCode}
-                    className={`rounded-full ${getPaddingSpacing('button')} h-auto ${componentTokens.ui.button.primary}`}
-                  >
-                    Code
-                  </Button>
-                </>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleCode}
+                  className={cn(
+                    "rounded-lg transition-all duration-200",
+                    taskText.trim() 
+                      ? "bg-blue-600 hover:bg-blue-700 text-white" 
+                      : "hover:bg-gray-800 text-gray-400"
+                  )}
+                >
+                  <ArrowUp className="w-5 h-5" />
+                </Button>
               )}
             </div>
           </div>
@@ -291,8 +370,92 @@ export default function Home() {
               </div>
             ) : (
               tasks.map((task) => (
-                <Link href={`/task/${task.id}`} key={task.id}>
-                  <div className={`flex items-center justify-between ${getPaddingSpacing('sm')} rounded-lg hover:bg-gray-900 transition-colors cursor-pointer`}>
+                <div 
+                  key={task.id}
+                  className={`flex items-center justify-between ${getPaddingSpacing('sm')} rounded-lg hover:bg-gray-900 transition-colors cursor-pointer group`}
+                  onMouseEnter={() => setHoveredTask(task.id)}
+                  onMouseLeave={() => setHoveredTask(null)}
+                >
+                  <Link href={`/task/${task.id}`} className="flex-1 flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="font-medium">{task.title}</span>
+                      <span className={getBodyClasses('detail')}>{task.details}</span>
+                    </div>
+                    <div className={`flex items-center ${getGapSpacing('lg')}`}>
+                      {/* Archive button - shows on hover, positioned left of status */}
+                      {hoveredTask === task.id && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="opacity-70 hover:opacity-100"
+                          onClick={(e) => handleArchive(e, task.id)}
+                          disabled={archiving === task.id}
+                        >
+                          {archiving === task.id ? (
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Archive className="w-4 h-4" />
+                          )}
+                        </Button>
+                      )}
+                      {task.status === "Completed" && (
+                        <>
+                          {task.versions && (
+                            <div className={`flex items-center ${getGapSpacing('xs')} ${getBodyClasses('detail')}`}>
+                              <Layers className="w-4 h-4" />
+                              <span>{task.versions}</span>
+                            </div>
+                          )}
+                          {(task.additions !== undefined || task.deletions !== undefined) && (
+                            <div className={`${commonTypographyCombinations.codeInline} text-sm`}>
+                              <span className={getStatusColorClasses('success')}>+{task.additions || 0}</span>{" "}
+                              <span className={getStatusColorClasses('failed')}>-{task.deletions || 0}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      {task.status === "Open" && (
+                        <span className={`text-sm ${getStatusColorClasses('open')} ${getPaddingSpacing('badgeSecondary')} rounded-md`}>Open</span>
+                      )}
+                      {task.status === "Failed" && <span className={`text-sm ${getStatusColorClasses('failed')}`}>Failed</span>}
+                    </div>
+                  </Link>
+                </div>
+              ))
+            )}
+          </TabsContent>
+          <TabsContent value="archive" className={`mt-6 ${commonSpacingCombinations.listLayout}`}>
+            {archivedLoading ? (
+              <div className={`${commonSpacingCombinations.loadingContainer} py-8`}>
+                <RefreshCw className={`w-6 h-6 animate-spin ${getBodyClasses('secondary')}`} />
+                <span className={`ml-2 ${getBodyClasses('secondary')}`}>Loading archived tasks...</span>
+              </div>
+            ) : archivedError ? (
+              <div className={`${commonSpacingCombinations.loadingContainer} py-8`}>
+                <AlertCircle className={`w-6 h-6 ${getStatusColorClasses('failed')}`} />
+                <span className={`ml-2 ${getStatusColorClasses('failed')}`}>{archivedError}</span>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={refetchArchived}
+                  className="ml-4"
+                >
+                  Retry
+                </Button>
+              </div>
+            ) : archivedTasks.length === 0 ? (
+              <div className={`text-center py-8 ${getBodyClasses('muted')}`}>
+                No archived tasks yet.
+              </div>
+            ) : (
+              archivedTasks.map((task) => (
+                <div 
+                  key={task.id}
+                  className={`flex items-center justify-between ${getPaddingSpacing('sm')} rounded-lg hover:bg-gray-900 transition-colors cursor-pointer group`}
+                  onMouseEnter={() => setHoveredTask(task.id)}
+                  onMouseLeave={() => setHoveredTask(null)}
+                >
+                  <Link href={`/task/${task.id}`} className="flex-1 flex items-center justify-between">
                     <div className="flex flex-col">
                       <span className="font-medium">{task.title}</span>
                       <span className={getBodyClasses('detail')}>{task.details}</span>
@@ -319,16 +482,59 @@ export default function Home() {
                       )}
                       {task.status === "Failed" && <span className={`text-sm ${getStatusColorClasses('failed')}`}>Failed</span>}
                     </div>
-                  </div>
-                </Link>
+                  </Link>
+                  {/* Delete button - shows on hover for archived tasks */}
+                  {hoveredTask === task.id && (
+                    <div className={`flex items-center ${getGapSpacing('xs')} ml-2`}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="opacity-70 hover:opacity-100"
+                        onClick={(e) => handleUnarchive(e, task.id)}
+                        disabled={archiving === task.id}
+                        title="Unarchive task"
+                      >
+                        {archiving === task.id ? (
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Archive className="w-4 h-4" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="opacity-70 hover:opacity-100 hover:text-red-400"
+                        onClick={(e) => handleDelete(e, task.id)}
+                        disabled={deleting === task.id}
+                        title="Delete task permanently"
+                      >
+                        {deleting === task.id ? (
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <X className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                </div>
               ))
             )}
           </TabsContent>
-          <TabsContent value="archive" className="mt-6">
-            <p className={`text-center ${getBodyClasses('muted')}`}>Archived tasks will appear here.</p>
-          </TabsContent>
         </Tabs>
       </div>
+      
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={confirmation.isOpen}
+        onClose={confirmation.close}
+        onConfirm={confirmation.onConfirm}
+        title={confirmation.title}
+        description={confirmation.description}
+        confirmText={confirmation.confirmText}
+        cancelText={confirmation.cancelText}
+        variant={confirmation.variant}
+        isLoading={confirmation.isLoading}
+      />
     </div>
   )
 }

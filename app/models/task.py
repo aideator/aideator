@@ -46,6 +46,7 @@ class Task(SQLModel, table=True):
         default=TaskStatus.PENDING,
         sa_column=Column("status", String, nullable=False, index=True)
     )
+    archived: bool = Field(default=False, index=True)
     
     # Timestamps
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)

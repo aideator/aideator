@@ -18,37 +18,25 @@ from sqlmodel import select
 from app.core.database import get_session
 from app.models.task import Task, TaskOutput, TaskStatus
 from app.models.user import User
+from app.utils.dev_user import ensure_dev_user_exists
 
 
 async def get_or_create_test_user() -> str:
-    """Get or create a test user for the mock data - uses same user as development middleware"""
+    """Get or create a test user for the mock data - uses standardized dev user utility"""
     async for db in get_session():
-        # Check if test user exists (same email as development middleware)
-        result = await db.execute(select(User).where(User.email == "test@aideator.local"))
-        existing_user = result.scalar_one_or_none()
-
-        if existing_user:
-            print(f"Using existing dev user: {existing_user.email} (ID: {existing_user.id})")
-            return existing_user.id
-        # This should not happen if development middleware is working
-        print("WARNING: Development user not found, creating one...")
-        import secrets
-
-        from app.core.auth import get_password_hash
-        user = User(
-            id=f"user_test_{secrets.token_urlsafe(12)}",
-            email="test@aideator.local",
-            hashed_password=get_password_hash("testpass123"),
-            full_name="Test User",
-            company="AIdeator Development",
-            is_active=True,
-            is_superuser=True,
-            created_at=datetime.utcnow()
-        )
-        db.add(user)
-        await db.commit()
-        print(f"Created test user: {user.email} (ID: {user.id})")
-        return user.id
+        # Use the standardized dev user utility
+        user_id = await ensure_dev_user_exists(db)
+        
+        # Get user info for logging
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        
+        if user:
+            print(f"Using existing dev user: {user.email} (ID: {user.id})")
+        else:
+            print(f"Created dev user with ID: {user_id}")
+            
+        return user_id
 
 
 async def insert_agent_output(
@@ -390,6 +378,28 @@ async def create_other_tasks_data():
         break
 
 
+async def fix_task_sequence():
+    """Fix the task ID sequence after inserting mock data with explicit IDs"""
+    async for db in get_session():
+        try:
+            # Get the max task ID and set the sequence to start from the next value
+            result = await db.execute(select(Task.id).order_by(Task.id.desc()).limit(1))
+            max_id = result.scalar_one_or_none()
+            
+            if max_id:
+                # Set the sequence to start from the next value using raw SQL
+                from sqlalchemy import text
+                await db.execute(text(f"SELECT setval('tasks_id_seq', {max_id})"))
+                await db.commit()
+                print(f"✅ Fixed task sequence: next ID will be {max_id + 1}")
+            else:
+                print("⚠️ No tasks found, sequence unchanged")
+        except Exception as e:
+            print(f"❌ Error fixing sequence: {e}")
+            raise
+        break
+
+
 async def main():
     """Main function to create all mock task data"""
     print("🗄️ Creating mock task data in database...")
@@ -398,6 +408,9 @@ async def main():
         await create_task_1_data()
         await create_task_2_data()
         await create_other_tasks_data()
+        
+        # Fix the sequence after creating tasks with explicit IDs
+        await fix_task_sequence()
 
         print("✅ Successfully created all mock task data!")
         print("\n📋 Created tasks:")

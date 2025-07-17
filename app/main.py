@@ -28,9 +28,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup
     logger.info(f"Starting {settings.project_name} v{settings.version}")
 
-    # Initialize database
-    await create_db_and_tables()
-    logger.info("Database initialized")
+    # Database initialization handled by Alembic migrations
+    # await create_db_and_tables()  # Removed - let Alembic handle schema creation
+    logger.info("Database connection initialized")
 
 
     # Kubernetes connections are handled via kubectl

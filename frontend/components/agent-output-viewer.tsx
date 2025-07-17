@@ -8,6 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { RefreshCw, Trash2, Terminal, AlertCircle } from 'lucide-react'
 import { useAgentLogs, type AgentLog } from '@/hooks/use-agent-logs'
+import { formatLogTimestamp } from '@/utils/timezone'
 import { cn } from '@/lib/utils'
 import { getAgentColorClasses, getOutputTypeColorClasses } from '@/lib/design-tokens'
 
@@ -43,7 +44,7 @@ function LoadingStatusIndicator({ isLoading, error }: { isLoading: boolean; erro
 
 function OutputLine({ output }: { output: AgentLog }) {
   const typeColor = getOutputTypeColorClasses(output.output_type)
-  const timestamp = new Date(output.timestamp).toLocaleTimeString()
+  const timestamp = formatLogTimestamp(output.timestamp)
 
   return (
     <div className="flex items-start gap-3 py-2 px-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">

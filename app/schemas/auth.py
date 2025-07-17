@@ -2,94 +2,26 @@ from __future__ import annotations
 
 from datetime import datetime  # noqa: TC003
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, Field
 
 
-class UserCreate(BaseModel):
-    """User registration request."""
+class GitHubAuthResponse(BaseModel):
+    """GitHub OAuth authentication response."""
 
-    email: EmailStr = Field(..., description="User email address")
-    password: str = Field(
-        ...,
-        min_length=8,
-        description="User password (min 8 characters)",
-    )
-    full_name: str | None = Field(None, description="User's full name")
-    company: str | None = Field(None, description="Company name")
-
-    @field_validator("password")
-    @classmethod
-    def validate_password(cls, v: str) -> str:
-        """Ensure password meets complexity requirements."""
-        if not any(c.isupper() for c in v):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not any(c.islower() for c in v):
-            raise ValueError("Password must contain at least one lowercase letter")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("Password must contain at least one digit")
-        return v
+    access_token: str = Field(..., description="GitHub access token")
+    token_type: str = Field(default="github", description="Token type")
+    user: "UserResponse" = Field(..., description="User information")
 
     model_config = {
         "json_schema_extra": {
             "example": {
-                "email": "user@example.com",
-                "password": "SecurePass123",
-                "full_name": "John Doe",
-                "company": "Acme Corp",
-            }
-        }
-    }
-
-
-class UserLogin(BaseModel):
-    """User login request."""
-
-    email: EmailStr = Field(..., description="User email address")
-    password: str = Field(..., description="User password")
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "email": "user@example.com",
-                "password": "SecurePass123",
-            }
-        }
-    }
-
-
-class Token(BaseModel):
-    """Authentication token response."""
-
-    access_token: str = Field(..., description="JWT access token")
-    token_type: str = Field(default="bearer", description="Token type")
-    expires_in: int = Field(..., description="Token expiration time in seconds")
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                "token_type": "bearer",
-                "expires_in": 1800,
-            }
-        }
-    }
-
-
-class TokenResponse(BaseModel):
-    """Authentication token response with user information."""
-
-    access_token: str = Field(..., description="JWT access token")
-    token_type: str = Field(default="bearer", description="Token type")
-    user: UserResponse = Field(..., description="User information")
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                "token_type": "bearer",
+                "access_token": "ghp_1234567890abcdef...",
+                "token_type": "github",
                 "user": {
-                    "id": "user_123abc",
+                    "id": "user_github_abc123",
                     "email": "user@example.com",
+                    "name": "John Doe",
+                    "github_username": "johndoe",
                     "is_active": True,
                     "created_at": "2024-01-01T00:00:00Z",
                 },
@@ -106,8 +38,9 @@ class UserResponse(BaseModel):
     is_active: bool = Field(..., description="Whether user is active")
     is_superuser: bool = Field(..., description="Whether user is superuser")
     created_at: datetime = Field(..., description="Account creation date")
-    full_name: str | None = Field(None, description="User's full name")
+    name: str | None = Field(None, description="User's display name")
     company: str | None = Field(None, description="Company name")
+    github_username: str | None = Field(None, description="GitHub username")
     max_runs_per_day: int = Field(..., description="Daily run limit")
     max_variations_per_run: int = Field(..., description="Variations per run limit")
 
@@ -115,13 +48,14 @@ class UserResponse(BaseModel):
         "from_attributes": True,
         "json_schema_extra": {
             "example": {
-                "id": "user_123abc",
+                "id": "user_github_abc123",
                 "email": "user@example.com",
                 "is_active": True,
                 "is_superuser": False,
                 "created_at": "2024-01-01T00:00:00Z",
-                "full_name": "John Doe",
+                "name": "John Doe",
                 "company": "Acme Corp",
+                "github_username": "johndoe",
                 "max_runs_per_day": 100,
                 "max_variations_per_run": 5,
             }
@@ -130,18 +64,16 @@ class UserResponse(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    """User update request."""
+    """User profile update request."""
 
-    full_name: str | None = Field(None, description="User's full name")
-    email: str | None = Field(None, description="User email address")
-    password: str | None = Field(None, description="New password")
+    name: str | None = Field(None, description="User's display name")
+    company: str | None = Field(None, description="Company name")
 
     model_config = {
         "json_schema_extra": {
             "example": {
-                "full_name": "Jane Doe",
-                "email": "jane@example.com",
-                "password": "NewSecurePass123",
+                "name": "Jane Doe",
+                "company": "New Company Inc",
             }
         }
     }

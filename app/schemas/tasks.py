@@ -59,6 +59,7 @@ class TaskListItem(BaseModel):
     versions: int | None = Field(None, description="Number of agent variations")
     additions: int | None = Field(None, description="Total lines added")
     deletions: int | None = Field(None, description="Total lines deleted")
+    archived: bool = Field(default=False, description="Whether task is archived")
 
     class Config:
         json_schema_extra = {
