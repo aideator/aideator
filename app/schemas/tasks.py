@@ -128,6 +128,6 @@ class CreateTaskResponse(BaseModel):
     """Response payload after task creation."""
 
     task_id: int = Field(..., description="Primary key of the new task")
-    websocket_url: str = Field(..., description="WebSocket stream for live outputs")
+    # WebSocket streaming removed - using HTTP polling instead
     polling_url: str = Field(..., description="HTTP polling endpoint for outputs")
     status: Literal["pending"] = Field("pending", description="Initial status")

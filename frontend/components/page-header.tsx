@@ -6,10 +6,14 @@ import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { tasks } from "@/lib/data"
 import { useState, useEffect } from "react"
+import { useAuth } from "@/components/auth/auth-provider"
+import { GitHubLoginButton } from "@/components/auth/github-login-button"
+import { UserMenu } from "@/components/auth/user-menu"
 
 export function PageHeader() {
   const pathname = usePathname()
   const [isPrCreated, setIsPrCreated] = useState(false)
+  const { user, isLoading } = useAuth()
   
   // Check if we're on a task page
   const taskMatch = pathname.match(/^\/task\/([^/]+)$/)
@@ -59,6 +63,7 @@ export function PageHeader() {
             <GitPullRequest className="w-4 h-4 mr-2" />
             {isPrCreated ? "View PR" : "Create PR"}
           </Button>
+          {!isLoading && (user ? <UserMenu /> : <GitHubLoginButton />)}
         </div>
       </header>
     )
@@ -71,9 +76,23 @@ export function PageHeader() {
         <div className="flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3 w-fit">
             <BrainCircuit className="w-8 h-8 text-gray-300" />
-            <span className="text-xl font-semibold text-gray-50">AIdeator</span>
+            <span className="text-xl font-semibold text-gray-50">DevSwarm</span>
           </Link>
           <nav className="flex items-center gap-2">
+            {pathname === "/" && (
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/tokens-demo" className="text-gray-300 hover:text-gray-50">
+                  Tokens Demo
+                </Link>
+              </Button>
+            )}
+            {pathname === "/tokens-demo" && (
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/" className="text-gray-300 hover:text-gray-50">
+                  Original
+                </Link>
+              </Button>
+            )}
             <Button variant="ghost" size="sm" asChild>
               <a 
                 href="http://localhost:8000/docs" 
@@ -85,6 +104,7 @@ export function PageHeader() {
                 API Docs
               </a>
             </Button>
+            {!isLoading && (user ? <UserMenu /> : <GitHubLoginButton />)}
           </nav>
         </div>
       </div>

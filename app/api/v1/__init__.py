@@ -3,7 +3,7 @@ from fastapi import APIRouter
 # The legacy `/runs` endpoints have been deprecated in favour of unified `/tasks` routes.
 # Remove their import so they are no longer registered.
 from app.api.v1 import (
-    admin_messaging,
+    # admin_messaging,  # Temporarily disabled - outdated auth and terminology
     auth,
     health,
     tasks,
@@ -17,6 +17,7 @@ api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 # Removed – use /tasks endpoints exclusively
 api_router.include_router(tasks.router, prefix="/tasks", tags=["Tasks"])
 # Removed sessions, preferences, credentials, provider-keys, and admin-data routers - simplified for dev mode
-api_router.include_router(
-    admin_messaging.router, prefix="/admin-messaging", tags=["Admin Messaging"]
-)
+# Admin messaging endpoints temporarily disabled - need auth and terminology updates
+# api_router.include_router(
+#     admin_messaging.router, prefix="/admin-messaging", tags=["Admin Messaging"]
+# )

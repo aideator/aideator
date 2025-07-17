@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     # API Configuration
     api_v1_prefix: str = "/api/v1"
-    project_name: str = "AIdeator"
+    project_name: str = "DevSwarm"
     version: str = "1.0.0"
     debug: bool = False
     environment: str = "production"
@@ -27,7 +27,6 @@ class Settings(BaseSettings):
 
     # Authentication Features
     require_user_registration: bool = True  # Keep user system (needed for future features)
-    require_api_keys_for_agents: bool = True  # Set false for simple development
 
     # Development Shortcuts
     simple_dev_mode: bool = False  # Skip complex setup
@@ -50,7 +49,6 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None  # Required for LiteLLM
     anthropic_api_key: str | None = None  # Required for Claude Code CLI
     gemini_api_key: str | None = None  # Required for Gemini CLI
-    api_key_header: str = "X-API-Key"
     allowed_origins: list[str] = ["*"]
     allowed_hosts: list[str] = ["*"]
 
@@ -183,7 +181,7 @@ class Settings(BaseSettings):
         # Apply development shortcuts
         if self.simple_dev_mode or self.environment == "development":
             # Auto-configure for development ease
-            self.require_api_keys_for_agents = False
+            pass
 
             # Auto-generate keys if empty in development
             if not self.secret_key or self.secret_key == "dev-secret-key-32-chars-minimum-length-for-development":

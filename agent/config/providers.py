@@ -1,71 +1,33 @@
 """
-Provider configuration and API key management.
+Provider mapping utilities.
 
-Handles API key validation and provider detection.
+All API-key validation and management has been removed.  The only remaining
+responsibility of this module is to map a model name to its provider.
 """
 
-import os
-
-# Constants for validation
-MIN_API_KEY_LENGTH = 10
-MIN_GENERIC_KEY_LENGTH = 5
+from __future__ import annotations
 
 
 class ProviderConfig:
-    """Manages API keys and provider validation."""
+    """
+    Lightweight helper that figures out which provider a model belongs to.
 
-    def __init__(self):
-        """Initialize with current API key state."""
-        self.available_keys = self._check_available_api_keys()
-        # Check if API key validation is required
-        self.require_api_keys = os.getenv("REQUIRE_API_KEYS_FOR_AGENTS", "true").lower() == "true"
+    All former API-key discovery / validation logic was stripped – GitHub OAuth
+    is the only auth mechanism now, so every model is treated as available.
+    """
 
-    def _check_available_api_keys(self) -> dict[str, bool]:
-        """Check which API keys are available for different providers."""
-        available_keys = {}
+    # Always empty – kept only so callers that introspect this attribute survive
+    available_keys: dict[str, bool] = {}
 
-        # Check OpenAI API Key
-        openai_key = os.getenv("OPENAI_API_KEY")
-        available_keys["openai"] = bool(
-            openai_key
-            and openai_key.strip()
-            and openai_key != "sk-"
-            and len(openai_key) > MIN_API_KEY_LENGTH
-        )
+    # Flag kept for backward-compat; always False
+    require_api_keys: bool = False
 
-        # Check Anthropic API Key
-        anthropic_key = os.getenv("ANTHROPIC_API_KEY")
-        available_keys["anthropic"] = bool(
-            anthropic_key
-            and anthropic_key.strip()
-            and anthropic_key.startswith("sk-ant-")
-        )
-
-        # Check Gemini API Key
-        gemini_key = os.getenv("GEMINI_API_KEY")
-        available_keys["gemini"] = bool(
-            gemini_key
-            and gemini_key.strip()
-            and gemini_key.startswith("AIza")
-        )
-
-        # Check other provider keys
-        for provider, env_var in [
-            ("mistral", "MISTRAL_API_KEY"),
-            ("cohere", "COHERE_API_KEY"),
-            ("groq", "GROQ_API_KEY"),
-            ("perplexity", "PERPLEXITY_API_KEY"),
-            ("deepseek", "DEEPSEEK_API_KEY"),
-        ]:
-            key = os.getenv(env_var)
-            available_keys[provider] = bool(
-                key and key.strip() and len(key) > MIN_GENERIC_KEY_LENGTH
-            )
-
-        return available_keys
-
-    def get_model_provider(self, model_name: str) -> str:
-        """Get the provider for a given model name."""
+    # --------------------------------------------------------------------- #
+    # Public helpers
+    # --------------------------------------------------------------------- #
+    @staticmethod
+    def get_model_provider(model_name: str) -> str:
+        """Return a canonical provider slug for a model string."""
         model_lower = model_name.lower()
 
         if model_lower.startswith(("gpt", "openai", "o1")):
@@ -84,101 +46,19 @@ class ProviderConfig:
             return "perplexity"
         if model_lower.startswith("deepseek"):
             return "deepseek"
-        # Default to openai for unknown models
+        # Default fallback
         return "openai"
 
+    # --------------------------------------------------------------------- #
+    # Compatibility shim – always succeed
+    # --------------------------------------------------------------------- #
     def validate_model_credentials(self, model_name: str) -> tuple[bool, str]:
-        """Validate that credentials are available for the requested model.
-
-        Returns:
-            tuple: (is_valid, error_message)
         """
-        # Skip validation if not required (student mode)
-        if not self.require_api_keys:
-            return True, ""
+        Compatibility method that now always passes.
 
-        provider = self.get_model_provider(model_name)
-
-        if not self.available_keys.get(provider, False):
-            provider_names = {
-                "openai": "OpenAI",
-                "anthropic": "Anthropic (Claude)",
-                "gemini": "Google Gemini",
-                "mistral": "Mistral AI",
-                "cohere": "Cohere",
-                "groq": "Groq",
-                "perplexity": "Perplexity",
-                "deepseek": "DeepSeek",
-            }
-
-            readable_provider = provider_names.get(provider, provider.title())
-
-            error_msg = f"""
-🚫 **Missing API Key for {readable_provider}**
-
-The model '{model_name}' requires a {readable_provider} API key, but none was found.
-
-**To fix this issue:**
-
-1. **Get an API key** from {readable_provider}:
-   - OpenAI: https://platform.openai.com/api-keys
-   - Anthropic: https://console.anthropic.com/
-   - Google Gemini: https://ai.google.dev/
-   - Mistral AI: https://console.mistral.ai/
-   - Cohere: https://dashboard.cohere.ai/
-   - Groq: https://console.groq.com/
-   - Perplexity: https://www.perplexity.ai/settings/api
-   - DeepSeek: https://platform.deepseek.com/
-
-2. **Add the secret to Kubernetes**:
-   ```bash
-   kubectl create secret generic {provider}-secret \\
-     --from-literal=api-key="your-api-key-here" \\
-     -n aideator
-   ```
-
-3. **Try again** - The model should work once the API key is configured.
-
-**Available models:** Try using a model from a provider that has been configured with API keys.
-
-{self._get_available_models_suggestion()}
-"""
-            return False, error_msg
-
+        Returns
+        -------
+        tuple[bool, str]
+            (True, "")  – credentials are considered valid in OAuth-only mode.
+        """
         return True, ""
-
-    def _get_available_models_suggestion(self) -> str:
-        """Get a helpful suggestion of available models based on configured API keys."""
-        available_providers = [
-            provider
-            for provider, available in self.available_keys.items()
-            if available
-        ]
-
-        if not available_providers:
-            return "No API keys are currently configured. Please add at least one API key to use any models."
-
-        suggestions = []
-        for provider in available_providers:
-            if provider == "openai":
-                suggestions.append("- OpenAI: gpt-4o, gpt-4o-mini, gpt-3.5-turbo")
-            elif provider == "anthropic":
-                suggestions.append("- Anthropic: claude-3-5-sonnet, claude-3-haiku")
-            elif provider == "gemini":
-                suggestions.append("- Google: gemini-1.5-pro, gemini-1.5-flash")
-            elif provider == "mistral":
-                suggestions.append(
-                    "- Mistral: mistral-large-latest, mistral-small-latest"
-                )
-            elif provider == "cohere":
-                suggestions.append("- Cohere: command-r-plus, command-r")
-            elif provider == "groq":
-                suggestions.append("- Groq: llama3-8b-8192")
-            elif provider == "perplexity":
-                suggestions.append("- Perplexity: llama-3.1-sonar-small-128k-online")
-            elif provider == "deepseek":
-                suggestions.append("- DeepSeek: deepseek-chat")
-
-        return "**Available models with configured API keys:**\n" + "\n".join(
-            suggestions
-        )

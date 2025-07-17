@@ -8,7 +8,7 @@ export interface AgentLog {
   variation_id: number
   content: string
   timestamp: string
-  output_type: 'logging' | 'error' | 'stdout' | 'stderr' | 'status' | 'summary' | 'diffs' | 'addinfo' | 'job_data' | 'assistant_response' | 'debug'
+  output_type: 'logging' | 'error' | 'stdout' | 'stderr' | 'status' | 'summary' | 'diffs' | 'addinfo' | 'job_data' | 'assistant_response' | 'debug' | 'system_status' | 'debug_info'
 }
 
 export interface UseAgentLogsReturn {

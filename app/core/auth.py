@@ -1,18 +1,15 @@
 from datetime import datetime
-from typing import cast
 
+import httpx
 from fastapi import HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.models.user import APIKey, User
+from app.models.user import User
 
 settings = get_settings()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
 
@@ -27,80 +24,80 @@ class AuthError(HTTPException):
         )
 
 
-async def get_user_from_token(token: str, db: AsyncSession) -> User | None:
-    """Get user from JWT token."""
+async def verify_github_token(token: str) -> dict | None:
+    """Verify GitHub token and return user info."""
     try:
-        payload = jwt.decode(
-            token, settings.secret_key, algorithms=[settings.algorithm]
-        )
-        user_id: str | None = payload.get("sub")
-        if user_id is None:
-            # Token missing user ID - authentication failed
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://api.github.com/user",
+                headers={"Authorization": f"token {token}"},
+                timeout=10.0
+            )
+            if response.status_code == 200:
+                return response.json()
             return None
-
-        user = await db.get(User, user_id)
-        # Return user only if exists and is active
-        return user if user and user.is_active else None
-
-    except JWTError:
-        # JWT validation failed
+    except Exception:
         return None
 
 
-async def get_user_from_api_key(api_key: str, db: AsyncSession) -> User | None:
-    """Get user from API key."""
-    if not api_key.startswith("aid_sk_"):
+async def get_user_from_github_token(token: str, db: AsyncSession) -> User | None:
+    """Get user from GitHub token."""
+    github_user = await verify_github_token(token)
+    if not github_user:
         return None
-
-    # Hash the provided key to match stored hash
-    pwd_context.hash(api_key)
-
-    # Find the API key by trying to verify against stored hashes
-    result = await db.execute(select(APIKey).where(APIKey.is_active == True))  # type: ignore[arg-type] # noqa: E712
-    api_keys = result.scalars().all()
-
-    for stored_key in api_keys:
-        if pwd_context.verify(api_key, stored_key.key_hash):
-            # Found matching key, check if it's expired
-            if stored_key.expires_at and stored_key.expires_at < datetime.utcnow():
-                continue
-
-            # Update usage stats
-            stored_key.total_requests += 1
-            stored_key.last_used_at = datetime.utcnow()
+    
+    github_id = github_user.get("id")
+    github_username = github_user.get("login")
+    
+    if not github_id or not github_username:
+        return None
+    
+    # Find existing user by GitHub ID
+    result = await db.execute(
+        select(User).where(User.github_id == str(github_id))
+    )
+    user = result.scalar_one_or_none()
+    
+    if user:
+        # Update GitHub username if it changed
+        if user.github_username != github_username:
+            user.github_username = github_username
             await db.commit()
+        return user if user.is_active else None
+    
+    # Create new user for GitHub OAuth
+    import secrets
+    new_user = User(
+        id=f"user_github_{secrets.token_urlsafe(12)}",
+        email=github_user.get("email") or f"{github_username}@github.local",
+        name=github_user.get("name") or github_username,
+        github_id=str(github_id),
+        github_username=github_username,
+        is_active=True,
+        is_superuser=False,
+    )
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
+    
+    return new_user
 
-            # Get the user
-            user = await db.get(User, stored_key.user_id)
-            return user if user and user.is_active else None
 
-    return None
+# API key authentication removed - using GitHub OAuth only
 
 
 async def authenticate_user(
     credentials: HTTPAuthorizationCredentials, db: AsyncSession
 ) -> User:
-    """Authenticate user from JWT token or API key."""
+    """Authenticate user from GitHub token only."""
     token = credentials.credentials
 
-    # Try JWT token first
-    user = await get_user_from_token(token, db)
-    if user:
-        return user
-
-    # Try API key
-    user = await get_user_from_api_key(token, db)
+    # Try GitHub token
+    user = await get_user_from_github_token(token, db)
     if user:
         return user
 
     raise AuthError("Invalid credentials")
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify password against hash."""
-    return cast("bool", pwd_context.verify(plain_password, hashed_password))
-
-
-def get_password_hash(password: str) -> str:
-    """Hash password."""
-    return cast("str", pwd_context.hash(password))
+# Password hashing removed - using GitHub OAuth only

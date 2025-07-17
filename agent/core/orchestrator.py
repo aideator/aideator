@@ -46,11 +46,10 @@ class AgentOrchestrator:
             # Write startup message
             await self.output_writer.write_startup_message()
 
-            # Validate credentials (only if required)
-            if self.config.require_api_keys_for_agents:
-                await self._validate_credentials()
-            else:
-                await self.output_writer.write_job_data("🔓 Student mode: Skipping API key validation")
+            # Validate credentials step removed – OAuth-only mode
+            await self.output_writer.write_job_data(
+                "🔓 API key validation skipped (OAuth-only mode)"
+            )
 
             # Execute based on mode
             if self.config.is_code_mode:

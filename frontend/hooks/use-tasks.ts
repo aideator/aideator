@@ -44,14 +44,20 @@ export function useTasks(limit: number = 20): UseTasksReturn {
       setError(null)
       
       // Call the tasks API endpoint (separated from runs)
-      const url = `/api/v1/tasks?limit=${limit}`
+      const url = `http://localhost:8000/api/v1/tasks?limit=${limit}`
       console.log('Fetching tasks from:', url)
-      const response = await fetch(url, {
-        headers: {
-          'Content-Type': 'application/json',
-          // TODO: Add authentication headers when available
-        },
-      })
+      // Get auth token from localStorage
+      const token = localStorage.getItem('github_token')
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      }
+      
+      // Add authorization header if token exists
+      if (token) {
+        headers.Authorization = `Bearer ${token}`
+      }
+      
+      const response = await fetch(url, { headers })
 
       if (!response.ok) {
         const errorText = await response.text()

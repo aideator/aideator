@@ -58,20 +58,26 @@ def create_application() -> FastAPI:
             {"url": "https://api.aideator.com", "description": "Production"},
         ],
         description="""
-        AIdeator is a Kubernetes-native LLM orchestration platform that runs multiple AI agents in isolated containers,
-        streaming their thought processes in real-time.
+        AIdeator is a Kubernetes-native AI orchestration platform that runs multiple AI agents in isolated containers,
+        with real-time progress monitoring through HTTP polling.
 
         ## Features
 
         * **Container Isolation** - Each agent runs in its own Kubernetes Job
-        * **Real-time Streaming** - Server-Sent Events for live agent output
-        * **Parallel Execution** - Run N variations concurrently
-        * **Result Persistence** - Save and retrieve winning variations
-        * **GitHub Integration** - Clone and analyze any public repository
+        * **Real-time Monitoring** - HTTP polling for live agent output and progress
+        * **Parallel Execution** - Run multiple agent variations concurrently
+        * **Task Management** - Create, monitor, and track coding tasks
+        * **GitHub Integration** - Analyze any public repository
+
+        ## Architecture
+
+        The system uses a unified task-based architecture with PostgreSQL for data persistence
+        and HTTP polling for real-time updates. Tasks are queued and executed in Kubernetes
+        containers with outputs written directly to the database.
 
         ## Authentication
 
-        Most endpoints require an API key passed in the `X-API-Key` header.
+        Authentication is handled via GitHub OAuth in production, with development mode bypass available.
         """,
         contact={
             "name": "AIdeator Team",

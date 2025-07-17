@@ -27,30 +27,22 @@ def custom_openapi(app: FastAPI) -> Callable[[], dict[str, Any]]:
             openapi_schema["components"]["securitySchemes"] = {}
 
         openapi_schema["components"]["securitySchemes"] = {
-            "ApiKeyAuth": {
-                "type": "apiKey",
-                "in": "header",
-                "name": "X-API-Key",
-                "description": "API key for authentication",
+            "GitHubAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "GitHub Token",
+                "description": "GitHub OAuth token for authentication",
             }
         }
 
         # Add global security requirement
-        openapi_schema["security"] = [{"ApiKeyAuth": []}]
+        openapi_schema["security"] = [{"GitHubAuth": []}]
 
         # Add tags with descriptions
         openapi_schema["tags"] = [
             {
                 "name": "Tasks",
-                "description": "Task management endpoints",
-            },
-            {
-                "name": "Streaming",
-                "description": "Server-Sent Events for real-time agent output",
-            },
-            {
-                "name": "WebSocket",
-                "description": "WebSocket endpoints for real-time streaming",
+                "description": "Task management and monitoring endpoints",
             },
             {
                 "name": "System",
@@ -58,179 +50,82 @@ def custom_openapi(app: FastAPI) -> Callable[[], dict[str, Any]]:
             },
             {
                 "name": "Auth",
-                "description": "Authentication endpoints",
-            },
-            {
-                "name": "Sessions",
-                "description": "Session management endpoints",
-            },
-            {
-                "name": "Models",
-                "description": "AI model configuration endpoints",
-            },
-            {
-                "name": "Credentials",
-                "description": "API credential management",
-            },
-            {
-                "name": "Provider Keys",
-                "description": "Provider API key management",
-            },
-            {
-                "name": "Preferences",
-                "description": "User preference management",
-            },
-            {
-                "name": "Admin",
-                "description": "Administrative endpoints",
-            },
-            {
-                "name": "Admin Messaging",
-                "description": "Administrative messaging endpoints",
+                "description": "GitHub OAuth authentication",
             },
         ]
 
-        # Add example responses
-        if "responses" not in openapi_schema["components"]:
-            openapi_schema["components"]["responses"] = {}
-
-        openapi_schema["components"]["responses"] = {
-            "ValidationError": {
-                "description": "Validation error",
-                "content": {
-                    "application/json": {
-                        "schema": {"$ref": "#/components/schemas/HTTPValidationError"}
-                    }
-                },
-            },
-            "UnauthorizedError": {
-                "description": "API key is missing or invalid",
-                "content": {
-                    "application/json": {
-                        "schema": {"$ref": "#/components/schemas/ErrorResponse"}
-                    }
-                },
-            },
-            "RateLimitError": {
-                "description": "Rate limit exceeded",
-                "content": {
-                    "application/json": {
-                        "schema": {"$ref": "#/components/schemas/ErrorResponse"}
-                    }
-                },
-            },
+        # Add additional info
+        openapi_schema["info"]["x-logo"] = {
+            "url": "https://example.com/logo.png",
+            "altText": "AIdeator Logo",
         }
 
-        # Add WebSocket paths manually since FastAPI doesn't auto-generate them
-        if "paths" not in openapi_schema:
-            openapi_schema["paths"] = {}
+        # Add contact info
+        openapi_schema["info"]["contact"] = {
+            "name": "AIdeator Support",
+            "url": "https://github.com/aideator/aideator",
+            "email": "support@aideator.com",
+        }
 
-        # WebSocket endpoints for streaming
-        openapi_schema["paths"]["/ws/tasks/{task_id}"] = {
-            "get": {
-                "tags": ["WebSocket"],
-                "summary": "WebSocket stream for task outputs",
-                "description": """
-                WebSocket endpoint for real-time streaming of task outputs.
+        # Add license info
+        openapi_schema["info"]["license"] = {
+            "name": "MIT",
+            "url": "https://opensource.org/licenses/MIT",
+        }
 
-                **Connection:**
-                - Connect to: `ws://localhost:8000/ws/tasks/{task_id}`
-                - Protocol: WebSocket
-                - Authentication: Optional (query params or headers)
+        # Add external docs
+        openapi_schema["externalDocs"] = {
+            "description": "Find more info here",
+            "url": "https://github.com/aideator/aideator",
+        }
 
-                **Message Types Received:**
-                - `connected` - Connection confirmation
-                - `llm` - Agent LLM output with content
-                - `stdout` - Agent stdout logs
-                - `status` - Status updates (running, completed, failed)
-                - `control_ack` - Control command acknowledgments
-                - `error` - Error messages
-                - `pong` - Ping response
-
-                **Message Types Sent:**
-                - `cancel` - Cancel the task
-                - `ping` - Keepalive ping
-
-                **Message Format:**
-                ```json
-                {
-                  "type": "llm|stdout|status|control_ack|error|pong",
-                  "message_id": "stream_id",
-                  "data": {
-                    "task_id": "123",
-                    "variation_id": "0",
-                    "content": "Agent output text...",
-                    "timestamp": "2024-01-01T00:00:00Z",
-                    "metadata": {}
-                  }
-                }
-                ```
-                """,
-                "parameters": [
-                    {
-                        "name": "task_id",
-                        "in": "path",
-                        "required": True,
-                        "schema": {"type": "integer"},
-                        "description": "The task ID to stream",
+        # Add examples for common endpoints
+        if "paths" in openapi_schema:
+            # Add example for task creation
+            if "/api/v1/tasks" in openapi_schema["paths"]:
+                if "post" in openapi_schema["paths"]["/api/v1/tasks"]:
+                    openapi_schema["paths"]["/api/v1/tasks"]["post"]["requestBody"] = {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "github_url": {"type": "string"},
+                                        "prompt": {"type": "string"},
+                                        "model_names": {"type": "array", "items": {"type": "string"}},
+                                        "agent_mode": {"type": "string"},
+                                        "variations": {"type": "integer"},
+                                    },
+                                    "required": ["github_url", "prompt"],
+                                },
+                                "examples": {
+                                    "basic_task": {
+                                        "summary": "Basic coding task",
+                                        "value": {
+                                            "github_url": "https://github.com/octocat/Hello-World",
+                                            "prompt": "Add error handling to the main function",
+                                            "model_names": ["gpt-4o-mini"],
+                                            "agent_mode": "claude-cli",
+                                            "variations": 1,
+                                        },
+                                    },
+                                    "multi_variation": {
+                                        "summary": "Multi-variation task",
+                                        "value": {
+                                            "github_url": "https://github.com/octocat/Hello-World",
+                                            "prompt": "Refactor the code for better readability",
+                                            "model_names": ["gpt-4o-mini", "claude-3-5-sonnet"],
+                                            "agent_mode": "claude-cli",
+                                            "variations": 2,
+                                        },
+                                    },
+                                },
+                            }
+                        }
                     }
-                ],
-                "responses": {
-                    "101": {"description": "WebSocket connection established"},
-                    "404": {"description": "Task not found"},
-                    "403": {"description": "Access denied"},
-                },
-            }
-        }
 
-        openapi_schema["paths"]["/ws/tasks/{task_id}/debug"] = {
-            "get": {
-                "tags": ["WebSocket"],
-                "summary": "WebSocket debug stream for stdout logs only",
-                "description": """
-                WebSocket endpoint for debugging - streams only stdout logs for a specific variation.
-
-                **Connection:**
-                - Connect to: `ws://localhost:8000/ws/tasks/{task_id}/debug?variation_id=0`
-                - Protocol: WebSocket
-                - Filters: Only stdout messages for specified variation
-
-                **Message Format:**
-                ```json
-                {
-                  "type": "stdout",
-                  "message_id": "stream_id",
-                  "data": {
-                    "task_id": "123",
-                    "variation_id": "0",
-                    "content": "Debug log output...",
-                    "timestamp": "2024-01-01T00:00:00Z"
-                  }
-                }
-                ```
-                """,
-                "parameters": [
-                    {
-                        "name": "task_id",
-                        "in": "path",
-                        "required": True,
-                        "schema": {"type": "integer"},
-                        "description": "The task ID to debug",
-                    },
-                    {
-                        "name": "variation_id",
-                        "in": "query",
-                        "required": False,
-                        "schema": {"type": "integer", "default": 0},
-                        "description": "Variation ID to filter logs (default: 0)",
-                    },
-                ],
-                "responses": {
-                    "101": {"description": "WebSocket connection established"},
-                    "404": {"description": "Task not found"},
-                },
-            }
-        }
+        # WebSocket endpoints removed - using HTTP polling for real-time updates
+        # The system now uses HTTP polling via /api/v1/tasks/{task_id}/outputs for real-time monitoring
 
         app.openapi_schema = openapi_schema
         return app.openapi_schema

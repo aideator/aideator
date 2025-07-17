@@ -9,32 +9,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { RefreshCw, Trash2, Terminal, AlertCircle } from 'lucide-react'
 import { useAgentLogs, type AgentLog } from '@/hooks/use-agent-logs'
 import { cn } from '@/lib/utils'
+import { getAgentColorClasses, getOutputTypeColorClasses } from '@/lib/design-tokens'
 
-// Agent color system for visual differentiation
-const agentColors = {
-  0: 'border-cyan-500/20 bg-cyan-50 dark:bg-cyan-950/20',
-  1: 'border-violet-500/20 bg-violet-50 dark:bg-violet-950/20',
-  2: 'border-amber-500/20 bg-amber-50 dark:bg-amber-950/20',
-  3: 'border-rose-500/20 bg-rose-50 dark:bg-rose-950/20',
-  4: 'border-emerald-500/20 bg-emerald-50 dark:bg-emerald-950/20',
-  5: 'border-indigo-500/20 bg-indigo-50 dark:bg-indigo-950/20',
-} as const
-
-const outputTypeColors = {
-  stdout: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200',
-  stderr: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
-  status: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
-  summary: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
-  logging: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
-  diffs: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
-  addinfo: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300',
-  job_data: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300',
-  error: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
-  // New output types
-  assistant_response: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
-  system_status: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
-  debug_info: 'bg-gray-100 text-gray-600 dark:bg-gray-800/50 dark:text-gray-400',
-} as const
+// Agent color system and output type colors are now provided by design tokens
+// This ensures consistent colors across the application and easier maintenance
 
 function LoadingStatusIndicator({ isLoading, error }: { isLoading: boolean; error: string | null }) {
   if (error) {
@@ -64,7 +42,7 @@ function LoadingStatusIndicator({ isLoading, error }: { isLoading: boolean; erro
 }
 
 function OutputLine({ output }: { output: AgentLog }) {
-  const typeColor = outputTypeColors[output.output_type] || outputTypeColors.stdout
+  const typeColor = getOutputTypeColorClasses(output.output_type)
   const timestamp = new Date(output.timestamp).toLocaleTimeString()
 
   return (
@@ -83,7 +61,7 @@ function OutputLine({ output }: { output: AgentLog }) {
 }
 
 function VariationPanel({ variationId, outputs }: { variationId: number; outputs: AgentLog[] }) {
-  const agentColorClass = agentColors[variationId as keyof typeof agentColors] || agentColors[0]
+  const agentColorClass = getAgentColorClasses(variationId)
   const scrollAreaRefs = useRef<{ [key: string]: HTMLDivElement | null }>({})
   
   // Auto-scroll to bottom when new outputs arrive
@@ -113,7 +91,7 @@ function VariationPanel({ variationId, outputs }: { variationId: number; outputs
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium">
-            Agent {variationId}
+            Agent {variationId + 1}
           </CardTitle>
           <div className="flex items-center gap-2">
             <Badge variant="secondary" className="text-xs">
@@ -123,7 +101,7 @@ function VariationPanel({ variationId, outputs }: { variationId: number; outputs
               <Badge 
                 key={type} 
                 variant="outline" 
-                className={cn('text-xs', outputTypeColors[type as keyof typeof outputTypeColors])}
+                className={cn('text-xs', getOutputTypeColorClasses(type))}
               >
                 {type}: {count}
               </Badge>
@@ -179,7 +157,7 @@ function VariationPanel({ variationId, outputs }: { variationId: number; outputs
           <TabsContent value="conversation">
             <ScrollArea 
               className="h-[500px]"
-              ref={(el) => scrollAreaRefs.current['conversation'] = el}
+              ref={(el) => { scrollAreaRefs.current['conversation'] = el }}
             >
               {assistantOutputs.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-gray-500">
@@ -199,7 +177,7 @@ function VariationPanel({ variationId, outputs }: { variationId: number; outputs
           <TabsContent value="system">
             <ScrollArea 
               className="h-[500px]"
-              ref={(el) => scrollAreaRefs.current['system'] = el}
+              ref={(el) => { scrollAreaRefs.current['system'] = el }}
             >
               {systemOutputs.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-gray-500">
@@ -219,7 +197,7 @@ function VariationPanel({ variationId, outputs }: { variationId: number; outputs
           <TabsContent value="debug">
             <ScrollArea 
               className="h-[500px]"
-              ref={(el) => scrollAreaRefs.current['debug'] = el}
+              ref={(el) => { scrollAreaRefs.current['debug'] = el }}
             >
               {debugOutputs.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-gray-500">
@@ -239,7 +217,7 @@ function VariationPanel({ variationId, outputs }: { variationId: number; outputs
           <TabsContent value="errors">
             <ScrollArea 
               className="h-[500px]"
-              ref={(el) => scrollAreaRefs.current['errors'] = el}
+              ref={(el) => { scrollAreaRefs.current['errors'] = el }}
             >
               {errorOutputs.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-gray-500">
@@ -259,7 +237,7 @@ function VariationPanel({ variationId, outputs }: { variationId: number; outputs
           <TabsContent value="diffs">
             <ScrollArea 
               className="h-[500px]"
-              ref={(el) => scrollAreaRefs.current['diffs'] = el}
+              ref={(el) => { scrollAreaRefs.current['diffs'] = el }}
             >
               {diffOutputs.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-gray-500">
@@ -341,7 +319,7 @@ export function AgentOutputViewer({ taskId, maxVariations = 6 }: AgentOutputView
                 value={variationId.toString()}
                 className="text-sm"
               >
-                Agent {variationId}
+                Agent {variationId + 1}
                 <Badge variant="secondary" className="ml-2 text-xs">
                   {getLogsByVariation(variationId).length}
                 </Badge>

@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.core.database import get_session
-from app.core.dependencies import CurrentUserAPIKey, get_orchestrator # get_orchestrator added
+from app.core.dependencies import CurrentUser, OptionalCurrentUser, get_orchestrator # get_orchestrator added
 from app.core.logging import get_logger
 from app.models.task import Task, TaskOutput, TaskStatus
 from app.schemas.tasks import ( # Modified import
@@ -44,7 +44,7 @@ router = APIRouter()
 )
 async def create_task(
     request: CreateTaskRequest,
-    current_user: CurrentUserAPIKey,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_session),
     orchestrator: AgentOrchestrator = Depends(get_orchestrator),
 ) -> CreateTaskResponse:
@@ -90,7 +90,7 @@ async def create_task(
     base_url = "/api/v1/tasks"
     return CreateTaskResponse(
         task_id=new_task.id,
-        websocket_url=f"/ws/tasks/{new_task.id}",
+        # WebSocket streaming removed - using HTTP polling instead
         polling_url=f"{base_url}/{new_task.id}/outputs",
         status="pending",
     )
@@ -130,27 +130,45 @@ async def get_task_metrics(session: AsyncSession, task_id: int) -> dict[str, int
 
 @router.get("", response_model=TaskListResponse)
 async def list_tasks(
-    current_user: CurrentUserAPIKey,
+    current_user: OptionalCurrentUser,
     limit: int = Query(default=10, le=50),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_session),
 ) -> TaskListResponse:
     """Get list of tasks for the main page (reads from tasks table)."""
 
-    # Query tasks for the current user, ordered by creation date (newest first)
-    tasks_query = (
-        select(Task)
-        .where(Task.user_id == current_user.id)
-        .order_by(desc(Task.created_at))
-        .offset(offset)
-        .limit(limit)
-    )
+    # In dev mode, always show all tasks. In production, filter by user.
+    from app.core.config import get_settings
+    settings = get_settings()
+    
+    # Show all tasks in development mode or if no user
+    if not current_user or settings.debug or settings.environment == "development":
+        tasks_query = (
+            select(Task)
+            .order_by(desc(Task.created_at))
+            .offset(offset)
+            .limit(limit)
+        )
+        use_user_filter = False
+    else:
+        # Production mode - filter by user
+        tasks_query = (
+            select(Task)
+            .where(Task.user_id == current_user.id)
+            .order_by(desc(Task.created_at))
+            .offset(offset)
+            .limit(limit)
+        )
+        use_user_filter = True
 
     result = await db.execute(tasks_query)
     tasks_rows = result.scalars().all()
 
     # Get total count for pagination
-    count_query = select(func.count(Task.id)).where(Task.user_id == current_user.id)
+    if use_user_filter:
+        count_query = select(func.count(Task.id)).where(Task.user_id == current_user.id)
+    else:
+        count_query = select(func.count(Task.id))
     count_result = await db.execute(count_query)
     total = count_result.scalar() or 0
 
@@ -209,7 +227,7 @@ async def list_tasks(
 @router.get("/{task_id}")
 async def get_task_details(
     task_id: int,  # Now takes integer task_id
-    current_user: CurrentUserAPIKey,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_session),
 ):
     """
@@ -263,7 +281,7 @@ async def get_task_details(
     for variation_id in sorted(variations_data.keys()):
         version_data = variations_data[variation_id]
         versions.append({
-            "id": variation_id,
+            "id": variation_id + 1,  # Convert 0-indexed to 1-indexed for display
             "summary": version_data["summary"],
             "files": version_data["files"]
         })
@@ -300,7 +318,7 @@ async def get_task_details(
 @router.get("/{task_id}/outputs")
 async def get_task_outputs(
     task_id: int,  # Now takes integer task_id
-    current_user: CurrentUserAPIKey,
+    current_user: CurrentUser,
     since: datetime | None = Query(
         None, description="ISO timestamp to get outputs after"
     ),
@@ -365,7 +383,7 @@ async def get_task_outputs(
 async def get_variation_outputs(
     task_id: int,  # Now takes integer task_id
     variation_id: int,
-    current_user: CurrentUserAPIKey,
+    current_user: CurrentUser,
     since: datetime | None = Query(
         None, description="ISO timestamp to get outputs after"
     ),

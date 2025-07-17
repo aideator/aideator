@@ -7,7 +7,7 @@ from fastapi import Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_password_hash
+# Password hashing removed - using GitHub OAuth only
 from app.core.config import get_settings
 from app.core.database import async_session_maker
 from app.models.user import User
@@ -71,8 +71,7 @@ class DevelopmentAuthMiddleware:
             user = User(
                 id=f"user_test_{secrets.token_urlsafe(12)}",
                 email="test@aideator.local",
-                hashed_password=get_password_hash("testpass123"),
-                full_name="Test User",
+                name="Test User",
                 company="AIdeator Development",
                 is_active=True,
                 is_superuser=True,  # Make superuser for full access

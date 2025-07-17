@@ -48,7 +48,7 @@ export function useTaskDetail(taskId: string): UseTaskDetailReturn {
       setError(null)
       
       // Call the task detail API endpoint
-      const url = `/api/v1/tasks/${taskId}`
+      const url = `http://localhost:8000/api/v1/tasks/${taskId}`
       console.log('Fetching task detail from:', url)
       const response = await fetch(url, {
         headers: {

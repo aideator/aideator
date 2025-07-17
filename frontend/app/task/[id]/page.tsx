@@ -128,8 +128,8 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
       )
     }
 
-    // Get logs for the current variation (version ID matches variation_id)
-    const variationLogs = getLogsByVariation(activeVersion)
+    // Get logs for the current variation (convert 1-indexed version to 0-indexed variation_id)
+    const variationLogs = getLogsByVariation(activeVersion - 1)
     
     if (logsLoading && variationLogs.length === 0) {
       return (

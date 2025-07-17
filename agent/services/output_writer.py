@@ -129,7 +129,7 @@ class OutputWriter:
 
     async def write_startup_message(self) -> bool:
         """Write agent startup message."""
-        message = f"🚀 Agent {self.variation_id} starting for task {self.task_id}"
+        message = f"🚀 Agent {self.variation_id + 1} starting for task {self.task_id}"
         return await self.write_job_data(message)
 
     async def write_completion_message(self, success: bool, response_length: int = 0) -> bool:
