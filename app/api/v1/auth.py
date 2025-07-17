@@ -1,33 +1,27 @@
 import secrets
+import urllib.parse
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import jwt
 from sqlalchemy import and_, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
 from app.core.auth import (
-    get_password_hash,
-    verify_password,
+    get_user_from_github_token,
+    verify_github_token,
 )
 from app.core.config import get_settings
 from app.core.database import get_session
 from app.core.dependencies import get_current_user
 from app.core.logging import get_logger
-from app.models.user import APIKey, User
+from app.models.user import User
 from app.schemas.auth import (
-    APIKeyResponse,
-    CreateAPIKeyRequest,
-    CreateAPIKeyResponse,
-    TokenResponse,
-    UserCreate,
-    UserLogin,
     UserResponse,
-    UserUpdate,
 )
 
 settings = get_settings()
@@ -36,91 +30,83 @@ router = APIRouter()
 bearer_scheme = HTTPBearer()
 
 
-def create_access_token(
-    data: dict[str, Any], expires_delta: timedelta | None = None
-) -> str:
-    """Create JWT access token."""
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
-
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
+# API key generation removed - using GitHub OAuth only
 
 
-def generate_api_key() -> str:
-    """Generate a secure API key."""
-    prefix = "aid_sk_"
-    key = secrets.token_urlsafe(32)
-    return f"{prefix}{key}"
+# =============================================================================
+# GitHub OAuth Routes
+# =============================================================================
+
+@router.get("/github/login")
+async def github_login(request: Request) -> RedirectResponse:
+    """Redirect to GitHub for OAuth login."""
+    # Build GitHub OAuth URL
+    github_oauth_url = (
+        f"https://github.com/login/oauth/authorize"
+        f"?client_id={settings.github_client_id}"
+        f"&redirect_uri={settings.github_redirect_uri}"
+        f"&scope=user:email"
+        f"&state=github_oauth"
+    )
+    
+    return RedirectResponse(url=github_oauth_url, status_code=302)
 
 
-@router.post("/register", response_model=UserResponse)
-async def register(
-    user_data: UserCreate,
-    request: Request,
+@router.get("/github/callback")
+async def github_callback(
+    code: str,
+    state: str | None = None,
+    request: Request = None,
     db: AsyncSession = Depends(get_session),
-) -> UserResponse:
-    """Register a new user."""
-    # Check if user already exists
-    query = select(User).where(col(User.email) == user_data.email)
-    result = await db.execute(query)
-    existing_user = result.scalar_one_or_none()
-
-    if existing_user:
-        raise HTTPException(
-            status_code=400, detail="User with this email already exists"
+) -> RedirectResponse:
+    """Handle GitHub OAuth callback and redirect to frontend."""
+    try:
+        # Exchange code for access token
+        import httpx
+        
+        async with httpx.AsyncClient() as client:
+            # Get access token from GitHub
+            token_response = await client.post(
+                "https://github.com/login/oauth/access_token",
+                data={
+                    "client_id": settings.github_client_id,
+                    "client_secret": settings.github_client_secret,
+                    "code": code,
+                },
+                headers={"Accept": "application/json"},
+            )
+            
+            if token_response.status_code != 200:
+                return RedirectResponse(url="http://localhost:3000/?error=token_exchange_failed", status_code=302)
+            
+            token_data = token_response.json()
+            access_token = token_data.get("access_token")
+            
+            if not access_token:
+                return RedirectResponse(url="http://localhost:3000/?error=no_access_token", status_code=302)
+        
+        # Get or create user from GitHub token
+        user = await get_user_from_github_token(access_token, db)
+        if not user:
+            return RedirectResponse(url="http://localhost:3000/?error=user_creation_failed", status_code=302)
+        
+        # Store user data in session or use a simpler approach
+        # Let's try a simpler redirect with just essential data
+        redirect_url = (
+            f"http://localhost:3000/auth/callback"
+            f"?token={access_token}"
+            f"&user_id={user.id}"
+            f"&email={urllib.parse.quote(user.email)}"
+            f"&name={urllib.parse.quote(user.name or '')}"
+            f"&github_username={user.github_username or ''}"
         )
-
-    # Create new user
-    user = User(
-        id=str(uuid4()),
-        email=user_data.email,
-        full_name=user_data.full_name,
-        hashed_password=get_password_hash(user_data.password),
-        is_active=True,
-        created_at=datetime.utcnow(),
-    )
-
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
-
-    return UserResponse.model_validate(user)
-
-
-@router.post("/login", response_model=TokenResponse)
-async def login(
-    user_credentials: UserLogin,
-    request: Request,
-    db: AsyncSession = Depends(get_session),
-) -> TokenResponse:
-    """Authenticate user and return access token."""
-    # Create a temporary HTTPAuthorizationCredentials object with the email as the token
-    # This is a temporary fix - we should create a proper authenticate_user function
-    # that takes email and password directly
-
-    # For now, let's authenticate manually
-    query = select(User).where(col(User.email) == user_credentials.email)
-    result = await db.execute(query)
-    user = result.scalar_one_or_none()
-
-    if not user or not verify_password(user_credentials.password, user.hashed_password):
-        user = None
-
-    if not user:
-        raise HTTPException(status_code=401, detail="Incorrect email or password")
-
-    # Create access token
-    access_token = create_access_token(data={"sub": user.email, "user_id": user.id})
-
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
-        user=UserResponse.model_validate(user),
-    )
+        
+        logger.info(f"Redirecting to: {redirect_url}")
+        return RedirectResponse(url=redirect_url, status_code=302)
+        
+    except Exception as e:
+        logger.error(f"OAuth callback error: {e}")
+        return RedirectResponse(url="http://localhost:3000/?error=oauth_callback_failed", status_code=302)
 
 
 @router.get("/me", response_model=UserResponse)
@@ -133,33 +119,14 @@ async def get_current_user_info(
 
 @router.put("/me", response_model=UserResponse)
 async def update_current_user(
-    user_update: UserUpdate,
+    name: str | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ) -> UserResponse:
     """Update current user information."""
-    # Update user fields
-    if user_update.full_name is not None:
-        current_user.full_name = user_update.full_name
-
-    if user_update.email is not None:
-        # Check if email is already taken
-        query = select(User).where(
-            and_(
-                col(User.email) == user_update.email,
-                col(User.id) != current_user.id,
-            )
-        )
-        result = await db.execute(query)
-        existing_user = result.scalar_one_or_none()
-
-        if existing_user:
-            raise HTTPException(status_code=400, detail="Email already taken")
-
-        current_user.email = user_update.email
-
-    if user_update.password is not None:
-        current_user.hashed_password = get_password_hash(user_update.password)
+    # Update user fields (simplified for GitHub OAuth)
+    if name is not None:
+        current_user.name = name
 
     current_user.updated_at = datetime.utcnow()
 
@@ -234,34 +201,13 @@ async def delete_user(
     return {"message": "User deleted successfully"}
 
 
-@router.post("/change-password")
-async def change_password(
-    current_password: str,
-    new_password: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_session),
-) -> dict[str, str]:
-    """Change user password."""
-    # Verify current password
-    if not verify_password(current_password, current_user.hashed_password):
-        raise HTTPException(status_code=400, detail="Incorrect current password")
-
-    # Update password
-    current_user.hashed_password = get_password_hash(new_password)
-    current_user.updated_at = datetime.utcnow()
-
-    await db.commit()
-
-    return {"message": "Password changed successfully"}
-
-
 @router.post("/logout")
 async def logout(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 ) -> dict[str, str]:
-    """Logout user (invalidate token)."""
-    # In a real implementation, you would add the token to a blacklist
-    # For now, we just return success
+    """Logout user (GitHub OAuth tokens are handled client-side)."""
+    # GitHub OAuth tokens are handled client-side
+    # No server-side token invalidation needed
     return {"message": "Logged out successfully"}
 
 
@@ -274,7 +220,8 @@ async def get_profile(
         "user": {
             "id": current_user.id,
             "email": current_user.email,
-            "full_name": current_user.full_name,
+            "name": current_user.name,
+            "github_username": current_user.github_username,
             "is_active": current_user.is_active,
             "is_superuser": current_user.is_superuser,
             "created_at": current_user.created_at,
@@ -292,86 +239,7 @@ async def get_profile(
     }
 
 
-@router.post(
-    "/api-keys",
-    response_model=CreateAPIKeyResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_api_key(
-    request: CreateAPIKeyRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_session),
-) -> CreateAPIKeyResponse:
-    """Create a new API key."""
-    # Generate key
-    api_key = generate_api_key()
-    key_hash = get_password_hash(api_key)
-
-    # Calculate expiration
-    expires_at = None
-    if request.expires_in_days:
-        expires_at = datetime.utcnow() + timedelta(days=request.expires_in_days)
-
-    # Create API key record
-    key_record = APIKey(
-        id=f"key_{secrets.token_urlsafe(12)}",
-        user_id=current_user.id,
-        key_hash=key_hash,
-        name=request.name,
-        scopes=request.scopes,
-        expires_at=expires_at,
-    )
-
-    db.add(key_record)
-    await db.commit()
-    await db.refresh(key_record)
-
-    logger.info("api_key_created", user_id=current_user.id, key_id=key_record.id)
-
-    return CreateAPIKeyResponse(
-        api_key=api_key,
-        key_info=APIKeyResponse.model_validate(key_record),
-    )
-
-
-@router.get("/api-keys", response_model=list[APIKeyResponse])
-async def list_api_keys(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_session),
-) -> list[APIKey]:
-    """List user's API keys."""
-    result = await db.execute(
-        select(APIKey)
-        .where(APIKey.user_id == current_user.id)
-        .order_by(desc(APIKey.created_at))
-    )
-    return list(result.scalars().all())
-
-
-@router.delete("/api-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_api_key(
-    key_id: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_session),
-) -> None:
-    """Delete an API key."""
-    result = await db.execute(
-        select(APIKey).where(
-            (APIKey.id == key_id) & (APIKey.user_id == current_user.id)
-        )
-    )
-    key = result.scalar_one_or_none()
-
-    if not key:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="API key not found",
-        )
-
-    await db.delete(key)
-    await db.commit()
-
-    logger.info("api_key_deleted", user_id=current_user.id, key_id=key_id)
+# API key management endpoints removed - using GitHub OAuth only
 
 
 @router.get("/dev/test-login", include_in_schema=False)
@@ -398,8 +266,7 @@ async def dev_test_login(
         user = User(
             id=f"user_test_{secrets.token_urlsafe(12)}",
             email="test@aideator.local",
-            hashed_password=get_password_hash("testpass123"),
-            full_name="Test User",
+            name="Test User",
             company="AIdeator Development",
             is_active=True,
             is_superuser=False,
@@ -408,51 +275,14 @@ async def dev_test_login(
         await db.commit()
         await db.refresh(user)
 
-    # Create access token
-    access_token_expires = timedelta(days=30)  # Long-lived for development
-    access_token = create_access_token(
-        data={"sub": user.id}, expires_delta=access_token_expires
-    )
-
-    # Always create a fresh API key for development
-    api_key = f"aid_sk_test_{secrets.token_urlsafe(32)}"
-    key_hash = get_password_hash(api_key)
-
-    # Remove old development key if exists
-    await db.execute(
-        select(APIKey).where(
-            (APIKey.user_id == user.id) & (APIKey.name == "Development Test Key")
-        )
-    )
-    old_keys = await db.execute(
-        select(APIKey).where(
-            (APIKey.user_id == user.id) & (APIKey.name == "Development Test Key")
-        )
-    )
-    for old_key in old_keys.scalars().all():
-        await db.delete(old_key)
-
-    # Create new API key
-    api_key_record = APIKey(
-        id=f"key_test_{secrets.token_urlsafe(12)}",
-        user_id=user.id,
-        key_hash=key_hash,
-        name="Development Test Key",
-        scopes=["runs:create", "runs:read"],
-    )
-
-    db.add(api_key_record)
-    await db.commit()
-
     return {
         "user": {
             "id": user.id,
             "email": user.email,
-            "full_name": user.full_name,
+            "name": user.name,
             "company": user.company,
         },
-        "access_token": access_token,
-        "token_type": "bearer",
-        "api_key": api_key,  # Always returns fresh API key in development
+        "access_token": "fake_github_token_for_dev",
+        "token_type": "github",
         "message": "Development test user login successful",
     }

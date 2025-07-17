@@ -40,8 +40,13 @@ class Settings(BaseSettings):
         default="dev-secret-key-32-chars-minimum-length-for-development"
     )
     encryption_key: str = Field(default="dev-encryption-key-32-chars-minimum-for-aes")
-    algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
+    
+    # GitHub OAuth Configuration
+    github_client_id: str = "Ov23liQbofc71OnH8V0L"
+    github_client_secret: str = "c9512c510821f9a4b901c3cf0026063f0b552a10"
+    github_redirect_uri: str = "http://localhost:8000/api/v1/auth/github/callback"
+    
+    # API Keys for LLM providers
     openai_api_key: str | None = None  # Required for LiteLLM
     anthropic_api_key: str | None = None  # Required for Claude Code CLI
     gemini_api_key: str | None = None  # Required for Gemini CLI
@@ -179,7 +184,6 @@ class Settings(BaseSettings):
         if self.simple_dev_mode or self.environment == "development":
             # Auto-configure for development ease
             self.require_api_keys_for_agents = False
-            self.access_token_expire_minutes = 2880  # 48 hours
 
             # Auto-generate keys if empty in development
             if not self.secret_key or self.secret_key == "dev-secret-key-32-chars-minimum-length-for-development":
