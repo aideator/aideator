@@ -1,6 +1,6 @@
 "use client"
 
-import { BrainCircuit, ArrowLeft, Archive, Share, GitPullRequest, RefreshCw, Github } from "lucide-react"
+import { BrainCircuit, ArrowLeft, Archive, Share, RefreshCw, Github } from "lucide-react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -15,7 +15,9 @@ export function PageHeader() {
   const pathname = usePathname()
   const router = useRouter()
   const [isPrCreated, setIsPrCreated] = useState(false)
-  const { user, isLoading } = useAuth()
+  const [creatingPr, setCreatingPr] = useState(false)
+  const [prUrl, setPrUrl] = useState<string | null>(null)
+  const { user, isLoading, token } = useAuth()
   
   // Check if we're on a task page
   const taskMatch = pathname.match(/^\/task\/([^/]+)$/)
@@ -75,8 +77,57 @@ export function PageHeader() {
             <Share className="w-4 h-4 mr-2" />
             Share
           </Button>
-          <Button className="bg-white text-black hover:bg-gray-200" onClick={() => setIsPrCreated(true)}>
-            <Github className="w-4 h-4 mr-2" />
+          <Button 
+            className="bg-white text-black hover:bg-gray-200"
+            disabled={creatingPr || taskLoading}
+            onClick={async () => {
+              if (isPrCreated && prUrl) {
+                window.open(prUrl, "_blank")
+                return
+              }
+
+              if (!taskId || !token) return
+
+              // Determine selected version from localStorage (set by TaskPage)
+              const savedVersion = localStorage.getItem(`task_selected_version_${taskId}`)
+              const version = savedVersion ? parseInt(savedVersion, 10) : 1
+
+              const variationId = version - 1 // API expects 0-indexed
+
+              try {
+                setCreatingPr(true)
+                const resp = await fetch(
+                  `http://localhost:8000/api/v1/tasks/${taskId}/variations/${variationId}/pull-request`,
+                  {
+                    method: "POST",
+                    headers: {
+                      "Authorization": `Bearer ${token}`,
+                    },
+                  }
+                )
+
+                if (!resp.ok) {
+                  const errorText = await resp.text()
+                  throw new Error(`Failed to create PR: ${errorText}`)
+                }
+
+                const data: { pr_url: string } = await resp.json()
+                setPrUrl(data.pr_url)
+                setIsPrCreated(true)
+                window.open(data.pr_url, "_blank")
+              } catch (err) {
+                console.error(err)
+                alert(`Failed to create PR: ${err}`)
+              } finally {
+                setCreatingPr(false)
+              }
+            }}
+          >
+            {creatingPr ? (
+              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Github className="w-4 h-4 mr-2" />
+            )}
             {isPrCreated ? "View PR" : "Create PR"}
           </Button>
           {!isLoading && (user ? <UserMenu /> : <GitHubLoginButton />)}

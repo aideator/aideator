@@ -21,6 +21,16 @@ import { formatLogTimestamp } from "@/utils/timezone"
 export default function TaskPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [activeVersion, setActiveVersion] = useState(1)
+  // Persist selected version so other components (e.g., PageHeader) can access
+  useEffect(() => {
+    if (id) {
+      try {
+        localStorage.setItem(`task_selected_version_${id}`, String(activeVersion))
+      } catch (_) {
+        /* ignore localStorage errors (e.g., SSR) */
+      }
+    }
+  }, [activeVersion, id])
   const [activeTab, setActiveTab] = useState("logs")
   const { task, loading, error } = useTaskDetail(id)
   const { logs, isLoading: logsLoading, error: logsError, getLogsByVariation, hasLogsForVariation } = useAgentLogs(id)

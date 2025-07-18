@@ -7,6 +7,7 @@ from app.api.v1 import (
     auth,
     health,
     tasks,
+    pull_requests,
 )
 
 api_router = APIRouter()
@@ -16,6 +17,7 @@ api_router.include_router(health.router, tags=["System"])
 api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 # Removed – use /tasks endpoints exclusively
 api_router.include_router(tasks.router, prefix="/tasks", tags=["Tasks"])
+api_router.include_router(pull_requests.router, tags=["Pull Requests"])
 # Removed sessions, preferences, credentials, provider-keys, and admin-data routers - simplified for dev mode
 # Admin messaging endpoints temporarily disabled - need auth and terminology updates
 # api_router.include_router(
