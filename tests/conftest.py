@@ -35,7 +35,7 @@ from app.core.config import Settings, get_settings
 from app.core.database import get_session
 from app.main import app
 from app.models.task import Task
-from app.models.user import APIKey, User
+from app.models.user import User
 
 
 # Override settings for testing

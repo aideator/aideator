@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,11 +28,21 @@ async def create_task_variation_pull_request(
     current_user: CurrentUser,
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_session),
+    apply_code_changes: bool = Query(default=True, description="Whether to apply actual code changes to the repository"),
 ) -> dict[str, Any]:
     """Create a GitHub pull request for the specified task variation.
 
-    The pull request will embed a markdown file containing the AI-generated
-    summary and diff so that the branch differs from the default branch.
+    The pull request will include:
+    - Actual code changes applied to repository files (if apply_code_changes=True)
+    - A markdown file containing the AI-generated summary and diff for reference
+    
+    Args:
+        task_id: ID of the task
+        variation_id: ID of the task variation
+        apply_code_changes: Whether to apply actual code changes (default: True)
+        current_user: Current authenticated user
+        credentials: GitHub token for repository access
+        db: Database session
     """
 
     # Retrieve the task and validate ownership
@@ -93,6 +103,7 @@ async def create_task_variation_pull_request(
             title=pr_title,
             body=pr_body,
             diff_content=diff_content,
+            apply_code_changes=apply_code_changes,
         )
     except Exception as exc:  # noqa: BLE001
         logger.error("Failed to create PR: %s", exc)
