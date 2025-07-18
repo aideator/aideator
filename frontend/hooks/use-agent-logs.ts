@@ -52,7 +52,8 @@ export function useAgentLogs(taskId: string): UseAgentLogsReturn {
       }
 
       // Fetch from API - get all outputs including assistant responses (frontend on port 3000, API on port 8000)
-      const response = await fetch(`http://localhost:8000/api/v1/tasks/${taskId}/outputs`, {
+      // Request a large limit to make sure we receive all log entries (server capped at 5000).
+      const response = await fetch(`http://localhost:8000/api/v1/tasks/${taskId}/outputs?limit=5000`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
