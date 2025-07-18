@@ -11,6 +11,10 @@ export interface GitHubRepo {
   private: boolean
   default_branch: string
   updated_at: string
+  /** Owning organisation or user */
+  owner?: {
+    login: string
+  }
 }
 
 export interface GitHubBranch {
@@ -36,19 +40,34 @@ export function useGitHubRepos(token: string | null) {
       setError(null)
       
       try {
-        const response = await fetch('https://api.github.com/user/repos?sort=updated&per_page=50', {
-          headers: {
-            'Authorization': `token ${token}`,
-            'Accept': 'application/vnd.github.v3+json'
-          }
-        })
+        // Fetch all pages (GitHub API paginates at 100 max per_page)
+        let page = 1
+        const allRepos: GitHubRepo[] = []
+        while (true) {
+          const resp = await fetch(`https://api.github.com/user/repos?sort=updated&per_page=100&page=${page}`, {
+            headers: {
+              Authorization: `token ${token}`,
+              Accept: 'application/vnd.github.v3+json',
+            },
+          })
 
-        if (response.ok) {
-          const repoData = await response.json()
-          setRepos(repoData)
-        } else {
-          setError('Failed to fetch repositories')
+          if (!resp.ok) {
+            setError('Failed to fetch repositories')
+            break
+          }
+
+          const data: GitHubRepo[] = await resp.json()
+          allRepos.push(...data)
+
+          if (data.length < 100 || allRepos.length >= 300) {
+            // Break if last page (<100) or safety cap reached
+            break
+          }
+
+          page += 1
         }
+
+        setRepos(allRepos)
       } catch (err) {
         setError('Network error fetching repositories')
         console.error('GitHub repos fetch error:', err)
