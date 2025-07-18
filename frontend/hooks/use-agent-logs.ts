@@ -8,7 +8,7 @@ export interface AgentLog {
   variation_id: number
   content: string
   timestamp: string
-  output_type: 'logging' | 'error' | 'stdout' | 'stderr' | 'status' | 'summary' | 'diffs' | 'addinfo' | 'job_data' | 'assistant_response' | 'debug'
+  output_type: 'logging' | 'error' | 'stdout' | 'stderr' | 'status' | 'summary' | 'diffs' | 'addinfo' | 'job_data' | 'assistant_response' | 'debug' | 'system_status' | 'debug_info'
 }
 
 export interface UseAgentLogsReturn {
@@ -73,14 +73,16 @@ export function useAgentLogs(taskId: string): UseAgentLogsReturn {
       const data = await response.json()
       
       // Transform API response to AgentLog format - API returns array directly
-      const fetchedLogs: AgentLog[] = (Array.isArray(data) ? data : data.outputs || []).map((output: any) => ({
-        id: output.id,
-        task_id: output.task_id,
-        variation_id: output.variation_id,
-        content: output.content,
-        timestamp: output.timestamp,
-        output_type: output.output_type
-      }))
+      const fetchedLogs: AgentLog[] = (Array.isArray(data) ? data : data.outputs || [])
+        .filter((output: any) => output.output_type !== 'diffs' && output.output_type !== 'summary') // Filter out diff XML and summaries from logs
+        .map((output: any) => ({
+          id: output.id,
+          task_id: output.task_id,
+          variation_id: output.variation_id,
+          content: output.content,
+          timestamp: output.timestamp,
+          output_type: output.output_type
+        }))
 
       // Sort by timestamp in chronological order (oldest first, newest at bottom like chat/terminal)
       fetchedLogs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())

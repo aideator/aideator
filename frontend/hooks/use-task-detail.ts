@@ -41,14 +41,16 @@ export function useTaskDetail(taskId: string): UseTaskDetailReturn {
   const [task, setTask] = useState<TaskDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
-  const fetchTask = async () => {
+  
+  const fetchTask = async (isInitialLoad = false) => {
     try {
-      setLoading(true)
+      if (isInitialLoad) {
+        setLoading(true)
+      }
       setError(null)
       
       // Call the task detail API endpoint
-      const url = `/api/v1/tasks/${taskId}`
+      const url = `http://localhost:8000/api/v1/tasks/${taskId}`
       console.log('Fetching task detail from:', url)
       const response = await fetch(url, {
         headers: {
@@ -68,19 +70,27 @@ export function useTaskDetail(taskId: string): UseTaskDetailReturn {
       setError(err instanceof Error ? err.message : 'Failed to fetch task')
       setTask(null)
     } finally {
-      setLoading(false)
+      if (isInitialLoad) {
+        setLoading(false)
+      }
     }
   }
 
   const refetch = () => {
-    fetchTask()
+    fetchTask(true)
   }
 
   useEffect(() => {
     if (taskId) {
-      fetchTask()
+      fetchTask(true)
+      
+      // Only poll if task is still running
+      if (!task || task.status === "Open") {
+        const interval = setInterval(() => fetchTask(false), 3000)
+        return () => clearInterval(interval)
+      }
     }
-  }, [taskId])
+  }, [taskId, task?.status])
 
   return {
     task,

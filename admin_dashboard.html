@@ -3,391 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AIdeator Admin - Container Messaging Dashboard</title>
+    <title>AIdeator Admin - Redirecting...</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            background: #f5f5f5; 
-            color: #333;
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
         }
-        .header {
-            background: #2c3e50;
-            color: white;
-            padding: 1rem;
-            text-align: center;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
+        .redirect-card {
+            background: #2a2a2a;
             padding: 2rem;
-        }
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-        .stat-card {
-            background: white;
-            padding: 1.5rem;
             border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             text-align: center;
+            max-width: 400px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         }
-        .stat-number {
-            font-size: 2rem;
-            font-weight: bold;
+        .redirect-card h1 {
+            margin-bottom: 1rem;
             color: #3498db;
         }
-        .stat-label {
-            color: #7f8c8d;
-            margin-top: 0.5rem;
+        .redirect-card p {
+            margin-bottom: 1.5rem;
+            color: #ccc;
         }
-        .section {
-            background: white;
-            margin-bottom: 2rem;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        .section-header {
-            background: #ecf0f1;
-            padding: 1rem;
-            border-bottom: 1px solid #ddd;
-            font-weight: bold;
-        }
-        .section-content {
-            padding: 1rem;
-        }
-        .run-item, .message-item {
-            padding: 0.75rem;
-            border-bottom: 1px solid #eee;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .run-item:last-child, .message-item:last-child {
-            border-bottom: none;
-        }
-        .run-status {
-            padding: 0.25rem 0.5rem;
-            border-radius: 4px;
-            font-size: 0.8rem;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-        .status-running { background: #e8f5e8; color: #27ae60; }
-        .status-completed { background: #e8f4fd; color: #3498db; }
-        .status-pending { background: #fff3cd; color: #856404; }
-        .status-failed { background: #f8d7da; color: #721c24; }
-        .message-type {
-            padding: 0.25rem 0.5rem;
-            border-radius: 4px;
-            font-size: 0.8rem;
-            font-weight: bold;
-        }
-        .type-stdout { background: #e8f5e8; color: #27ae60; }
-        .type-stderr { background: #f8d7da; color: #721c24; }
-        .type-logging { background: #e8f4fd; color: #3498db; }
-        .type-status { background: #fff3cd; color: #856404; }
-        .refresh-btn {
+        .redirect-btn {
             background: #3498db;
             color: white;
             border: none;
-            padding: 0.5rem 1rem;
+            padding: 0.75rem 1.5rem;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 0.9rem;
+            font-size: 1rem;
+            text-decoration: none;
+            display: inline-block;
         }
-        .refresh-btn:hover {
+        .redirect-btn:hover {
             background: #2980b9;
         }
-        .error {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 1rem;
-            border-radius: 4px;
-            margin: 1rem 0;
-        }
         .loading {
-            text-align: center;
-            padding: 2rem;
-            color: #7f8c8d;
-        }
-        .timestamp {
-            font-size: 0.8rem;
-            color: #7f8c8d;
-        }
-        .auto-refresh {
-            position: fixed;
-            top: 1rem;
-            right: 1rem;
-            background: white;
-            padding: 0.5rem;
-            border-radius: 4px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            font-size: 0.9rem;
+            color: #999;
+            margin-top: 1rem;
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>🚀 AIdeator Admin Dashboard</h1>
-        <p>Container Messaging & Activity Monitor</p>
-    </div>
-
-    <div class="auto-refresh">
-        <label>
-            <input type="checkbox" id="autoRefresh" checked> Auto-refresh (5s)
-        </label>
-        <br>
-        <button onclick="showApiKeyPrompt()" style="margin-top: 0.5rem; font-size: 0.8rem;">Set API Key</button>
-        <button onclick="clearApiKey()" style="margin-top: 0.5rem; font-size: 0.8rem;">Clear Key</button>
-    </div>
-
-    <div class="container">
-        <!-- Stats Overview -->
-        <div class="stats-grid" id="statsGrid">
-            <div class="stat-card">
-                <div class="stat-number" id="activeRuns">-</div>
-                <div class="stat-label">Active Runs</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number" id="totalMessages">-</div>
-                <div class="stat-label">Total Messages</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number" id="recentMessages">-</div>
-                <div class="stat-label">Recent Messages (1h)</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number" id="activeContainers">-</div>
-                <div class="stat-label">Active Containers</div>
-            </div>
-        </div>
-
-        <!-- Live Activity -->
-        <div class="section">
-            <div class="section-header">
-                🔴 Live Activity (Last 5 Minutes)
-                <button class="refresh-btn" onclick="refreshLiveActivity()">Refresh</button>
-            </div>
-            <div class="section-content" id="liveActivity">
-                <div class="loading">Loading live activity...</div>
-            </div>
-        </div>
-
-        <!-- Recent Runs -->
-        <div class="section">
-            <div class="section-header">
-                📊 Recent Runs
-                <button class="refresh-btn" onclick="refreshRuns()">Refresh</button>
-            </div>
-            <div class="section-content" id="recentRuns">
-                <div class="loading">Loading runs...</div>
-            </div>
-        </div>
-
-        <!-- Recent Messages -->
-        <div class="section">
-            <div class="section-header">
-                💬 Recent Messages
-                <button class="refresh-btn" onclick="refreshMessages()">Refresh</button>
-            </div>
-            <div class="section-content" id="recentMessages">
-                <div class="loading">Loading messages...</div>
-            </div>
-        </div>
+    <div class="redirect-card">
+        <h1>🚀 AIdeator Admin</h1>
+        <p>The admin dashboard has been upgraded to a modern React interface with improved design and functionality.</p>
+        <a href="http://localhost:3000/admin" class="redirect-btn">Go to New Admin Dashboard</a>
+        <div class="loading">Redirecting automatically in <span id="countdown">5</span> seconds...</div>
     </div>
 
     <script>
-        const API_BASE = 'http://localhost:8000';
-        const DEV_MODE = false; // Disable dev mode and use API key instead
-        let autoRefreshInterval;
-
-        // Auto-refresh functionality
-        document.getElementById('autoRefresh').addEventListener('change', (e) => {
-            if (e.target.checked) {
-                startAutoRefresh();
-            } else {
-                stopAutoRefresh();
-            }
-        });
-
-        function startAutoRefresh() {
-            stopAutoRefresh(); // Clear existing interval
-            autoRefreshInterval = setInterval(() => {
-                refreshAll();
-            }, 5000);
-        }
-
-        function stopAutoRefresh() {
-            if (autoRefreshInterval) {
-                clearInterval(autoRefreshInterval);
-                autoRefreshInterval = null;
-            }
-        }
-
-        // API calls
-        async function fetchData(endpoint) {
-            try {
-                const headers = {};
-                
-                // In dev mode, try different endpoints if auth fails
-                if (DEV_MODE) {
-                    // Try the working health endpoint pattern first
-                    try {
-                        const testResponse = await fetch(`${API_BASE}/api/v1/health`);
-                        if (!testResponse.ok) {
-                            throw new Error(`Health check failed: ${testResponse.status}`);
-                        }
-                    } catch (e) {
-                        console.error('Backend not responding:', e);
-                        return null;
-                    }
-                }
-                
-                const apiKey = localStorage.getItem('admin_api_key');
-                if (apiKey && !DEV_MODE) {
-                    headers['X-API-Key'] = apiKey;
-                }
-                
-                const response = await fetch(`${API_BASE}/api/v1/admin-messaging${endpoint}`, {
-                    headers: headers
-                });
-                
-                if (!response.ok) {
-                    if (response.status === 401 && !DEV_MODE) {
-                        showApiKeyPrompt();
-                        return null;
-                    }
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-                return await response.json();
-            } catch (error) {
-                console.error(`Error fetching ${endpoint}:`, error);
-                return null;
-            }
-        }
-
-        // API Key management
-        function showApiKeyPrompt() {
-            const apiKey = prompt('Please enter your API key to access admin data:');
-            if (apiKey) {
-                localStorage.setItem('admin_api_key', apiKey);
-                refreshAll();
-            }
-        }
-
-        function clearApiKey() {
-            localStorage.removeItem('admin_api_key');
-            alert('API key cleared. You will be prompted again.');
-        }
-
-        // Refresh functions
-        async function refreshOverview() {
-            const data = await fetchData('/overview');
-            if (data) {
-                document.getElementById('activeRuns').textContent = data.active_runs || 0;
-                document.getElementById('totalMessages').textContent = data.total_messages || 0;
-                document.getElementById('recentMessages').textContent = data.recent_messages_1h || 0;
-            }
-        }
-
-        async function refreshLiveActivity() {
-            const data = await fetchData('/live');
-            const container = document.getElementById('liveActivity');
+        let countdown = 5;
+        const countdownElement = document.getElementById('countdown');
+        
+        const interval = setInterval(() => {
+            countdown--;
+            countdownElement.textContent = countdown;
             
-            if (!data) {
-                container.innerHTML = '<div class="error">Failed to load live activity</div>';
-                return;
+            if (countdown <= 0) {
+                clearInterval(interval);
+                window.location.href = 'http://localhost:3000/admin';
             }
-
-            document.getElementById('activeContainers').textContent = data.active_containers || 0;
-
-            if (data.container_activity && data.container_activity.length > 0) {
-                container.innerHTML = data.container_activity.map(activity => `
-                    <div class="message-item">
-                        <div>
-                            <strong>${activity.run_id}:${activity.variation_id}</strong><br>
-                            <span class="timestamp">${activity.message_count} messages</span>
-                        </div>
-                        <div>
-                            <div class="timestamp">${new Date(activity.latest_timestamp).toLocaleTimeString()}</div>
-                            <div style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                                ${activity.latest_message}
-                            </div>
-                        </div>
-                    </div>
-                `).join('');
-            } else {
-                container.innerHTML = '<div class="loading">No recent activity</div>';
-            }
-        }
-
-        async function refreshRuns() {
-            const data = await fetchData('/admin-messaging/runs?limit=10');
-            const container = document.getElementById('recentRuns');
-            
-            if (!data || !Array.isArray(data)) {
-                container.innerHTML = '<div class="error">Failed to load runs</div>';
-                return;
-            }
-
-            if (data.length > 0) {
-                container.innerHTML = data.map(run => `
-                    <div class="run-item">
-                        <div>
-                            <strong>${run.id}</strong><br>
-                            <span class="timestamp">${new Date(run.created_at).toLocaleString()}</span>
-                        </div>
-                        <div style="text-align: right;">
-                            <div class="run-status status-${run.status}">${run.status}</div>
-                            <div class="timestamp">${run.message_count} messages</div>
-                        </div>
-                    </div>
-                `).join('');
-            } else {
-                container.innerHTML = '<div class="loading">No runs found</div>';
-            }
-        }
-
-        async function refreshMessages() {
-            const data = await fetchData('/messages?limit=20');
-            const container = document.getElementById('recentMessages');
-            
-            if (!data || !Array.isArray(data)) {
-                container.innerHTML = '<div class="error">Failed to load messages</div>';
-                return;
-            }
-
-            if (data.length > 0) {
-                container.innerHTML = data.map(msg => `
-                    <div class="message-item">
-                        <div>
-                            <span class="message-type type-${msg.output_type}">${msg.output_type}</span>
-                            <span class="timestamp">${msg.run_id}:${msg.variation_id}</span><br>
-                            <div style="margin-top: 0.5rem;">${msg.content}</div>
-                        </div>
-                        <div class="timestamp">${new Date(msg.timestamp).toLocaleString()}</div>
-                    </div>
-                `).join('');
-            } else {
-                container.innerHTML = '<div class="loading">No messages found</div>';
-            }
-        }
-
-        function refreshAll() {
-            refreshOverview();
-            refreshLiveActivity();
-            refreshRuns();
-            refreshMessages();
-        }
-
-        // Initial load
-        refreshAll();
-        startAutoRefresh();
+        }, 1000);
     </script>
 </body>
 </html>

@@ -9,62 +9,116 @@ import { Input } from "@/components/ui/input"
 import { useTaskDetail } from "@/hooks/use-task-detail"
 import { useAgentLogs } from "@/hooks/use-agent-logs"
 import { useAgentErrors } from "@/hooks/use-agent-errors"
+import { useTaskDiffs } from "@/hooks/use-task-diffs"
+import { useTaskSummary } from "@/hooks/use-task-summary"
+import { useTaskFileChanges } from "@/hooks/use-task-file-changes"
 import { notFound } from "next/navigation"
 import DiffViewer from "@/components/diff-viewer"
+import { TaskSummary } from "@/components/task-summary"
+import { formatLogTimestamp } from "@/utils/timezone"
 
-// Convert task data to XML format for DiffViewer
-function convertTaskDataToXml(versionData: any): string {
-  if (!versionData?.files || versionData.files.length === 0) {
-    return `<diff_analysis>
-  <file>
-    <name>No files to display</name>
-    <diff>No changes detected in this task</diff>
-    <changes>No modifications were made during task execution</changes>
-  </file>
-</diff_analysis>`
-  }
-
-  const fileElements = versionData.files.map((file: any) => {
-    // Convert diff array back to standard diff format
-    const diffText = file.diff.map((line: any) => {
-      if (line.type === 'add') {
-        return `+${line.content}`
-      } else if (line.type === 'del') {
-        return `-${line.content}`
-      } else {
-        return line.content
-      }
-    }).join('\n')
-
-    // Generate changes summary
-    const changesSummary = `File modified with ${file.additions} additions and ${file.deletions} deletions`
-
-    return `  <file>
-    <name>${file.name}</name>
-    <diff>${diffText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</diff>
-    <changes>${changesSummary}</changes>
-  </file>`
-  }).join('\n')
-
-  return `<diff_analysis>
-${fileElements}
-</diff_analysis>`
-}
 
 export default function TaskPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [activeVersion, setActiveVersion] = useState(1)
+  const [activeTab, setActiveTab] = useState("logs")
   const { task, loading, error } = useTaskDetail(id)
   const { logs, isLoading: logsLoading, error: logsError, getLogsByVariation, hasLogsForVariation } = useAgentLogs(id)
   const { errors, isLoading: errorsLoading, error: errorsError, getErrorsByVariation, hasErrorsForVariation } = useAgentErrors(id)
+  const { diffs, loading: diffsLoading, error: diffsError } = useTaskDiffs(id, activeVersion - 1)
+  const { summary, loading: summaryLoading, error: summaryError } = useTaskSummary(id, activeVersion - 1, task?.status)
+  const { files: changedFiles, loading: filesLoading, error: filesError } = useTaskFileChanges(id, activeVersion - 1, task?.status)
   const logsContainerRef = useRef<HTMLDivElement>(null)
+  const [isManualScrolling, setIsManualScrolling] = useState(false)
 
-  // Auto-scroll to bottom when new logs arrive
+  // Handle file click - switch to diff tab and scroll to file
+  const handleFileClick = (fileName: string) => {
+    setActiveTab("diff")
+    
+    // Use setTimeout to allow tab to switch first, then scroll and expand
+    setTimeout(() => {
+      const fileElement = document.querySelector(`[data-file-name="${fileName}"]`)
+      if (fileElement) {
+        // Scroll to the file
+        fileElement.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        
+        // Find and click the file header to expand it if it's collapsed
+        const fileHeader = fileElement.querySelector('.cursor-pointer')
+        if (fileHeader) {
+          // Check if the file is already expanded by looking for the chevron rotation
+          const chevron = fileHeader.querySelector('svg')
+          if (chevron && !chevron.classList.contains('rotate-90')) {
+            (fileHeader as HTMLElement).click()
+          }
+        }
+      }
+    }, 100)
+  }
+
+  // Auto-scroll to bottom when new logs arrive (only if not manually scrolling)
   useEffect(() => {
-    if (logsContainerRef.current) {
-      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight
+    if (logsContainerRef.current && !isManualScrolling) {
+      // Find the scrollable parent (TabsContent with explicit height)
+      const scrollableParent = logsContainerRef.current.closest('[data-state="active"]')
+      if (scrollableParent) {
+        console.log('Auto-scrolling logs:', {
+          scrollHeight: scrollableParent.scrollHeight,
+          scrollTop: scrollableParent.scrollTop,
+          clientHeight: scrollableParent.clientHeight,
+          isManualScrolling
+        })
+        scrollableParent.scrollTop = scrollableParent.scrollHeight
+      }
     }
-  }, [logs, activeVersion])
+  }, [logs, activeVersion, isManualScrolling])
+
+  // Detect manual scrolling and add debugging
+  useEffect(() => {
+    const handleScroll = (e: Event) => {
+      const target = e.target as HTMLElement
+      console.log('Scroll event:', {
+        target: target.tagName,
+        deltaY: (e as any).deltaY,
+        scrollTop: target.scrollTop,
+        scrollHeight: target.scrollHeight,
+        clientHeight: target.clientHeight,
+        isNearBottom: target.scrollHeight - target.scrollTop - target.clientHeight < 50
+      })
+      
+      setIsManualScrolling(true)
+      // Clear manual scrolling flag after 2 seconds
+      setTimeout(() => setIsManualScrolling(false), 2000)
+    }
+
+    // Add scroll listeners to all scrollable containers
+    const scrollContainers = document.querySelectorAll('.custom-scrollbar')
+    scrollContainers.forEach(container => {
+      container.addEventListener('scroll', handleScroll)
+    })
+
+    return () => {
+      scrollContainers.forEach(container => {
+        container.removeEventListener('scroll', handleScroll)
+      })
+    }
+  }, [])
+
+  // Add wheel event debugging to understand scroll direction issues
+  useEffect(() => {
+    const handleWheel = (e: WheelEvent) => {
+      console.log('Wheel event:', {
+        deltaY: e.deltaY,
+        deltaX: e.deltaX,
+        deltaMode: e.deltaMode,
+        target: (e.target as HTMLElement).tagName,
+        ctrlKey: e.ctrlKey,
+        shiftKey: e.shiftKey
+      })
+    }
+
+    document.addEventListener('wheel', handleWheel)
+    return () => document.removeEventListener('wheel', handleWheel)
+  }, [])
 
   if (loading) {
     return (
@@ -93,27 +147,34 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
     return notFound()
   }
 
-  // Handle case where task exists but has no agent outputs yet
-  if (!task.taskDetails || !task.taskDetails.versions || task.taskDetails.versions.length === 0) {
-    return (
-      <div className="flex flex-1 items-center justify-center bg-gray-950 text-gray-200">
-        <div className="text-center">
-          <div className="animate-pulse rounded-full h-8 w-8 border-b-2 border-blue-400 mx-auto mb-4"></div>
-          <p className="text-lg mb-2">Task is processing...</p>
-          <p className="text-gray-400 text-sm">Waiting for agent outputs to become available</p>
-        </div>
-      </div>
-    )
+  // Always show the full interface immediately when clicking on any task
+  // This creates the "jump to logs" behavior as if we refreshed and checked task_outputs
+  // The logs tab will handle loading states and show real data from task_outputs table
+
+  // Always create version data to show the interface
+  // This allows logs tab to display actual task_outputs data regardless of task status
+  let versionData = null
+  if (task.taskDetails?.versions) {
+    versionData = task.taskDetails.versions.find((v) => v.id === activeVersion)
+    
+    if (!versionData) {
+      // Fallback to first version if active version not found
+      const firstVersion = task.taskDetails.versions[0]
+      if (firstVersion) {
+        setActiveVersion(firstVersion.id)
+        return null // Re-render will handle it
+      }
+    }
   }
 
-  const versionData = task.taskDetails.versions.find((v) => v.id === activeVersion)
-
+  // If we don't have version data from taskDetails, create a minimal structure
+  // This allows the logs tab to always show the actual task_outputs data
   if (!versionData) {
-    // Fallback to first version if active version not found
-    const firstVersion = task.taskDetails.versions[0]
-    if (!firstVersion) return notFound()
-    setActiveVersion(firstVersion.id)
-    return null // Re-render will handle it
+    versionData = {
+      id: 1,
+      summary: task.status === "Open" ? "Task is processing..." : "View logs for task details",
+      files: []
+    }
   }
 
   // Render logs content for the current variation
@@ -128,8 +189,8 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
       )
     }
 
-    // Get logs for the current variation (version ID matches variation_id)
-    const variationLogs = getLogsByVariation(activeVersion)
+    // Get logs for the current variation (convert 1-indexed version to 0-indexed variation_id)
+    const variationLogs = getLogsByVariation(activeVersion - 1)
     
     if (logsLoading && variationLogs.length === 0) {
       return (
@@ -151,11 +212,11 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
     }
 
     return (
-      <div ref={logsContainerRef} className="space-y-2 max-h-full overflow-y-auto">
+      <div ref={logsContainerRef} className="space-y-2">
         {variationLogs.map((log) => (
           <div key={log.id} className="flex gap-3 text-sm">
             <span className="text-gray-500 text-xs w-24 flex-shrink-0">
-              {new Date(log.timestamp).toLocaleTimeString()}
+              {formatLogTimestamp(log.timestamp)}
             </span>
             <pre className="text-gray-300 whitespace-pre-wrap flex-1">{log.content}</pre>
           </div>
@@ -224,7 +285,7 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
                     {errorItem.output_type === 'error' ? 'Error' : 'Stderr Output'}
                   </h4>
                   <span className="text-xs text-gray-500">
-                    {new Date(errorItem.timestamp).toLocaleTimeString()}
+                    {formatLogTimestamp(errorItem.timestamp)}
                   </span>
                 </div>
                 <pre className={`text-sm p-3 rounded border overflow-x-auto whitespace-pre-wrap ${
@@ -248,65 +309,118 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
     )
   }
 
-  return (
-    <div className="flex flex-1 overflow-hidden bg-gray-950 text-gray-200">
-      {/* Left Sidebar */}
-      <aside className="w-80 bg-gray-900/70 border-r border-gray-800 p-4 flex flex-col overflow-y-auto">
-          <div className="flex items-center gap-2 mb-4">
-            {task.taskDetails.versions.map((v) => (
-              <Button
-                key={v.id}
-                variant={activeVersion === v.id ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setActiveVersion(v.id)}
-                className="data-[state=active]:bg-gray-700"
-              >
-                Version {v.id}
-              </Button>
-            ))}
-          </div>
+  // Render diffs content for the current variation
+  const renderDiffsContent = () => {
+    if (diffsError) {
+      return (
+        <div className="text-center py-8">
+          <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-4" />
+          <p className="text-red-300 mb-2">Failed to load diffs</p>
+          <p className="text-gray-400 text-sm">{diffsError}</p>
+        </div>
+      )
+    }
 
+    if (diffsLoading && diffs.length === 0) {
+      return (
+        <div className="text-center py-8">
+          <div className="animate-pulse rounded-full h-6 w-6 border-b-2 border-blue-400 mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading diff data...</p>
+        </div>
+      )
+    }
+
+    if (diffs.length === 0) {
+      return (
+        <div className="text-center py-8">
+          <FileCode className="w-8 h-8 text-gray-500 mx-auto mb-4" />
+          <p className="text-gray-400">No diffs available yet</p>
+          <p className="text-gray-500 text-sm mt-2">Diffs will appear after the agent makes changes</p>
+        </div>
+      )
+    }
+
+    // Get the latest diff data (most recent timestamp)
+    const latestDiff = diffs[diffs.length - 1]
+    
+    // Pass XML content directly to DiffViewer
+    return <DiffViewer xmlData={latestDiff.content} />
+  }
+
+  return (
+    <div className="flex flex-1 h-full overflow-hidden bg-gray-950 text-gray-200">
+      {/* Left Sidebar */}
+      <aside className="w-80 bg-gray-900/70 border-r border-gray-800 flex flex-col">
+        {/* Version selector - fixed height */}
+        <div className="flex items-center gap-2 mb-4 p-4 pb-0">
+          {task.taskDetails.versions.map((v) => (
+            <Button
+              key={v.id}
+              variant={activeVersion === v.id ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setActiveVersion(v.id)}
+              className="data-[state=active]:bg-gray-700"
+            >
+              Version {v.id}
+            </Button>
+          ))}
+        </div>
+
+        {/* Scrollable content area - explicit height */}
+        <div className="flex-1 px-4 overflow-y-auto custom-scrollbar" style={{ height: 'calc(100vh - 140px)' }}>
           <div className="space-y-6 text-sm">
             <div className="space-y-2">
-              <h3 className="font-semibold text-gray-400">Summary</h3>
-              <p className="text-gray-300">{versionData.summary}</p>
+              <TaskSummary 
+                summary={summary || undefined}
+                isLoading={summaryLoading}
+                error={summaryError}
+              />
             </div>
             <div className="space-y-2">
-              <h3 className="font-semibold text-gray-400">Testing</h3>
-              <div className="flex items-center gap-2 text-xs bg-gray-800 p-2 rounded-md">
-                <span className="font-mono bg-gray-700 px-1.5 py-0.5 rounded">pytest</span>
-                <span className="text-gray-400">-v</span>
-                <span className="text-red-400 bg-red-900/50 px-1.5 py-0.5 rounded">0</span>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <h3 className="font-semibold text-gray-400">Network access</h3>
-              <p className="text-gray-300">Some requests were blocked due to network access restrictions.</p>
-            </div>
-            <div className="space-y-2">
-              <h3 className="font-semibold text-gray-400">FILE ({versionData.files.length})</h3>
-              <div className="space-y-1">
-                {versionData.files.map((file) => (
-                  <div key={file.name} className="flex justify-between items-center p-2 rounded-md hover:bg-gray-800">
-                    <span>{file.name}</span>
-                    <div className="font-mono text-xs">
-                      <span className="text-green-400">+{file.additions}</span>{" "}
-                      <span className="text-red-400">-{file.deletions}</span>
-                    </div>
+              <div className="p-3 bg-gray-800/30 border border-gray-700/50 rounded-lg">
+                <h3 className="font-semibold text-gray-400 mb-3">FILES ({changedFiles.length})</h3>
+                {filesLoading ? (
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin" />
+                    Loading files...
                   </div>
-                ))}
+                ) : filesError ? (
+                  <div className="text-red-400 text-xs">Error loading files</div>
+                ) : changedFiles.length === 0 ? (
+                  <div className="text-gray-400 text-xs">No files changed</div>
+                ) : (
+                  <div className="space-y-1">
+                    {changedFiles.map((file) => (
+                      <div 
+                        key={file.name} 
+                        className="flex justify-between items-center p-2 rounded-md hover:bg-gray-700/50 cursor-pointer transition-colors"
+                        onClick={() => handleFileClick(file.name)}
+                      >
+                        <span className="text-sm text-cyan-300 hover:text-cyan-200">{file.name}</span>
+                        <div className="font-mono text-xs">
+                          <span className="text-green-400">+{file.additions}</span>{" "}
+                          <span className="text-red-400">-{file.deletions}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
-          <div className="mt-auto pt-4">
-            <Input placeholder="Request changes or ask a question" className="bg-gray-800 border-gray-700" />
-          </div>
+        </div>
+
+        {/* Input box - fixed at bottom */}
+        <div className="p-4 pt-0">
+          <Input placeholder="Request changes or ask a question" className="bg-gray-800 border-gray-700" />
+        </div>
       </aside>
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col bg-gray-950">
-          <Tabs defaultValue="logs" className="flex-1 flex flex-col">
-            <TabsList className="px-4 border-b border-gray-800 bg-transparent justify-start rounded-none">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+            {/* Fixed tabs header */}
+            <TabsList className="px-4 bg-gray-800/50 justify-start rounded-none border-b-0">
               <TabsTrigger
                 value="diff"
                 className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 border-white rounded-none"
@@ -329,13 +443,20 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
                 Errors
               </TabsTrigger>
             </TabsList>
-            <TabsContent value="diff" className="flex-1 overflow-y-auto p-4">
-              <DiffViewer xmlData={convertTaskDataToXml(versionData)} />
+            
+            {/* Scrollable tab content - explicit height */}
+            <TabsContent value="diff" className="p-4 overflow-y-auto custom-scrollbar" style={{ height: 'calc(100vh - 120px)' }}>
+              {renderDiffsContent()}
             </TabsContent>
-            <TabsContent value="logs" className="flex-1 overflow-y-auto p-4 font-mono text-sm">
+            <TabsContent value="logs" className="p-4 font-mono text-sm overflow-y-auto custom-scrollbar relative" style={{ height: 'calc(100vh - 120px)' }}>
+              {isManualScrolling && (
+                <div className="absolute top-2 right-2 bg-blue-600 text-white px-2 py-1 rounded text-xs z-10">
+                  Manual scrolling detected
+                </div>
+              )}
               {renderLogsContent()}
             </TabsContent>
-            <TabsContent value="errors" className="flex-1 overflow-y-auto p-4">
+            <TabsContent value="errors" className="p-4 overflow-y-auto custom-scrollbar" style={{ height: 'calc(100vh - 120px)' }}>
               {renderErrorsContent()}
             </TabsContent>
         </Tabs>

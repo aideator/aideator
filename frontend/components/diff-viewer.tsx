@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import sampleDiffData from '@/lib/sample-diff-data.json'
 
@@ -35,7 +35,7 @@ function parseXmlData(xmlString: string): DiffAnalysis {
   return { files }
 }
 
-function formatDiff(diff: string): JSX.Element[] {
+function formatDiff(diff: string): React.ReactElement[] {
   const lines = diff.split('\n')
   return lines.map((line, index) => {
     let className = 'text-gray-400'
@@ -56,7 +56,7 @@ function formatDiff(diff: string): JSX.Element[] {
   })
 }
 
-function formatChanges(changes: string): JSX.Element {
+function formatChanges(changes: string): React.ReactElement {
   const items = changes.split('\n').filter(item => item.trim().startsWith('-'))
   
   if (items.length > 0) {
@@ -109,6 +109,7 @@ export default function DiffViewer({ xmlData, className = '' }: DiffViewerProps)
           return (
             <div
               key={index}
+              data-file-name={file.name}
               className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden transition-all duration-300 hover:border-blue-500"
             >
               <div

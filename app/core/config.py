@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     # API Configuration
     api_v1_prefix: str = "/api/v1"
-    project_name: str = "AIdeator"
+    project_name: str = "DevSwarm"
     version: str = "1.0.0"
     debug: bool = False
     environment: str = "production"
@@ -27,7 +27,6 @@ class Settings(BaseSettings):
 
     # Authentication Features
     require_user_registration: bool = True  # Keep user system (needed for future features)
-    require_api_keys_for_agents: bool = True  # Set false for simple development
 
     # Development Shortcuts
     simple_dev_mode: bool = False  # Skip complex setup
@@ -40,12 +39,16 @@ class Settings(BaseSettings):
         default="dev-secret-key-32-chars-minimum-length-for-development"
     )
     encryption_key: str = Field(default="dev-encryption-key-32-chars-minimum-for-aes")
-    algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
+    
+    # GitHub OAuth Configuration
+    github_client_id: str = "Ov23liQbofc71OnH8V0L"
+    github_client_secret: str = "c9512c510821f9a4b901c3cf0026063f0b552a10"
+    github_redirect_uri: str = "http://localhost:8000/api/v1/auth/github/callback"
+    
+    # API Keys for LLM providers
     openai_api_key: str | None = None  # Required for LiteLLM
     anthropic_api_key: str | None = None  # Required for Claude Code CLI
     gemini_api_key: str | None = None  # Required for Gemini CLI
-    api_key_header: str = "X-API-Key"
     allowed_origins: list[str] = ["*"]
     allowed_hosts: list[str] = ["*"]
 
@@ -178,8 +181,7 @@ class Settings(BaseSettings):
         # Apply development shortcuts
         if self.simple_dev_mode or self.environment == "development":
             # Auto-configure for development ease
-            self.require_api_keys_for_agents = False
-            self.access_token_expire_minutes = 2880  # 48 hours
+            pass
 
             # Auto-generate keys if empty in development
             if not self.secret_key or self.secret_key == "dev-secret-key-32-chars-minimum-length-for-development":

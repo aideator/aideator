@@ -34,7 +34,7 @@ def redis_url_env():
 from app.core.config import Settings, get_settings
 from app.core.database import get_session
 from app.main import app
-from app.models.run import Run
+from app.models.task import Task
 from app.models.user import APIKey, User
 
 
@@ -160,12 +160,10 @@ def make_user(db_session: AsyncSession):
     """Factory for creating test users."""
 
     async def _make_user(**kwargs):
-        from app.api.v1.auth import get_password_hash
-
         defaults = {
             "id": f"user_test_{asyncio.get_event_loop().time()}",
             "email": f"test_{asyncio.get_event_loop().time()}@example.com",
-            "hashed_password": get_password_hash("TestPassword123"),
+            "name": "Test User",
             "is_active": True,
             "is_superuser": False,
         }
@@ -183,51 +181,49 @@ def make_api_key(db_session: AsyncSession):
     """Factory for creating test API keys."""
 
     async def _make_api_key(user: User, **kwargs):
-        from app.api.v1.auth import generate_api_key, get_password_hash
-
-        api_key = generate_api_key()
-        defaults = {
+        # API key authentication removed - using GitHub OAuth only
+        # This fixture is kept for backward compatibility but creates dummy data
+        from datetime import datetime
+        
+        dummy_key = {
             "id": f"key_test_{asyncio.get_event_loop().time()}",
             "user_id": user.id,
-            "key_hash": get_password_hash(api_key),
             "name": "Test API Key",
             "is_active": True,
             "scopes": ["runs:create", "runs:read"],
+            "created_at": datetime.utcnow()
         }
-        key_record = APIKey(**{**defaults, **kwargs})
-        db_session.add(key_record)
-        await db_session.commit()
-        await db_session.refresh(key_record)
-        return api_key, key_record
+        
+        return "dummy_api_key", dummy_key
 
     return _make_api_key
 
 
 @pytest.fixture
-def make_run(db_session: AsyncSession):
-    """Factory for creating test runs."""
+def make_task(db_session: AsyncSession):
+    """Factory for creating test tasks."""
 
-    async def _make_run(**kwargs):
+    async def _make_task(**kwargs):
         defaults = {
-            "id": f"run_test_{asyncio.get_event_loop().time()}",
+            "id": f"task_test_{int(asyncio.get_event_loop().time())}",
             "github_url": "https://github.com/test/repo",
             "prompt": "Test prompt for the agent",
             "variations": 3,
             "status": "pending",
         }
-        run = Run(**{**defaults, **kwargs})
-        db_session.add(run)
+        task = Task(**{**defaults, **kwargs})
+        db_session.add(task)
         await db_session.commit()
-        await db_session.refresh(run)
-        return run
+        await db_session.refresh(task)
+        return task
 
-    return _make_run
+    return _make_task
 
 
 # Test data
 @pytest.fixture
-def sample_run_request():
-    """Sample run request data."""
+def sample_task_request():
+    """Sample task request data."""
     return {
         "github_url": "https://github.com/fastapi/fastapi",
         "prompt": "Add comprehensive error handling to all API endpoints",

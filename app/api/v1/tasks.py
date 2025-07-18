@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.core.database import get_session
-from app.core.dependencies import CurrentUserAPIKey, get_orchestrator # get_orchestrator added
+from app.core.dependencies import CurrentUser, OptionalCurrentUser, get_orchestrator # get_orchestrator added
 from app.core.logging import get_logger
 from app.models.task import Task, TaskOutput, TaskStatus
 from app.schemas.tasks import ( # Modified import
@@ -44,7 +44,7 @@ router = APIRouter()
 )
 async def create_task(
     request: CreateTaskRequest,
-    current_user: CurrentUserAPIKey,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_session),
     orchestrator: AgentOrchestrator = Depends(get_orchestrator),
 ) -> CreateTaskResponse:
@@ -90,7 +90,7 @@ async def create_task(
     base_url = "/api/v1/tasks"
     return CreateTaskResponse(
         task_id=new_task.id,
-        websocket_url=f"/ws/tasks/{new_task.id}",
+        # WebSocket streaming removed - using HTTP polling instead
         polling_url=f"{base_url}/{new_task.id}/outputs",
         status="pending",
     )
@@ -130,27 +130,47 @@ async def get_task_metrics(session: AsyncSession, task_id: int) -> dict[str, int
 
 @router.get("", response_model=TaskListResponse)
 async def list_tasks(
-    current_user: CurrentUserAPIKey,
+    current_user: OptionalCurrentUser,
     limit: int = Query(default=10, le=50),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_session),
 ) -> TaskListResponse:
     """Get list of tasks for the main page (reads from tasks table)."""
 
-    # Query tasks for the current user, ordered by creation date (newest first)
-    tasks_query = (
-        select(Task)
-        .where(Task.user_id == current_user.id)
-        .order_by(desc(Task.created_at))
-        .offset(offset)
-        .limit(limit)
-    )
+    # In dev mode, always show all tasks. In production, filter by user.
+    from app.core.config import get_settings
+    settings = get_settings()
+    
+    # Show all tasks in development mode or if no user
+    if not current_user or settings.debug or settings.environment == "development":
+        tasks_query = (
+            select(Task)
+            .where(Task.archived == False)  # Filter out archived tasks
+            .order_by(desc(Task.created_at))
+            .offset(offset)
+            .limit(limit)
+        )
+        use_user_filter = False
+    else:
+        # Production mode - filter by user
+        tasks_query = (
+            select(Task)
+            .where(Task.user_id == current_user.id)
+            .where(Task.archived == False)  # Filter out archived tasks
+            .order_by(desc(Task.created_at))
+            .offset(offset)
+            .limit(limit)
+        )
+        use_user_filter = True
 
     result = await db.execute(tasks_query)
     tasks_rows = result.scalars().all()
 
     # Get total count for pagination
-    count_query = select(func.count(Task.id)).where(Task.user_id == current_user.id)
+    if use_user_filter:
+        count_query = select(func.count(Task.id)).where(Task.user_id == current_user.id).where(Task.archived == False)
+    else:
+        count_query = select(func.count(Task.id)).where(Task.archived == False)
     count_result = await db.execute(count_query)
     total = count_result.scalar() or 0
 
@@ -199,7 +219,107 @@ async def list_tasks(
             status=frontend_status,
             versions=versions,
             additions=additions,
-            deletions=deletions
+            deletions=deletions,
+            archived=task_row.archived
+        )
+        tasks.append(task_item)
+
+    return TaskListResponse(tasks=tasks, total=total, has_more=(offset + len(tasks)) < total)
+
+
+@router.get("/archived", response_model=TaskListResponse)
+async def list_archived_tasks(
+    current_user: OptionalCurrentUser,
+    limit: int = Query(default=10, le=50),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_session),
+) -> TaskListResponse:
+    """Get list of archived tasks."""
+
+    # In dev mode, always show all tasks. In production, filter by user.
+    from app.core.config import get_settings
+    settings = get_settings()
+    
+    # Show all archived tasks in development mode or if no user
+    if not current_user or settings.debug or settings.environment == "development":
+        tasks_query = (
+            select(Task)
+            .where(Task.archived == True)  # Only archived tasks
+            .order_by(desc(Task.created_at))
+            .offset(offset)
+            .limit(limit)
+        )
+        use_user_filter = False
+    else:
+        # Production mode - filter by user
+        tasks_query = (
+            select(Task)
+            .where(Task.user_id == current_user.id)
+            .where(Task.archived == True)  # Only archived tasks
+            .order_by(desc(Task.created_at))
+            .offset(offset)
+            .limit(limit)
+        )
+        use_user_filter = True
+
+    result = await db.execute(tasks_query)
+    tasks_rows = result.scalars().all()
+
+    # Get total count for pagination
+    if use_user_filter:
+        count_query = select(func.count(Task.id)).where(Task.user_id == current_user.id).where(Task.archived == True)
+    else:
+        count_query = select(func.count(Task.id)).where(Task.archived == True)
+    count_result = await db.execute(count_query)
+    total = count_result.scalar() or 0
+
+    # Convert tasks to task list items
+    tasks = []
+    for task_row in tasks_rows:
+        # Generate title from prompt (truncate if needed)
+        title = task_row.prompt or "Untitled Task"
+        if len(title) > 50:
+            title = title[:47] + "..."
+
+        # Map Task.status enum to frontend string
+        status_mapping = {
+            TaskStatus.PENDING: "Open",
+            TaskStatus.RUNNING: "Open",
+            TaskStatus.COMPLETED: "Completed",
+            TaskStatus.FAILED: "Failed",
+            TaskStatus.CANCELLED: "Failed",
+        }
+        frontend_status = status_mapping.get(task_row.status, "Open")
+
+        # Generate details string with timestamp and repository info
+        details = f"{task_row.created_at.strftime('%I:%M %p')} · "
+        if task_row.github_url:
+            # Extract repo name from URL for display
+            repo_name = task_row.github_url.split("/")[-1] if "/" in task_row.github_url else task_row.github_url
+            details += f"aideator/{repo_name}"
+        else:
+            details += "Chat Mode"
+
+        # Get number of variations from the run
+        versions = task_row.variations if task_row.variations else 1
+
+        # Get aggregated metrics for completed tasks
+        additions = None
+        deletions = None
+        if task_row.status == TaskStatus.COMPLETED:
+            metrics = await get_task_metrics(db, task_row.id)
+            additions = metrics["additions"]
+            deletions = metrics["deletions"]
+
+        task_item = TaskListItem(
+            id=str(task_row.id),  # Convert to string for frontend compatibility
+            title=title,
+            details=details,
+            status=frontend_status,
+            versions=versions,
+            additions=additions,
+            deletions=deletions,
+            archived=task_row.archived
         )
         tasks.append(task_item)
 
@@ -209,15 +329,22 @@ async def list_tasks(
 @router.get("/{task_id}")
 async def get_task_details(
     task_id: int,  # Now takes integer task_id
-    current_user: CurrentUserAPIKey,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_session),
 ):
     """
     Get detailed information about a specific task.
     Returns data in frontend-expected format with taskDetails structure.
     """
-    # Get the run
-    query = select(Task).where(Task.id == task_id).where(Task.user_id == current_user.id)
+    # Get the task
+    from app.core.config import get_settings
+    settings = get_settings()
+    
+    query = select(Task).where(Task.id == task_id)
+    # In dev mode, don't filter by user. In production, filter by user.
+    if not (settings.debug or settings.environment == "development"):
+        query = query.where(Task.user_id == current_user.id)
+    
     result = await db.execute(query)
     task_row = result.scalar_one_or_none()
 
@@ -263,7 +390,7 @@ async def get_task_details(
     for variation_id in sorted(variations_data.keys()):
         version_data = variations_data[variation_id]
         versions.append({
-            "id": variation_id,
+            "id": variation_id + 1,  # Convert 0-indexed to 1-indexed for display
             "summary": version_data["summary"],
             "files": version_data["files"]
         })
@@ -300,7 +427,7 @@ async def get_task_details(
 @router.get("/{task_id}/outputs")
 async def get_task_outputs(
     task_id: int,  # Now takes integer task_id
-    current_user: CurrentUserAPIKey,
+    current_user: CurrentUser,
     since: datetime | None = Query(
         None, description="ISO timestamp to get outputs after"
     ),
@@ -317,8 +444,12 @@ async def get_task_outputs(
     Frontend should poll this every 0.5 seconds with the last received timestamp.
     """
     # Verify task exists and user has access
+    from app.core.config import get_settings
+    settings = get_settings()
+    
     query = select(Task).where(Task.id == task_id)
-    if current_user:
+    # In dev mode, don't filter by user. In production, filter by user.
+    if not (settings.debug or settings.environment == "development"):
         query = query.where(Task.user_id == current_user.id)
 
     result = await db.execute(query)
@@ -366,7 +497,7 @@ async def get_task_outputs(
 async def get_variation_outputs(
     task_id: int,  # Now takes integer task_id
     variation_id: int,
-    current_user: CurrentUserAPIKey,
+    current_user: CurrentUser,
     since: datetime | None = Query(
         None, description="ISO timestamp to get outputs after"
     ),
@@ -381,8 +512,12 @@ async def get_variation_outputs(
     Useful for variation comparison in the task detail page.
     """
     # Verify task exists and user has access
+    from app.core.config import get_settings
+    settings = get_settings()
+    
     query = select(Task).where(Task.id == task_id)
-    if current_user:
+    # In dev mode, don't filter by user. In production, filter by user.
+    if not (settings.debug or settings.environment == "development"):
         query = query.where(Task.user_id == current_user.id)
 
     result = await db.execute(query)
@@ -432,3 +567,128 @@ async def get_variation_outputs(
         }
         for output in outputs
     ]
+
+
+@router.patch("/{task_id}/archive")
+async def archive_task(
+    task_id: int,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    """Archive a task."""
+    # Get the task
+    from app.core.config import get_settings
+    settings = get_settings()
+    
+    query = select(Task).where(Task.id == task_id)
+    # In dev mode, don't filter by user. In production, filter by user.
+    if not (settings.debug or settings.environment == "development"):
+        query = query.where(Task.user_id == current_user.id)
+    
+    result = await db.execute(query)
+    task_row = result.scalar_one_or_none()
+    
+    if not task_row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found",
+        )
+    
+    # Archive the task
+    task_row.archived = True
+    task_row.updated_at = datetime.utcnow()
+    await db.commit()
+    
+    return {"message": "Task archived successfully"}
+
+
+@router.patch("/{task_id}/unarchive")
+async def unarchive_task(
+    task_id: int,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    """Unarchive a task."""
+    # Get the task
+    from app.core.config import get_settings
+    settings = get_settings()
+    
+    query = select(Task).where(Task.id == task_id)
+    # In dev mode, don't filter by user. In production, filter by user.
+    if not (settings.debug or settings.environment == "development"):
+        query = query.where(Task.user_id == current_user.id)
+    
+    result = await db.execute(query)
+    task_row = result.scalar_one_or_none()
+    
+    if not task_row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found",
+        )
+    
+    # Unarchive the task
+    task_row.archived = False
+    task_row.updated_at = datetime.utcnow()
+    await db.commit()
+    
+    return {"message": "Task unarchived successfully"}
+
+
+@router.delete("/{task_id}")
+async def delete_task(
+    task_id: int,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    """Delete a task permanently."""
+    try:
+        # Get the task
+        from app.core.config import get_settings
+        settings = get_settings()
+        
+        query = select(Task).where(Task.id == task_id)
+        # In dev mode, don't filter by user. In production, filter by user.
+        if current_user and not (settings.debug or settings.environment == "development"):
+            query = query.where(Task.user_id == current_user.id)
+        
+        result = await db.execute(query)
+        task_row = result.scalar_one_or_none()
+        
+        if not task_row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Task not found",
+            )
+        
+        logger.info(f"Deleting task {task_id} and its outputs")
+        
+        # Delete all task outputs first (more efficient bulk delete)
+        from sqlalchemy import delete as sql_delete
+        
+        # Delete all outputs for this task in one query
+        await db.execute(
+            sql_delete(TaskOutput).where(TaskOutput.task_id == task_id)
+        )
+        
+        # Delete the task
+        await db.delete(task_row)
+        
+        # Commit all changes in a single transaction
+        await db.commit()
+        
+        logger.info(f"Successfully deleted task {task_id}")
+        return {"message": "Task deleted successfully"}
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions (like 404)
+        await db.rollback()
+        raise
+    except Exception as e:
+        # Rollback on any other error
+        await db.rollback()
+        logger.error(f"Failed to delete task {task_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete task: {str(e)}"
+        )

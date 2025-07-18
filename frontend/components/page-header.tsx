@@ -1,20 +1,27 @@
 "use client"
 
-import { BrainCircuit, ArrowLeft, Archive, Share, GitPullRequest, FileText } from "lucide-react"
+import { BrainCircuit, ArrowLeft, Archive, Share, GitPullRequest, RefreshCw, Github } from "lucide-react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { tasks } from "@/lib/data"
 import { useState, useEffect } from "react"
+import { useAuth } from "@/components/auth/auth-provider"
+import { GitHubLoginButton } from "@/components/auth/github-login-button"
+import { UserMenu } from "@/components/auth/user-menu"
+import { useTaskDetail } from "@/hooks/use-task-detail"
+import { useArchive } from "@/hooks/use-archive"
 
 export function PageHeader() {
   const pathname = usePathname()
+  const router = useRouter()
   const [isPrCreated, setIsPrCreated] = useState(false)
+  const { user, isLoading } = useAuth()
   
   // Check if we're on a task page
   const taskMatch = pathname.match(/^\/task\/([^/]+)$/)
   const taskId = taskMatch?.[1]
-  const task = taskId ? tasks.find((t) => t.id === taskId) : null
+  const { task, loading: taskLoading } = useTaskDetail(taskId || "")
+  const { archiving, archiveTask } = useArchive()
   
   // Reset PR state when navigating away from task
   useEffect(() => {
@@ -22,9 +29,22 @@ export function PageHeader() {
       setIsPrCreated(false)
     }
   }, [taskId])
+
+  // Handle archive task
+  const handleArchiveTask = async () => {
+    if (!taskId) return
+    
+    try {
+      await archiveTask(taskId)
+      // Navigate back to home page after archiving
+      router.push('/')
+    } catch (err) {
+      alert(`Failed to archive task: ${err}`)
+    }
+  }
   
-  if (task) {
-    // Task page header (uses /tasks endpoints)
+  if (taskId) {
+    // Task page header (uses real API data)
     return (
       <header className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-gray-950">
         <div className="flex items-center gap-4">
@@ -33,22 +53,22 @@ export function PageHeader() {
               <ArrowLeft className="w-5 h-5" />
             </Button>
           </Link>
-          <h1 className="text-lg font-medium text-gray-50">{task.title}</h1>
+          <h1 className="text-lg font-medium text-gray-50">
+            {taskLoading ? "Loading..." : task?.title || "Task"}
+          </h1>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" asChild className="text-gray-300 hover:text-gray-50">
-            <a 
-              href="http://localhost:8000/docs" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="flex items-center gap-2"
-            >
-              <FileText className="w-4 h-4" />
-              API Docs
-            </a>
-          </Button>
-          <Button variant="outline" className="bg-gray-800 border-gray-700">
-            <Archive className="w-4 h-4 mr-2" />
+          <Button 
+            variant="outline" 
+            className="bg-gray-800 border-gray-700"
+            onClick={handleArchiveTask}
+            disabled={archiving === taskId}
+          >
+            {archiving === taskId ? (
+              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Archive className="w-4 h-4 mr-2" />
+            )}
             Archive
           </Button>
           <Button variant="outline" className="bg-gray-800 border-gray-700">
@@ -56,9 +76,10 @@ export function PageHeader() {
             Share
           </Button>
           <Button className="bg-white text-black hover:bg-gray-200" onClick={() => setIsPrCreated(true)}>
-            <GitPullRequest className="w-4 h-4 mr-2" />
+            <Github className="w-4 h-4 mr-2" />
             {isPrCreated ? "View PR" : "Create PR"}
           </Button>
+          {!isLoading && (user ? <UserMenu /> : <GitHubLoginButton />)}
         </div>
       </header>
     )
@@ -71,20 +92,10 @@ export function PageHeader() {
         <div className="flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3 w-fit">
             <BrainCircuit className="w-8 h-8 text-gray-300" />
-            <span className="text-xl font-semibold text-gray-50">AIdeator</span>
+            <span className="text-xl font-semibold text-gray-50">DevSwarm</span>
           </Link>
           <nav className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" asChild>
-              <a 
-                href="http://localhost:8000/docs" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-gray-300 hover:text-gray-50"
-              >
-                <FileText className="w-4 h-4" />
-                API Docs
-              </a>
-            </Button>
+            {!isLoading && (user ? <UserMenu /> : <GitHubLoginButton />)}
           </nav>
         </div>
       </div>

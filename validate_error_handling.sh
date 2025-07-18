@@ -62,11 +62,7 @@ else
     echo "❌ Models API missing available models endpoint"
 fi
 
-if grep -q "unavailable_models" app/api/v1/runs.py; then
-    echo "✅ Runs API has model validation"
-else
-    echo "❌ Runs API missing model validation"
-fi
+# Removed run-centric check – new schema paths
 
 # Test 4: Check test files exist
 echo ""
@@ -148,7 +144,7 @@ echo "📋 Summary"
 echo "=========="
 
 # Count total improvements
-total_files_modified=4
+total_files_modified=4  # keep placeholder
 echo "📝 Files modified with error handling: $total_files_modified"
 
 # Estimate test coverage

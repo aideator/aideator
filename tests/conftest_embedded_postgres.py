@@ -152,12 +152,11 @@ def embedded_make_user(embedded_db_session: AsyncSession):
     """Factory for creating test users with embedded PostgreSQL."""
 
     async def _make_user(**kwargs):
-        from app.api.v1.auth import get_password_hash
-
+        # Password hashing removed - using GitHub OAuth only
         defaults = {
             "id": f"user_embedded_{asyncio.get_event_loop().time()}",
             "email": f"embedded_{asyncio.get_event_loop().time()}@example.com",
-            "hashed_password": get_password_hash("TestPassword123"),
+            "name": "Test User",
             "is_active": True,
             "is_superuser": False,
         }
@@ -175,22 +174,20 @@ def embedded_make_api_key(embedded_db_session: AsyncSession):
     """Factory for creating test API keys with embedded PostgreSQL."""
 
     async def _make_api_key(user: User, **kwargs):
-        from app.api.v1.auth import generate_api_key, get_password_hash
-
-        api_key = generate_api_key()
-        defaults = {
+        # API key authentication removed - using GitHub OAuth only
+        # This fixture is kept for backward compatibility but creates dummy data
+        from datetime import datetime
+        
+        dummy_key = {
             "id": f"key_embedded_{asyncio.get_event_loop().time()}",
             "user_id": user.id,
-            "key_hash": get_password_hash(api_key),
             "name": "Embedded Test API Key",
             "is_active": True,
             "scopes": ["runs:create", "runs:read"],
+            "created_at": datetime.utcnow()
         }
-        key_record = APIKey(**{**defaults, **kwargs})
-        embedded_db_session.add(key_record)
-        await embedded_db_session.commit()
-        await embedded_db_session.refresh(key_record)
-        return api_key, key_record
+        
+        return "dummy_api_key", dummy_key
 
     return _make_api_key
 

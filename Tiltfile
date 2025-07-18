@@ -96,7 +96,7 @@ api_yaml = local('envsubst < infra/k8s/api.yaml')
 k8s_yaml(api_yaml)
 
 # Configure port forwards - Simple and Predictable
-k8s_resource('aideator-api', port_forwards='8000:8000', labels=['backend'])
+k8s_resource('aideator-api', port_forwards='8000:8000', labels=['backend'], resource_deps=['database-migrate'])
 k8s_resource('aideator-database', port_forwards='5432:5432', labels=['database'], resource_deps=['setup-persistence'])
 
 # Frontend development (runs locally)

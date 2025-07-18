@@ -149,26 +149,7 @@ class KubernetesService:
             except json.JSONDecodeError:
                 pass
         
-        # Also try old format (run-id) for backward compatibility
-        cmd = [
-            "kubectl",
-            "get",
-            "jobs",
-            "--namespace",
-            self.namespace,
-            "-l",
-            f"run-id={run_id}",
-            "-o",
-            "json",
-        ]
-        result = await self._run_kubectl_command(cmd)
-        
-        if result.returncode == 0:
-            try:
-                jobs_data = json.loads(result.stdout)
-                job_names.extend([job["metadata"]["name"] for job in jobs_data["items"]])
-            except json.JSONDecodeError:
-                pass
+        # Legacy run-id lookup removed – unified task labels are authoritative
 
         if not job_names:
             logger.info(f"No jobs found for run {run_id}")
