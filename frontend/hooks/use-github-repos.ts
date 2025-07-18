@@ -24,7 +24,7 @@ export interface GitHubBranch {
   }
 }
 
-export function useGitHubRepos(token: string | null) {
+export function useGitHubRepos(token: string | null, orgLogins: string[] = []) {
   const [repos, setRepos] = useState<GitHubRepo[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -43,6 +43,7 @@ export function useGitHubRepos(token: string | null) {
         // Fetch all pages (GitHub API paginates at 100 max per_page)
         let page = 1
         const allRepos: GitHubRepo[] = []
+        // Fetch user repos first
         while (true) {
           const resp = await fetch(`https://api.github.com/user/repos?sort=updated&per_page=100&page=${page}`, {
             headers: {
@@ -67,7 +68,42 @@ export function useGitHubRepos(token: string | null) {
           page += 1
         }
 
-        setRepos(allRepos)
+        // Fetch repos for each additional organisation provided
+        for (const org of orgLogins) {
+          let orgPage = 1
+          while (true) {
+            const respOrg = await fetch(`https://api.github.com/orgs/${org}/repos?sort=updated&per_page=100&page=${orgPage}`, {
+              headers: {
+                Authorization: `token ${token}`,
+                Accept: 'application/vnd.github.v3+json',
+              },
+            })
+
+            if (!respOrg.ok) {
+              // If the request fails (e.g., 404 or permission denied), stop trying this org
+              console.warn(`Failed to fetch repos for org ${org}:`, respOrg.status)
+              break
+            }
+
+            const orgData: GitHubRepo[] = await respOrg.json()
+            allRepos.push(...orgData)
+
+            if (orgData.length < 100 || orgData.length === 0) {
+              break
+            }
+            // Safety cap similar to user repos
+            if (allRepos.length >= 1000) {
+              break
+            }
+
+            orgPage += 1
+          }
+        }
+
+        // Deduplicate by repo id (should be unique across GitHub)
+        const deduped = Array.from(new Map(allRepos.map(r => [r.id, r])).values())
+
+        setRepos(deduped)
       } catch (err) {
         setError('Network error fetching repositories')
         console.error('GitHub repos fetch error:', err)
@@ -77,7 +113,7 @@ export function useGitHubRepos(token: string | null) {
     }
 
     fetchRepos()
-  }, [token])
+  }, [token, orgLogins])
 
   return { repos, loading, error }
 }

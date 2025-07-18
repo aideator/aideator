@@ -11,6 +11,7 @@ import Link from "next/link"
 import { useTasks } from "@/hooks/use-tasks"
 import { useAuth } from "@/components/auth/auth-provider"
 import { useGitHubRepos, useGitHubBranches } from "@/hooks/use-github-repos"
+import { useUserOrgs } from "@/hooks/use-user-orgs"
 import { useLocalStorage } from "@/hooks/use-local-storage"
 import { 
   getHeadingClasses, 
@@ -42,7 +43,8 @@ export default function TokensDemo() {
   const [selectedBranch, setSelectedBranch, branchLoaded] = useLocalStorage('selected_branch', 'main')
   
   // GitHub data
-  const { repos, loading: reposLoading } = useGitHubRepos(token)
+  const { orgs } = useUserOrgs()
+  const { repos, loading: reposLoading } = useGitHubRepos(token, orgs)
   const { branches, loading: branchesLoading } = useGitHubBranches(token, selectedRepo)
 
   // Default demo configuration

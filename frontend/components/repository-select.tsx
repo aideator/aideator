@@ -7,6 +7,7 @@ import * as SelectPrimitive from "@radix-ui/react-select"
 import { useLocalStorage } from "@/hooks/use-local-storage"
 import { useAuth } from "@/components/auth/auth-provider"
 import { useGitHubRepos } from "@/hooks/use-github-repos"
+import { useUserOrgs } from "@/hooks/use-user-orgs"
 import { GitHubRepo } from "@/hooks/use-github-repos"
 import { cn } from "@/lib/utils"
 
@@ -40,11 +41,12 @@ export function RepositorySelect({
   demoRepoUrl = "https://github.com/aideator/helloworld",
   triggerClassName,
 }: RepositorySelectProps) {
-  // Auth state
+  // Auth and user orgs state
   const { token } = useAuth()
+  const { orgs } = useUserOrgs()
 
   // Fetch repos (up to 300) – see updated hook
-  const { repos, loading, error } = useGitHubRepos(token)
+  const { repos, loading, error } = useGitHubRepos(token, orgs)
 
   // Search term state with debouncing
   const [search, setSearch] = useState("")
