@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, use, useEffect, useRef } from "react"
-import { FileCode, Terminal, AlertTriangle } from "lucide-react"
+import { FileCode, Terminal, AlertTriangle, Github } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
@@ -15,6 +15,7 @@ import { useTaskFileChanges } from "@/hooks/use-task-file-changes"
 import { notFound } from "next/navigation"
 import DiffViewer from "@/components/diff-viewer"
 import { TaskSummary } from "@/components/task-summary"
+import { PRCreation } from "@/components/pr-creation"
 import { formatLogTimestamp } from "@/utils/timezone"
 
 
@@ -357,6 +358,26 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
     return <DiffViewer xmlData={latestDiff.content} />
   }
 
+  // Render PR creation content for the current variation
+  const renderPRContent = () => {
+    // Get the latest diff data for the current variation
+    const latestDiff = diffs[diffs.length - 1]
+    const diffContent = latestDiff?.content || ""
+    
+    return (
+      <div className="max-w-4xl mx-auto">
+        <PRCreation
+          taskId={id}
+          variationId={activeVersion - 1}
+          summary={summary || undefined}
+          diffContent={diffContent}
+          changedFiles={changedFiles}
+          githubUrl={task.github_url}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-1 h-full overflow-hidden bg-gray-950 text-gray-200">
       {/* Left Sidebar */}
@@ -452,6 +473,13 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
                 <AlertTriangle className="w-4 h-4 mr-2" />
                 Errors
               </TabsTrigger>
+              <TabsTrigger
+                value="pr"
+                className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 border-white rounded-none"
+              >
+                <Github className="w-4 h-4 mr-2" />
+                Create PR
+              </TabsTrigger>
             </TabsList>
             
             {/* Scrollable tab content - explicit height */}
@@ -468,6 +496,9 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
             </TabsContent>
             <TabsContent value="errors" className="p-4 overflow-y-auto custom-scrollbar" style={{ height: 'calc(100vh - 120px)' }}>
               {renderErrorsContent()}
+            </TabsContent>
+            <TabsContent value="pr" className="p-4 overflow-y-auto custom-scrollbar" style={{ height: 'calc(100vh - 120px)' }}>
+              {renderPRContent()}
             </TabsContent>
         </Tabs>
       </main>

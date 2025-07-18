@@ -8,6 +8,7 @@ export interface TaskDetail {
   details: string
   status: 'Completed' | 'Open' | 'Failed'
   versions: number
+  github_url?: string
   taskDetails: {
     versions: Array<{
       id: number

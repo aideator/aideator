@@ -418,6 +418,7 @@ async def get_task_details(
         "details": details,
         "status": frontend_status,
         "versions": task_row.variations,
+        "github_url": task_row.github_url,
         "taskDetails": {
             "versions": versions
         }
