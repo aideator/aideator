@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { AutoResizeTextarea } from "@/components/auto-resize-textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { GitBranch, Layers, Mic, Github, RefreshCw, AlertCircle, Archive, X, ArrowUp } from "lucide-react"
+import { GitBranch, Layers, Mic, RefreshCw, AlertCircle, Archive, X, ArrowUp } from "lucide-react"
 import Link from "next/link"
 import { useTasks } from "@/hooks/use-tasks"
 import { useArchive } from "@/hooks/use-archive"
@@ -14,6 +14,7 @@ import { useGitHubRepos, useGitHubBranches } from "@/hooks/use-github-repos"
 import { useLocalStorage } from "@/hooks/use-local-storage"
 import { useConfirmation } from "@/hooks/use-confirmation"
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog"
+import { RepositorySelector } from "@/components/repository-selector"
 import { 
   getHeadingClasses, 
   getBodyClasses, 
@@ -224,35 +225,14 @@ export default function Home() {
           <div className="flex items-center justify-between">
             <div className={commonSpacingCombinations.buttonGroup}>
               {/* Repository Selector */}
-              <Select 
-                value={selectedRepo} 
-                onValueChange={setSelectedRepo}
-                disabled={reposLoading}
-              >
-                <SelectTrigger className={`${componentTokens.ui.card.secondary} w-auto ${getGapSpacing('sm')}`}>
-                  <Github className={`w-4 h-4 ${getBodyClasses('secondary')}`} />
-                  <SelectValue placeholder={reposLoading ? "Loading repos..." : "Select repository"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {/* Show demo repo for unauthenticated users */}
-                  {!token && (
-                    <SelectItem value={demoRepoUrl}>aideator/helloworld (demo)</SelectItem>
-                  )}
-                  
-                  {/* Show user's repos when authenticated */}
-                  {token && repos.map((repo) => (
-                    <SelectItem key={repo.id} value={repo.html_url}>
-                      {repo.full_name}
-                      {repo.private && <span className="text-xs opacity-60 ml-1">(private)</span>}
-                    </SelectItem>
-                  ))}
-                  
-                  {/* Show demo option for authenticated users too */}
-                  {token && (
-                    <SelectItem value={demoRepoUrl}>aideator/helloworld (demo)</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
+              <RepositorySelector
+                repos={repos}
+                selectedRepo={selectedRepo}
+                onRepoSelect={setSelectedRepo}
+                loading={reposLoading}
+                token={token}
+                demoRepoUrl={demoRepoUrl}
+              />
               
               {/* Branch Selector */}
               <Select 
