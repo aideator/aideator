@@ -34,7 +34,7 @@ export default function Home() {
   const [hoveredTask, setHoveredTask] = useState<string | null>(null)
   const { tasks, loading, error, refetch } = useTasks()
   const { tasks: archivedTasks, loading: archivedLoading, error: archivedError, refetch: refetchArchived } = useTasks(20, true)
-  const { archiving, deleting, archiveTask, unarchiveTask, deleteTask } = useArchive()
+  const { archiving, deleting, unarchiveTask, deleteTask } = useArchive()
   const { user, token } = useAuth()
   const confirmation = useConfirmation()
   
@@ -142,18 +142,6 @@ export default function Home() {
     } catch (err) {
       console.error('Network error:', err)
       alert(`Network error: ${err}`)
-    }
-  }
-
-  const handleArchive = async (e: React.MouseEvent, taskId: string) => {
-    e.preventDefault()
-    e.stopPropagation()
-    try {
-      await archiveTask(taskId)
-      refetch() // Refresh main tasks list
-      refetchArchived() // Refresh archived tasks list
-    } catch (err) {
-      alert(`Failed to archive task: ${err}`)
     }
   }
 
@@ -382,22 +370,6 @@ export default function Home() {
                       <span className={getBodyClasses('detail')}>{task.details}</span>
                     </div>
                     <div className={`flex items-center ${getGapSpacing('lg')}`}>
-                      {/* Archive button - shows on hover, positioned left of status */}
-                      {hoveredTask === task.id && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="opacity-70 hover:opacity-100"
-                          onClick={(e) => handleArchive(e, task.id)}
-                          disabled={archiving === task.id}
-                        >
-                          {archiving === task.id ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Archive className="w-4 h-4" />
-                          )}
-                        </Button>
-                      )}
                       {task.status === "Completed" && (
                         <>
                           {task.versions && (

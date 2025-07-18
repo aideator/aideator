@@ -12,6 +12,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Icons } from '@/components/ui/icons'
+import { FileText, Activity } from 'lucide-react'
+import Link from 'next/link'
 
 export function UserMenu() {
   const { user, logout } = useAuth()
@@ -67,6 +69,24 @@ export function UserMenu() {
             )}
           </div>
         </div>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/tokens-demo" className="flex items-center">
+            <Activity className="mr-2 h-4 w-4" />
+            Tokens Demo
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <a 
+            href="http://localhost:8000/docs" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="flex items-center"
+          >
+            <FileText className="mr-2 h-4 w-4" />
+            API Docs
+          </a>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <a href="/profile" className="flex items-center">

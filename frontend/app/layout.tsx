@@ -22,7 +22,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className={cn("min-h-screen bg-background font-sans antialiased flex flex-col", inter.variable)}>
+      <body className={cn("h-screen bg-background font-sans antialiased flex flex-col overflow-hidden", inter.variable)}>
         <AuthProvider>
           <PageHeader />
           <main className="flex-1 flex flex-col">

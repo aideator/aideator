@@ -73,7 +73,7 @@ export function useAgentLogs(taskId: string): UseAgentLogsReturn {
       
       // Transform API response to AgentLog format - API returns array directly
       const fetchedLogs: AgentLog[] = (Array.isArray(data) ? data : data.outputs || [])
-        .filter((output: any) => output.output_type !== 'diffs') // Filter out diff XML from logs
+        .filter((output: any) => output.output_type !== 'diffs' && output.output_type !== 'summary') // Filter out diff XML and summaries from logs
         .map((output: any) => ({
           id: output.id,
           task_id: output.task_id,

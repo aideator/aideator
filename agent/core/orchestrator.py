@@ -78,6 +78,8 @@ class AgentOrchestrator:
             # Generate git diff after successful execution (only in code mode)
             if self.config.is_code_mode:
                 await self._generate_git_diff()
+                # Generate task summary after diffs are complete
+                await self._generate_task_summary()
 
             await self.output_writer.write_job_data("✅ Agent execution completed successfully")
 
@@ -554,6 +556,119 @@ Keep it under 100 words and make it readable for developers. Avoid technical jar
                 .replace('>', '&gt;')
                 .replace('"', '&quot;')
                 .replace("'", '&apos;'))
+
+    async def _generate_task_summary(self) -> None:
+        """Generate holistic task summary from git diff using LLM."""
+        try:
+            await self.output_writer.write_job_data("📋 Generating task summary...")
+            
+            # Get git diff output (same as used for diffs)
+            git_status_result = await self._run_git_command(['git', 'status', '--porcelain'])
+            
+            if git_status_result.returncode != 0:
+                await self.output_writer.write_task_summary("Repository is not a git repository. No summary available.")
+                return
+            
+            # Check if there are any changes
+            if not git_status_result.stdout.strip():
+                await self.output_writer.write_task_summary("No changes made during this task.")
+                return
+            
+            # Get git diff output
+            diff_result = await self._run_git_command(['git', 'diff', 'HEAD'])
+            
+            if diff_result.returncode != 0:
+                await self.output_writer.write_task_summary("Failed to generate git diff for summary.")
+                return
+            
+            if not diff_result.stdout.strip():
+                await self.output_writer.write_task_summary("No changes detected in git diff.")
+                return
+            
+            # Truncate diff if too large (approximately 20,000 tokens)
+            diff_output = diff_result.stdout
+            max_chars = 80000  # Rough estimate: 1 token ≈ 4 characters
+            
+            if len(diff_output) > max_chars:
+                diff_output = diff_output[:max_chars] + "\n\n[... diff truncated due to size ...]"
+                await self.output_writer.write_job_data(f"⚠️ Git diff truncated to {max_chars} characters for summary generation")
+            
+            # Generate summary using LLM
+            summary = await self._generate_llm_summary(diff_output)
+            
+            # Write summary to database
+            await self.output_writer.write_task_summary(summary)
+            
+            await self.output_writer.write_job_data("✅ Task summary generated successfully")
+            
+        except Exception as e:
+            error_msg = f"Failed to generate task summary: {e}"
+            await self.output_writer.write_error(error_msg)
+            await self.output_writer.write_job_data("⚠️ Task summary generation failed")
+            
+            # Write error summary so frontend always has something to display
+            await self.output_writer.write_task_summary("Summary generation failed due to an error.")
+
+    async def _generate_llm_summary(self, diff_output: str) -> str:
+        """Generate summary using the same LLM provider as the main task."""
+        try:
+            # Create prompt with user context
+            original_prompt = getattr(self.config, 'prompt', 'No original prompt available')
+            
+            prompt = f"""Analyze this git diff and provide a concise summary of what was accomplished.
+
+Original Task: {original_prompt}
+
+Git Diff:
+{diff_output}
+
+Please provide a brief summary in Markdown format covering:
+- What functionality was added, modified, or removed
+- What files were affected
+- What was the overall goal achieved
+
+Requirements:
+- Professional tone with no emojis
+- Focus on facts only, no commentary
+- Keep concise (2-3 sentences)
+- Summary of changes per file should have no more than 60 words"""
+
+            # Use the same provider as the main task
+            if hasattr(self, 'provider') and self.provider:
+                # Use existing provider instance
+                summary_response = await self.provider.generate_response(prompt)
+                return summary_response.strip()
+            else:
+                # Fallback: create a simple provider instance
+                # This matches the same pattern used in diff generation
+                import httpx
+                
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers={
+                            "Content-Type": "application/json",
+                            "x-api-key": self.config.anthropic_api_key,
+                            "anthropic-version": "2023-06-01"
+                        },
+                        json={
+                            "model": "claude-3-sonnet-20240229",
+                            "max_tokens": 1000,
+                            "messages": [{"role": "user", "content": prompt}]
+                        },
+                        timeout=30.0
+                    )
+                    
+                    if response.status_code != 200:
+                        raise Exception(f"API request failed with status {response.status_code}")
+                    
+                    result = response.json()
+                    return result["content"][0]["text"].strip()
+                    
+        except Exception as e:
+            error_msg = f"LLM API failed to generate summary: {str(e)}"
+            await self.output_writer.write_error(error_msg)
+            return "Summary generation failed: LLM API error."
 
     async def _cleanup(self) -> None:
         """Clean up resources and connections."""

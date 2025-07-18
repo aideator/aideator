@@ -109,6 +109,7 @@ export default function DiffViewer({ xmlData, className = '' }: DiffViewerProps)
           return (
             <div
               key={index}
+              data-file-name={file.name}
               className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden transition-all duration-300 hover:border-blue-500"
             >
               <div

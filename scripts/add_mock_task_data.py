@@ -96,7 +96,7 @@ async def create_task_1_data():
     # Create agent outputs for each variation
     variations_data = [
         {
-            "id": 1,
+            "id": 0,
             "summary": "Updated the project description to read 'An ominous Hello World for Python,' making the greeting label more foreboding.",
             "files": [
                 {
@@ -112,7 +112,7 @@ async def create_task_1_data():
             ]
         },
         {
-            "id": 2,
+            "id": 1,
             "summary": "A slightly different take, using 'Greetings, mortal' for a more dramatic flair.",
             "files": [
                 {
@@ -128,7 +128,7 @@ async def create_task_1_data():
             ]
         },
         {
-            "id": 3,
+            "id": 2,
             "summary": "A more subtle change, adding an ellipsis to create a sense of suspense.",
             "files": [
                 {
@@ -224,7 +224,7 @@ async def create_task_2_data():
     # Create agent outputs for each variation - matches updated mock data
     variations_data = [
         {
-            "id": 1,
+            "id": 0,
             "summary": "Added a cheerful greeting with exclamation marks and emojis.",
             "files": [
                 {
@@ -242,7 +242,7 @@ async def create_task_2_data():
             ]
         },
         {
-            "id": 2,
+            "id": 1,
             "summary": "Made it even more cheerful with rainbow colors and celebration.",
             "files": [
                 {
@@ -261,7 +261,7 @@ async def create_task_2_data():
             ]
         },
         {
-            "id": 3,
+            "id": 2,
             "summary": "Toned it down to a warm, friendly welcome message.",
             "files": [
                 {

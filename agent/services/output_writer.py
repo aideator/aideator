@@ -188,6 +188,18 @@ class OutputWriter:
         # Use "diffs" output_type to match frontend expectations
         return await self.write_output(xml_content, "diffs")
 
+    async def write_task_summary(self, summary_content: str) -> bool:
+        """Write task summary in Markdown format.
+        
+        Args:
+            summary_content: Markdown string with task summary
+            
+        Returns:
+            True if successful
+        """
+        # Use "summary" output_type for task summaries
+        return await self.write_output(summary_content, "summary")
+
     async def write_system_status(self, status_message: str) -> bool:
         """Write system status message.
         
