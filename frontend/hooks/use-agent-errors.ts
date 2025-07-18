@@ -51,8 +51,8 @@ export function useAgentErrors(taskId: string): UseAgentErrorsReturn {
 
       // Fetch both error and stderr outputs
       const [errorResponse, stderrResponse] = await Promise.all([
-        fetch(`http://localhost:8000/api/v1/tasks/${taskId}/outputs?output_type=error`),
-        fetch(`http://localhost:8000/api/v1/tasks/${taskId}/outputs?output_type=stderr`)
+        fetch(`http://localhost:8000/api/v1/tasks/${taskId}/outputs?output_type=error&limit=5000`),
+        fetch(`http://localhost:8000/api/v1/tasks/${taskId}/outputs?output_type=stderr&limit=5000`)
       ])
 
       const errorData = errorResponse.ok ? await errorResponse.json() : { outputs: [] }

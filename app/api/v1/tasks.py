@@ -306,7 +306,8 @@ async def get_task_outputs(
     ),
     variation_id: int | None = Query(None, description="Filter by variation ID"),
     output_type: str | None = Query(None, description="Filter by output type"),
-    limit: int = Query(100, le=1000, description="Maximum number of outputs to return"),
+    # Increased default limit to 1000 and raised the maximum allowable value to 5000
+    limit: int = Query(1000, le=5000, description="Maximum number of outputs to return"),
     db: AsyncSession = Depends(get_session),
 ) -> list[dict]:
     """
@@ -370,7 +371,8 @@ async def get_variation_outputs(
         None, description="ISO timestamp to get outputs after"
     ),
     output_type: str | None = Query(None, description="Filter by output type"),
-    limit: int = Query(100, le=1000, description="Maximum number of outputs to return"),
+    # Increased default limit to 1000 and raised the maximum allowable value to 5000
+    limit: int = Query(1000, le=5000, description="Maximum number of outputs to return"),
     db: AsyncSession = Depends(get_session),
 ) -> list[dict]:
     """
