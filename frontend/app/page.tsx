@@ -279,21 +279,33 @@ export default function Home() {
               <Button variant="ghost" size="icon">
                 <Mic className="w-5 h-5" />
               </Button>
-              {taskText.trim() && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleCode}
-                  className={cn(
-                    "rounded-lg transition-all duration-200",
-                    taskText.trim() 
-                      ? "bg-blue-600 hover:bg-blue-700 text-white" 
-                      : "hover:bg-gray-800 text-gray-400"
-                  )}
-                >
-                  <ArrowUp className="w-5 h-5" />
-                </Button>
-              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleCode}
+                disabled={!taskText.trim()}
+                className={cn(
+                  "rounded-lg transition-all duration-200 relative [&_svg]:text-background hover:[&_svg]:text-background", // Force arrow to always be background color
+                  !taskText.trim() 
+                    ? "bg-muted/70 cursor-not-allowed" // Empty: baseline brightness, no border
+                    : "bg-muted" // Filled: will be styled with inline styles
+                )}
+                style={taskText.trim() ? {
+                  background: 'hsl(var(--muted))',
+                  border: '1.4px solid hsl(var(--muted))', // 30% thinner, same color as fill
+                  boxShadow: 'inset 0 0 0 2px hsl(var(--background))'
+                } : undefined}
+                onMouseEnter={taskText.trim() ? (e) => {
+                  e.currentTarget.style.background = 'hsl(var(--ring))'
+                  e.currentTarget.style.borderColor = 'hsl(var(--ring))'
+                } : undefined}
+                onMouseLeave={taskText.trim() ? (e) => {
+                  e.currentTarget.style.background = 'hsl(var(--muted))'
+                  e.currentTarget.style.borderColor = 'hsl(var(--muted))'
+                } : undefined}
+              >
+                <ArrowUp className="w-5 h-5" />
+              </Button>
             </div>
           </div>
         </div>
